@@ -9,7 +9,7 @@ import type { KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
 import type { Floor } from '../../floor.js';
 import type { TurnResult } from './adapters/types.js';
 import { finalMarker, looksInterrupted } from './markers.js';
-import { applySignal, type Applied } from './signals.js';
+import { applySignal, expireSignal, type Applied } from './signals.js';
 import { typeable, type HeldRun, type TurnHolds } from './turnhold.js';
 
 /** A run as the turn end follows it. */
@@ -62,6 +62,16 @@ export class TurnEnd<L extends EndLive> {
    * has been nudged as often as it is end the run on what there is. `force`: the hold's timeout; the run is nudged then, or ends.
    */
   async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Promise<Ending> {
+    // The Stop gate is deciding on this turn's Stop (it reads the log and asks git): what it says comes first, a blocked Stop being no end.
+    if (live.gating) await live.gating;
+    if (live.ended) return { end: false };
+    const ending = this.judge(live, result, o);
+    // An announcement is for the turn it was made in: one this Stop did not end the run on (work still out, a turn not over) is none for the next.
+    if (!ending.end) expireSignal(live);
+    return ending;
+  }
+
+  private judge(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Ending {
     if (o.planExit || !result) return { end: true, result };
     // A prompt or comment the log never showed in the wait for it: the answer read is an older turn's, never the run's. It ends unfinished, the comments kept.
     if (result.lost) return { end: true, result, unfinished: true, lost: result.lost };
@@ -72,7 +82,7 @@ export class TurnEnd<L extends EndLive> {
     if (said) {
       const task = this.deps.task(live.taskId);
       if (said.note && task) this.deps.note(task, said.note, live.runId);
-      return { end: true, result: { ...r, text: said.text, complete: true }, ...(said.asked ? { asked: true as const } : {}) };
+      return { end: true, result: { ...r, text: said.text }, ...(said.asked ? { asked: true as const } : {}) };
     }
     // A Stop the gate blocked is no end of the turn: the worker's `done` that upstream may still show is that turn's, and the agent goes on.
     // A usage limit or lost connection that cut the turn it went on with fires no Stop, though: that still ends the run (and is retried).
@@ -93,12 +103,15 @@ export class TurnEnd<L extends EndLive> {
   }
 
   /**
-   * What the agent's announcement makes of the turn, when it ends the run: only when the log shows no background work, teammates or unanswered
-   * notification, and no prompt of the office's unheard (anything in the agent's shell, a helper or a teammate holds the hook token, so an
-   * announcement in the middle of work is none); otherwise the text decides, as it does without one.
+   * What the agent's announcement makes of the turn, when it ends the run: only on the final answer of a turn that is over (`complete`, no tool
+   * still running, no turn typed into the terminal still going), with no background work, teammates or unanswered notification in the
+   * log and no prompt of the office's unheard. Anything in the agent's shell, a helper or a teammate holds the hook token, so an announcement in
+   * the middle of work is none, and it never makes an interim text the answer; otherwise the text decides, as it does without one.
    */
   private announced(live: L, r: TurnResult): Applied | undefined {
-    return live.signal && !r.unheard && !r.background && !r.resuming ? applySignal(live.phase, r.text, live.signal, live.signalPrs ?? []) : undefined;
+    // A turn typed into the terminal after the office's: its own final answer is the one announced, once it is over (while it runs, the run waits as before).
+    const over = r.complete && !r.toolRunning && !r.typedOpen && !(r.typed && r.interim) && !r.unheard && !r.background && !r.resuming;
+    return live.signal && over ? applySignal(live.phase, (r.typed && r.lastText) || r.text, live.signal, live.signalPrs ?? []) : undefined;
   }
 
   /** The turn read, with the final answer of a typed turn after the office's in place of the office's own when only that one has the marker. */

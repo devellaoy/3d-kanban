@@ -154,11 +154,15 @@ export class StopGate<L extends GateRun> {
       const deadline = new Promise<{ block?: string }>((resolve) => {
         timer = setTimeout(() => ((late.is = true), resolve({})), this.deps.deadlineMs ?? 10_000);
       });
-      return await Promise.race([this.judge(live, payload, late), deadline]);
+      const answer = Promise.race([this.judge(live, payload, late), deadline]).catch(() => ({}));
+      // The run's end waits for this (TurnEnd.decide): a `done` the worker shows meanwhile must not end the run the gate is about to send back to work.
+      if (live) live.gating = answer;
+      return await answer;
     } catch {
       return {};
     } finally {
       clearTimeout(timer);
+      if (live) live.gating = undefined;
     }
   }
 
@@ -188,7 +192,8 @@ export class StopGate<L extends GateRun> {
       if (task.type !== 'investigate') folders = await this.deps.uncommitted(live);
       if (!folders.length) return {};
     }
-    if (late.is) return {};
+    // The waits are over: the Stop was let through meanwhile, or the run ended or is being stopped, so there is nothing to send back to work.
+    if (late.is || live.ended || live.stopping) return {};
     if (blocks >= max) {
       if (!live.gateNoted) {
         live.gateNoted = true;

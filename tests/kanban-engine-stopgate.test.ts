@@ -244,3 +244,92 @@ test('the engine gate: off with maxGateBlocks 0', async (t) => {
   const { w } = await working(fx);
   assert.deepEqual(await fx.engine.stopGate(w, { last_assistant_message: 'More to do.' }), {});
 });
+
+// --- The review's findings (#449, round 1) --------------------------------------------------------------
+
+/** A TurnEnd over fake deps that only records its holds. */
+function endOf() {
+  const held: string[] = [];
+  const deps = {
+    holds: { hold: (l: EndLive) => void held.push(`hold ${l.workerId}`), restate: () => false },
+    following: () => true,
+    serial: (_id: number, fn: () => Promise<unknown>) => fn(),
+    task: () => undefined,
+    floor: () => undefined,
+    note() {},
+    read: async () => undefined,
+    turnEnded: async () => {},
+    nudgeIdleMs: () => 60_000,
+    maxNudges: () => 4,
+  } as unknown as TurnEndDeps<EndLive>;
+  return { end: new TurnEnd<EndLive>(deps), held };
+}
+
+test('the run\'s end waits for a gate decision under way: a done that comes while git is asked does not end the run the gate then blocks', async () => {
+  let asked!: () => void;
+  const asking = new Promise<void>((r) => (asked = r));
+  let answer!: (folders: string[]) => void;
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => (asked(), new Promise<string[]>((r) => (answer = r))), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live();
+  const { end, held } = endOf();
+  const gating = gate.decide(l, stop(DONE));
+  await asking;
+  // The worker shows `done` (the terminal's progress signal) while the gate still waits for git: the marker is there, but the decision is not.
+  let ended: Awaited<ReturnType<typeof end.decide>> | undefined;
+  const deciding = end.decide(l as EndLive, turn({ text: DONE }), { planExit: false, force: false }).then((e) => (ended = e));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(ended, undefined, 'the end waits for the gate');
+  answer(['wt']);
+  assert.deepEqual(await gating, { block: gateDirty(['wt']) });
+  await deciding;
+  assert.deepEqual(ended, { end: false }, 'the blocked Stop is no end');
+  assert.deepEqual(held, ['hold w']);
+  assert.equal(l.gating, undefined);
+  clearTimeout((l as EndLive).nudgeTimer);
+});
+
+test('a gate decision that comes back after the run ended or was stopped blocks nothing', async () => {
+  for (const patch of [{ ended: true }, { stopping: { by: 'Ada' } }]) {
+    let answer!: (folders: string[]) => void;
+    let asked!: () => void;
+    const asking = new Promise<void>((r) => (asked = r));
+    const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => (asked(), new Promise<string[]>((r) => (answer = r))), maxBlocks: () => 2, readPauseMs: () => 1 });
+    const l = live();
+    const gating = gate.decide(l, stop(DONE));
+    await asking;
+    Object.assign(l, patch);
+    answer(['wt']);
+    assert.deepEqual(await gating, {});
+    assert.equal(l.gated, undefined);
+    assert.equal(l.gateBlocks, undefined);
+  }
+});
+
+test('an announcement never makes an unfinished turn the answer: a tool still running, a log not caught up, a typed turn', async () => {
+  for (const r of [turn({ text: 'Running the tests now.', toolRunning: true, complete: false }), turn({ text: 'Running the tests now.', complete: false }), turn({ text: 'Changed it.', typed: true, typedOpen: true })]) {
+    const { end } = endOf();
+    const l: EndLive = { taskId: 1, runId: 1, phase: 'implement', workerId: 'w', floorId: 'f', ended: false, tool: 'codex', signal: { kind: 'done' } };
+    const e = await end.decide(l, r, { planExit: false, force: false });
+    assert.deepEqual(e, { end: false }, JSON.stringify(r));
+    clearTimeout(l.nudgeTimer);
+  }
+  // The finished turn's own answer is taken as it was read, never marked complete by the announcement.
+  const { end } = endOf();
+  const l: EndLive = { taskId: 1, runId: 1, phase: 'implement', workerId: 'w', floorId: 'f', ended: false, tool: 'claude', signal: { kind: 'done' } };
+  const e = await end.decide(l, turn({ text: 'Changed it.' }), { planExit: false, force: false });
+  assert.equal(e.end, true);
+  assert.equal(e.end && e.result?.text, 'Changed it.\nWORK DONE');
+});
+
+test('an announcement a Stop was held on is gone: the turn after the background work needs its own', async () => {
+  const { end, held } = endOf();
+  const l: EndLive = { taskId: 1, runId: 1, phase: 'implement', workerId: 'w', floorId: 'f', ended: false, tool: 'claude', signal: { kind: 'done' }, signalPrs: ['https://github.com/o/r/pull/1'] };
+  // Announced, then the turn ends to wait for a background agent: the run is held, on the text.
+  assert.deepEqual(await end.decide(l, turn({ text: 'Waiting for the tests.', background: 1 }), { planExit: false, force: false }), { end: false });
+  assert.equal(l.signal, undefined);
+  assert.equal(l.signalPrs, undefined);
+  // The notification's turn answers without an announcement or a marker: an interim update, as without any.
+  assert.deepEqual(await end.decide(l, turn({ text: 'The tests passed.' }), { planExit: false, force: false }), { end: false });
+  assert.deepEqual(held, ['hold w', 'hold w']);
+  clearTimeout(l.nudgeTimer);
+});
