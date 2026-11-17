@@ -27,7 +27,7 @@ import {
 import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, KANBAN_PROMPT_IDS, PROMPT_CONTRACT, kanbanPromptSource, type KanbanPromptId, type KanbanPromptScope } from '../../shared/kanban/prompts.js';
 import { kanbanApi, type KanbanApi, type KanbanError } from './api';
 import { KANBAN_DEFAULTS, projectDefaults } from './defaults';
-import { repoIdFrom } from './model';
+import { orderedProjects, repoIdFrom } from './model';
 import { kstore } from './store';
 import { loadSkills, skillsOverview, skillsPane } from './skills';
 import { newProjectButton } from './newproject';
@@ -35,7 +35,7 @@ import { PERMISSION_NAMES, optionalModel, reviewFields, saveButton, thisProjectF
 import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
-import { checkbox, field, numberInput, numberValue, run, select, tabStrip, textArea, textInput } from './ui';
+import { checkbox, field, numberInput, numberValue, run, projectSelect, select, tabStrip, textArea, textInput } from './ui';
 import { sourcesPane } from './settings-sources';
 import { jiraConnectionsFieldset } from './jira-connections';
 
@@ -68,7 +68,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
   let project = '';
   const pickProject = () => {
     if (kstore.projectOf(project)) return;
-    project = [kstore.project, store.floor].find((id) => id && kstore.projectOf(id)) ?? kstore.projects[0]?.id ?? '';
+    project = [kstore.project, store.floor].find((id) => id && kstore.projectOf(id)) ?? orderedProjects(kstore.projects)[0]?.id ?? '';
   };
 
   // 🗂️ Kanban: the defaults, then the secrets and the skills (the long list last). The secrets redraw on their own when
@@ -111,7 +111,7 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
   projectsEl.append(h('div.kb-row.kb-projects-head', {}, projectPick, newProjectButton(net, (id) => ((project = id), paintProject()))), strip.el, note, body);
   /** The project picker alone: a project added or renamed shows without redrawing what you're typing. */
   const paintPicker = () => {
-    const sel = select(kstore.projects.map((p) => [p.id, p.name] as const), project, { 'aria-label': 'Project' });
+    const sel = projectSelect(kstore.projects, project, { 'aria-label': 'Project' });
     sel.addEventListener('change', () => {
       project = sel.value;
       paintProject();

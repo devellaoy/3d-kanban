@@ -6,6 +6,18 @@ import { BOARD_COLUMNS, SKILL_PHASES, type KanbanEvent, type KanbanPrBundleItem,
 import { checkMove, isRunning, moveTargets, type MoveAction, type MoveSubject } from '../../shared/kanban/moves.js';
 import { ATTENTION_REASONS } from '../../shared/kanban/waiting.js';
 import { REPO_ID_RE } from '../../shared/kanban/protocol.js';
+import { groupFloors } from '../../shared/floororder.js';
+
+// --- Project order ----------------------------------------------------------------------------------
+
+/** Projects as the elevator lists them: top group first, top floor first, grouped by GitHub owner (or Local). `list` is in building order. */
+export function projectGroups<T extends { id: string; repo?: string }>(list: T[]): { key: string; label: string; projects: T[] }[] {
+  return groupFloors(list).reverse().map((g) => ({ key: g.key, label: g.label, projects: [...g.floors].reverse() }));
+}
+/** The order the project pickers show. */
+export function orderedProjects<T extends { id: string; repo?: string }>(list: T[]): T[] {
+  return projectGroups(list).flatMap((g) => g.projects);
+}
 
 // --- Filters --------------------------------------------------------------------------------------
 

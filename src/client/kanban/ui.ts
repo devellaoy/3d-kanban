@@ -4,6 +4,7 @@
 
 import { h, openModal, toast, type Modal } from '../ui/dom';
 import { shellHead } from '../ui/shell';
+import { projectGroups } from './model';
 
 // The tab strip is the office's shared one (ui/tabs.ts); the kanban's views import it from here.
 export { tabStrip, tabCount } from '../ui/tabs';
@@ -64,6 +65,19 @@ export function numberValue(el: HTMLInputElement, min: number, max: number, fall
 export function select<T extends string>(options: readonly (readonly [T, string])[], value: T | '', attrs: Record<string, string | number | boolean | undefined> = {}): HTMLSelectElement {
   const el = h('select', attrs) as HTMLSelectElement;
   for (const [v, label] of options) el.append(h('option', { value: v }, label));
+  el.value = value;
+  return el;
+}
+
+/** The options of a project picker: an optional leading choice, then the projects by owner, in the elevator's order. */
+export function projectOptions<T extends { id: string; name: string; repo?: string }>(projects: T[], opts: { first?: readonly [string, string]; label?: (p: T) => string } = {}): HTMLElement[] {
+  const out: HTMLElement[] = opts.first ? [h('option', { value: opts.first[0] }, opts.first[1])] : [];
+  for (const g of projectGroups(projects)) out.push(h('optgroup', { label: g.label }, ...g.projects.map((p) => h('option', { value: p.id }, opts.label?.(p) ?? p.name))));
+  return out;
+}
+export function projectSelect<T extends { id: string; name: string; repo?: string }>(projects: T[], value: string, attrs: Record<string, string | number | boolean | undefined> = {}, opts?: { first?: readonly [string, string]; label?: (p: T) => string }): HTMLSelectElement {
+  const el = h('select', attrs) as HTMLSelectElement;
+  el.append(...projectOptions(projects, opts));
   el.value = value;
   return el;
 }

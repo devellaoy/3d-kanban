@@ -21,12 +21,12 @@ import { newTaskMsg, reviewOverride as reviewOf, reviewStart, type NewTaskFields
 import { KANBAN_DEFAULTS, REVIEW_DEFAULTS } from './defaults';
 import { draftApplies, draftFailure, requestIssueDraft } from './issuedraft';
 import { openIssuePicker } from './issues';
-import { sameRepoPick } from './model';
+import { orderedProjects, sameRepoPick } from './model';
 import { projectUiTesting, taskUiTesting, uiTestingPatch } from './taskimagesmodel';
 import { kstore } from './store';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
 import { isSendKey } from './sendkey';
-import { numberInput, numberValue, run, select, textArea, textInput } from './ui';
+import { numberInput, numberValue, projectSelect, run, select, textArea, textInput } from './ui';
 import { btn, checkLine, formField, segmented, sendKeyHint } from '../ui/kit';
 import { modalShell, openShell } from '../ui/shell';
 
@@ -79,7 +79,7 @@ export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const attach = attachBox({ target: desc, dropZone: descBox, insertLinks: true });
   const ticket = textInput(editing?.ticket ?? pre.ticket ?? '', { class: 'inp', maxlength: KANBAN_LIMITS.ticket, placeholder: 'UYT-1415 or gh:owner/repo#12' });
   const ticketUrl = textInput(editing?.ticketUrl ?? pre.ticketUrl ?? '', { class: 'inp', maxlength: KANBAN_LIMITS.url, placeholder: 'https://', type: 'url' });
-  const projectSel = select(projects.map((p) => [p.id, p.name] as const), editing?.project ?? pre.project ?? o.project ?? kstore.project ?? projects[0].id, { class: 'inp', disabled: !!editing });
+  const projectSel = projectSelect(projects, editing?.project ?? pre.project ?? o.project ?? kstore.project ?? orderedProjects(projects)[0].id, { class: 'inp', disabled: !!editing });
   const repoBox = h('div.kb-nt-repos', { role: 'group', 'aria-label': 'Repositories' });
   let repoChecks: { id: string; box: HTMLInputElement; el: HTMLElement }[] = [];
   const paintRepos = (initial?: string[] | null) => {

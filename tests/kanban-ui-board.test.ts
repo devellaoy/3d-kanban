@@ -23,6 +23,8 @@ import {
   skillUsage,
   sortCards,
   type BoardFilter,
+  orderedProjects,
+  projectGroups,
 } from '../src/client/kanban/model.js';
 import { checkMove, moveTargets } from '../src/shared/kanban/moves.js';
 import { BOARD_COLUMNS, RUN_STATES, TASK_STATUSES, type KanbanProjectInfo, type KanbanTaskCard, type NormalizedIssue, type ProjectSettings } from '../src/shared/kanban/types.js';
@@ -282,4 +284,23 @@ test('the task view names the agent that created a task (the created event\'s vi
   assert.equal(viaAgent([ev('created', { by: 'Panu' })]), undefined);
   assert.equal(viaAgent([ev('created', { via: 5 })]), undefined);
   assert.equal(viaAgent([]), undefined);
+});
+
+test('projectGroups lists the elevator order: top group first, top floor first', () => {
+  const list = [{ id: 'web', repo: 'acme/web' }, { id: 'api', repo: 'acme/api' }, { id: 'notes' }, { id: 'shop', repo: 'Globex/shop' }];
+  const copy = list.map((p) => ({ ...p }));
+  const groups = projectGroups(list);
+  assert.deepEqual(groups.map((g) => [g.label, g.projects.map((p) => p.id)]), [['Globex', ['shop']], ['Local', ['notes']], ['acme', ['api', 'web']]]);
+  assert.deepEqual(list, copy);
+  assert.deepEqual(orderedProjects(list).map((p) => p.id), ['shop', 'notes', 'api', 'web']);
+  assert.deepEqual(orderedProjects(list), groups.flatMap((g) => g.projects));
+});
+
+test('projectGroups joins owners that differ only in case and handles one owner or none', () => {
+  const groups = projectGroups([{ id: 'a', repo: 'Acme/a' }, { id: 'b', repo: 'acme/b' }]);
+  assert.equal(groups.length, 1);
+  assert.equal(groups[0].label, 'Acme');
+  assert.deepEqual(groups[0].projects.map((p) => p.id), ['b', 'a']);
+  assert.deepEqual(projectGroups([]), []);
+  assert.deepEqual(orderedProjects([]), []);
 });
