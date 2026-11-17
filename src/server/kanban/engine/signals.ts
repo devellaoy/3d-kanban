@@ -161,6 +161,8 @@ export class StopGate<L extends GateRun> {
   async decide(live: L | undefined, payload: unknown): Promise<{ block?: string }> {
     // A subagent's or teammate's Stop is none of the lead's: it is let through here, before it could touch the lead's decision under way.
     if (!live || agentHook(payload)) return {};
+    // The turn this Stop ends, as the run counts them (newTurn): a judgement that comes back after a new prompt is about a turn that is past.
+    const turn = live.turn;
     const judged = async (): Promise<{ block?: string }> => {
       let timer: NodeJS.Timeout | undefined;
       // Past the deadline the Stop has been let through: a judgement that comes later must not count a block nobody was told of.
@@ -169,7 +171,7 @@ export class StopGate<L extends GateRun> {
         const deadline = new Promise<{ block?: string }>((resolve) => {
           timer = setTimeout(() => ((late.is = true), resolve({})), this.deps.deadlineMs ?? 10_000);
         });
-        return await Promise.race([this.judge(live, payload, late), deadline]);
+        return await Promise.race([this.judge(live, payload, late, turn), deadline]);
       } catch {
         return {};
       } finally {
@@ -187,7 +189,7 @@ export class StopGate<L extends GateRun> {
     }
   }
 
-  private async judge(live: L | undefined, payload: unknown, late: { is: boolean }): Promise<{ block?: string }> {
+  private async judge(live: L | undefined, payload: unknown, late: { is: boolean }, turn: number | undefined): Promise<{ block?: string }> {
     const max = this.deps.maxBlocks();
     if (!live || max <= 0 || live.ended || live.tool !== 'claude' || live.role !== 'implementer' || agentHook(payload)) return {};
     if (UNGATED.includes(live.phase) || live.stopping || live.restating || live.signal?.kind === 'ask') return {};
@@ -213,8 +215,9 @@ export class StopGate<L extends GateRun> {
       if (task.type !== 'investigate') folders = await this.deps.uncommitted(live);
       if (!folders.length) return {};
     }
-    // The waits are over: the Stop was let through meanwhile, or the run ended or is being stopped, so there is nothing to send back to work.
-    if (late.is || live.ended || live.stopping) return {};
+    // The waits are over: the Stop was let through meanwhile, the run ended or is being stopped, or its agent has a new prompt since (the Stop is a
+    // past turn's: the new turn's announcement and its own Stop are not this decision's to touch), so there is nothing to send back to work.
+    if (late.is || live.ended || live.stopping || live.turn !== turn) return {};
     if (blocks >= max) {
       if (!live.gateNoted) {
         live.gateNoted = true;
