@@ -5,7 +5,8 @@ import { writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { gateDirty, gateUnconfirmed } from '../src/shared/kanban/prompts.js';
 import type { TurnResult } from '../src/server/kanban/engine/adapters/types.js';
-import { StopGate, type GateRun, type StopGateDeps } from '../src/server/kanban/engine/signals.js';
+import { prLines, workDone } from '../src/server/kanban/engine/markers.js';
+import { newTurn, StopGate, type GateRun, type StopGateDeps } from '../src/server/kanban/engine/signals.js';
 import { TurnEnd, type EndLive, type TurnEndDeps } from '../src/server/kanban/engine/turnend.js';
 import { worktreeDir } from '../src/server/worktree-home.js';
 import { ADA, engineFixture, midTurn, type EngineFixture } from './kanban-engine-fixture.js';
@@ -408,4 +409,65 @@ test('the run\'s end waits until no gate decision is under way: a second Stop th
   assert.deepEqual(held, ['hold w']);
   assert.equal(l.gating, undefined);
   clearTimeout((l as EndLive).nudgeTimer);
+});
+
+// --- The review's findings (#449, the last round) --------------------------------------------------------
+
+test('a prompt that comes while the gate decides: the answer read before it does not end the run, which is held for the new turn', async () => {
+  let answer!: (folders: string[]) => void;
+  let asked!: () => void;
+  const asking = new Promise<void>((r) => (asked = r));
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => (asked(), new Promise<string[]>((r) => (answer = r))), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live({ signalPrs: ['https://github.com/o/r/pull/1'] });
+  const { end, held } = endOf();
+  const gating = gate.decide(l, stop(DONE));
+  await asking;
+  let ended: Awaited<ReturnType<typeof end.decide>> | undefined;
+  const deciding = end.decide(l as EndLive, turn({ text: DONE }), { planExit: false, force: false }).then((e) => (ended = e));
+  await new Promise((r) => setTimeout(r, 20));
+  // Someone types a prompt into the terminal while git is asked: a new turn.
+  newTurn(l);
+  answer([]);
+  assert.deepEqual(await gating, {}, 'the Stop itself is let through');
+  await deciding;
+  assert.deepEqual(ended, { end: false }, 'the old turn\'s WORK DONE ends nothing');
+  assert.deepEqual(held, ['hold w']);
+  assert.equal(l.signalPrs, undefined);
+  clearTimeout((l as EndLive).nudgeTimer);
+});
+
+test('after the wait for the gate the turn is read again: the run is judged on what the log says now', async () => {
+  let answer!: (folders: string[]) => void;
+  let asked!: () => void;
+  const asking = new Promise<void>((r) => (asked = r));
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: 'Still at it.' }), uncommitted: () => (asked(), new Promise<string[]>((r) => (answer = r))), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live({ signal: { kind: 'done' } });
+  const held: string[] = [];
+  let reads = 0;
+  const deps = { holds: { hold: (x: EndLive) => void held.push(`hold ${x.workerId}`), restate: () => false }, following: () => true, serial: (_id: number, fn: () => Promise<unknown>) => fn(), task: () => undefined, floor: () => undefined, note() {}, read: async () => (reads++, turn({ text: 'The final answer, as the log has it now.\nWORK DONE' })), turnEnded: async () => {}, nudgeIdleMs: () => 60_000, maxNudges: () => 4 } as unknown as TurnEndDeps<EndLive>;
+  const end = new TurnEnd<EndLive>(deps);
+  const gating = gate.decide(l, stop('Still at it.'));
+  await asking;
+  const deciding = end.decide(l as EndLive, turn({ text: 'An answer the log had before the wait.', complete: false }), { planExit: false, force: false });
+  answer([]);
+  assert.deepEqual(await gating, {});
+  const e = await deciding;
+  assert.equal(reads, 1);
+  assert.equal(e.end && e.result?.text, 'The final answer, as the log has it now.\nWORK DONE');
+  assert.deepEqual(held, []);
+});
+
+test('a pull request reported with the command counts when the turn ends on the text\'s own WORK DONE, without a done announcement', async () => {
+  const { end } = endOf();
+  const url = 'https://github.com/o/r/pull/7';
+  const l: EndLive = { taskId: 1, runId: 1, phase: 'pr', workerId: 'w', floorId: 'f', ended: false, tool: 'claude', signalPrs: [url] };
+  const e = await end.decide(l, turn({ text: 'Opened the pull request.\nWORK DONE' }), { planExit: false, force: false });
+  assert.equal(e.end, true);
+  const text = (e.end && e.result?.text) || '';
+  assert.deepEqual(prLines(text).map((p) => p.url), [url]);
+  assert.equal(workDone(text), true, 'the marker still reads as one');
+  // One the text already names is not written twice.
+  const l2: EndLive = { ...l, signalPrs: [url] };
+  const e2 = await end.decide(l2, turn({ text: `Opened it.\nPR: ${url}\nWORK DONE` }), { planExit: false, force: false });
+  assert.equal(e2.end && e2.result?.text, `Opened it.\nPR: ${url}\nWORK DONE`);
 });

@@ -41,7 +41,7 @@ import { Departures } from './departures.js';
 import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable } from './turnhold.js';
-import { agentHook, expireSignal, acceptSignal, QUESTION_TOOL, StopGate, stopMessage } from './signals.js';
+import { agentHook, newTurn, acceptSignal, QUESTION_TOOL, StopGate, stopMessage } from './signals.js';
 import type { Live, Via } from './live.js';
 import { lostText, TurnEnd, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
@@ -1191,7 +1191,7 @@ export class Orchestrator {
       }
       if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') live.exitPlan = true;
       else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
-      if (o.hookEvent === 'UserPromptSubmit') (Object.assign(live, { stopText: undefined, restating: false }), expireSignal(live));
+      if (o.hookEvent === 'UserPromptSubmit') (Object.assign(live, { stopText: undefined, restating: false }), newTurn(live));
       else if (o.hookEvent === 'Stop') Object.assign(live, { gated: false, ...(live.tool === 'claude' ? { stopText: stopMessage(o.payload) } : {}) });
       // The resumed turn has started (these hooks also set the worker `working`): its end is a normal `done` again.
       if (live.background && (o.hookEvent === 'PreToolUse' || o.hookEvent === 'UserPromptSubmit')) this.turnHolds.release(live);
@@ -1425,7 +1425,7 @@ export class Orchestrator {
   /** The office prompts the run now (its launch or a restate): its answer is read from that prompt's turns; the time is kept on the run for a restart. */
   private prompted(live: Live, text: string) {
     live.promptHead = promptHead(text);
-    expireSignal(live);
+    newTurn(live);
     this.ctx.repo.updateRun(live.runId, { promptedAt: (live.promptAt = Date.now()) });
   }
 

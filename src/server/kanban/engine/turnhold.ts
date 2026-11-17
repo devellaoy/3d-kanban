@@ -46,6 +46,8 @@ export interface HeldRun {
   /** How its agent announced, with a command, that its turn ends (see engine/signals.ts); only for the turn it was made in, in memory only. `signalPrs`: the pull requests it reported (normalised URLs). */
   signal?: { kind: 'plan-ready' | 'ask' | 'done' | 'review'; verdict?: 'approved' | 'changes' };
   signalPrs?: string[];
+  /** How many prompts its agent has had (see newTurn): tells a turn end that waited for the Stop gate whether the turn it read is still the last. */
+  turn?: number;
   /** The Stop hook gate: how many Stops it blocked in this run, whether one was blocked and no Stop since (the worker's `done` is then the blocked turn's), and whether the run's note that the cap was reached is made. */
   gateBlocks?: number;
   /** The gate's decision on a Stop under way: the run's end waits for it (see TurnEnd.decide). */

@@ -95,16 +95,28 @@ export function applySignal(phase: RunPhase, text: string, signal: NonNullable<H
   }
   if (signal.kind === 'ask') return { text: stripWorkDone(t), asked: true };
   if (signal.kind !== 'done') return undefined;
-  const have = new Set(prLines(t).map((p) => p.url.toLowerCase()));
-  let out = t;
-  for (const url of prs) if (!have.has(url.toLowerCase())) out += `\nPR: ${url}`;
+  const out = withPrs(t, prs);
   return { text: workDone(out) ? out : `${out}\nWORK DONE` };
+}
+
+/** A final text with a `PR: <url>` line for each pull request the agent reported with the command and did not write itself (see prLines). */
+export function withPrs(text: string, prs: string[] | undefined): string {
+  const have = new Set(prLines(text).map((p) => p.url.toLowerCase()));
+  let out = text;
+  for (const url of prs ?? []) if (!have.has(url.toLowerCase())) out += `\nPR: ${url}`;
+  return out;
 }
 
 /** Forgets the run's announcement (and the pull requests it reported): it only applies to the turn it was made in. */
 export function expireSignal(live: HeldRun) {
   live.signal = undefined;
   live.signalPrs = undefined;
+}
+
+/** The run's agent has a new prompt (the office's or one typed into its terminal): a new turn, which the announcements made before it are not for. */
+export function newTurn(live: HeldRun) {
+  live.turn = (live.turn ?? 0) + 1;
+  expireSignal(live);
 }
 
 // --- The Stop hook gate -------------------------------------------------------------------------------

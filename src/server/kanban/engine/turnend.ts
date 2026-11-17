@@ -9,7 +9,7 @@ import type { KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
 import type { Floor } from '../../floor.js';
 import type { TurnResult } from './adapters/types.js';
 import { finalMarker, looksInterrupted } from './markers.js';
-import { applySignal, expireSignal, type Applied } from './signals.js';
+import { applySignal, expireSignal, withPrs, type Applied } from './signals.js';
 import { typeable, type HeldRun, type TurnHolds } from './turnhold.js';
 
 /** A run as the turn end follows it. */
@@ -64,7 +64,16 @@ export class TurnEnd<L extends EndLive> {
   async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Promise<Ending> {
     // The Stop gate is deciding on this turn's Stop (it reads the log and asks git): what it says comes first, a blocked Stop being no end.
     // Until none is under way: a second Stop may have joined the wait while this stood in it.
-    while (live.gating) await live.gating.catch(() => undefined);
+    if (live.gating && !o.planExit) {
+      const turn = live.turn;
+      while (live.gating) await live.gating.catch(() => undefined);
+      if (live.ended) return { end: false };
+      // A prompt came in the wait (typed into its terminal, a comment of the office's): what was read is the turn before it, whose answer must not
+      // end the run while the new turn goes. The run is held for that turn's own Stop.
+      if (live.turn !== turn) return (expireSignal(live), this.wait(live));
+      // The same turn still: its result as the log has it now, not as it was before the wait.
+      result = (await this.deps.read(live)) ?? result;
+    }
     if (live.ended) return { end: false };
     const ending = this.judge(live, result, o);
     // An announcement is for the turn it was made in: one this Stop did not end the run on (work still out, a turn not over) is none for the next.
@@ -91,7 +100,8 @@ export class TurnEnd<L extends EndLive> {
     // An earlier turn's marker (the office's prompt isn't in the log yet) is no answer to this one.
     if (!r.unheard && finalMarker(live.phase, `${r.text}\n${r.plan ?? ''}`, r.exitPlan)) {
       if (r.background || r.resuming) console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run gave its final marker while the log shows work still out (${r.background ?? 0} background); ending it`);
-      return { end: true, result: r };
+      // The pull requests it reported with the command count with the text's own marker too, not only with a `done` announcement.
+      return { end: true, result: live.signalPrs?.length ? { ...r, text: withPrs(r.text, live.signalPrs) } : r };
     }
     const running = !!(r.background || r.unheard || (r.resuming && !live.held));
     if (running && !o.force) return this.wait(live);
