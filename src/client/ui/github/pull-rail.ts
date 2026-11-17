@@ -10,6 +10,7 @@ import { openClose } from './close';
 import { labelButton, labelChip } from './labels';
 import { nodes, railButton, railStack, REVIEW_BADGE } from './pieces';
 import { pullContext, pullVars, reviewPrompt, type BoardActions } from './prompts';
+import { unresolvedCount } from './timeline-model';
 
 // The PR window's rail and footer: what is known of the pull request (its worker, review, size, labels)
 // and the ways to hand it to a worker; closing and merging it stand in the footer.
@@ -37,11 +38,13 @@ export interface PullSide {
   relabel(labels: GhLabel[]): void;
 }
 
-/** "Changes requested · 2 threads": the review decision and the line comments under it. */
+/** "Changes requested · 2 unresolved": the review decision and how its threads of line comments stand ("2 threads" where GitHub didn't say). */
 function reviewLine(s: PullSide): string | null {
   const threads = s.detail?.reviewComments.filter((c) => !c.replyTo).length ?? 0;
+  const unresolved = s.detail ? unresolvedCount(s.detail) : undefined;
   const said = s.it.reviewDecision ? (REVIEW_BADGE[s.it.reviewDecision]?.[0] ?? s.it.reviewDecision.toLowerCase().replace(/_/g, ' ')) : '';
-  return [said, threads ? `${threads} thread${threads === 1 ? '' : 's'}` : ''].filter(Boolean).join(' · ') || null;
+  const stand = !threads ? '' : unresolved === undefined ? `${threads} thread${threads === 1 ? '' : 's'}` : unresolved ? `${unresolved} unresolved` : 'all threads resolved';
+  return [said, stand].filter(Boolean).join(' · ') || null;
 }
 
 /** The rail: the details, then the stack of things to hand to a worker. */

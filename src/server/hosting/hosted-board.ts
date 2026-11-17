@@ -5,13 +5,14 @@
 // or closing from the office) says so instead.
 
 import { readFile } from 'node:fs/promises';
-import type { GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhState } from '../../shared/protocol.js';
+import type { GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../../shared/protocol.js';
 import { hostLabel, orgOf } from '../../shared/hosting/remote.js';
 import { hostCredentials } from './index.js';
 import { hostedComment, hostedDiff, hostedPullDetail, hostedPulls, notOnHost, type HostedRepo } from './board.js';
 import type { HostAs } from './provider.js';
 
 const REFRESH_MS = 90_000;
+const THREADS_GITHUB_ONLY = 'Threads can be answered and resolved only on GitHub';
 const SIGN_INS = '☰ → 🔐 Your sign-ins';
 
 export class HostedBoard {
@@ -77,6 +78,15 @@ export class HostedBoard {
     } catch (err) {
       return { error: (err as Error).message };
     }
+  }
+
+  /** Threads of line comments are GitHub's: a reply must never end up as a plain comment on the conversation. */
+  reply(_n: number, _to: number, _body: string): Promise<{ reply?: GhReviewComment; error?: string }> {
+    return Promise.resolve({ error: THREADS_GITHUB_ONLY });
+  }
+
+  resolveThread(_n: number, _thread: string, _resolved: boolean): Promise<{ resolved?: boolean; error?: string }> {
+    return Promise.resolve({ error: THREADS_GITHUB_ONLY });
   }
 
   /** The meeting room's review: a comment on the conversation, as whoever called the meeting (else the office). */

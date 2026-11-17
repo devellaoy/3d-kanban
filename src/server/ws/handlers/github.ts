@@ -76,6 +76,50 @@ export const githubHandlers = {
       (error) => ctx.sendTo(c, { t: 'gh.commented', kind, number: n, ...(ghRepo ? { repo: ghRepo } : {}), error }),
     );
   },
+  'gh.reply'(ctx, c, msg) {
+    const who = c.peer.name;
+    const floor = here(ctx, c);
+    const n = num(msg.number);
+    const to = num(msg.to);
+    if (!floor || !Number.isSafeInteger(n) || n <= 0) return;
+    // `repo` for a PR in another of the project's repositories.
+    const ghRepo = ghRepoOf((msg as { repo?: unknown }).repo);
+    const answer = (rest: object) => ctx.sendTo(c, { t: 'gh.replied', number: n, ...(ghRepo ? { repo: ghRepo } : {}), to: Number.isSafeInteger(to) ? to : 0, ...rest } as never);
+    const body = typeof msg.body === 'string' ? msg.body : '';
+    const invalid = !Number.isSafeInteger(to) || to <= 0 ? 'No thread to answer' : !body.trim() ? 'The reply is empty' : body.length > GH_COMMENT_MAX ? `GitHub takes comments of up to ${GH_COMMENT_MAX} characters` : '';
+    if (invalid) return answer({ error: invalid });
+    const github = floor.githubFor(ghRepo);
+    if (!github) return answer({ error: notInProject(ghRepo) });
+    ctx.withRepoHost(
+      c,
+      github,
+      (as) =>
+        void github.reply(n, to, body, as).then((r) => {
+          answer(r);
+          if (r.reply) ctx.toastFloor(floor, `💬 ${who} replied on PR #${n}`);
+        }),
+      (error) => answer({ error }),
+    );
+  },
+  'gh.resolve'(ctx, c, msg) {
+    const floor = here(ctx, c);
+    const n = num(msg.number);
+    if (!floor || !Number.isSafeInteger(n) || n <= 0) return;
+    const ghRepo = ghRepoOf((msg as { repo?: unknown }).repo);
+    const thread = typeof msg.thread === 'string' ? msg.thread : '';
+    const answer = (rest: object) => ctx.sendTo(c, { t: 'gh.resolved', number: n, ...(ghRepo ? { repo: ghRepo } : {}), thread, ...rest } as never);
+    if (thread.length < 1 || thread.length > 200 || !/^[A-Za-z0-9_=-]+$/.test(thread)) return answer({ error: 'No thread to resolve' });
+    if (typeof msg.resolved !== 'boolean') return answer({ error: 'Say whether to resolve the thread or reopen it' });
+    const resolved = msg.resolved;
+    const github = floor.githubFor(ghRepo);
+    if (!github) return answer({ error: notInProject(ghRepo) });
+    ctx.withRepoHost(
+      c,
+      github,
+      (as) => void github.resolveThread(n, thread, resolved, as).then(answer),
+      (error) => answer({ error }),
+    );
+  },
   'gh.close'(ctx, c, msg) {
     const who = c.peer.name;
     const floor = here(ctx, c);

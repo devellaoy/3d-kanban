@@ -5,7 +5,7 @@
 
 import type { IconNode } from 'lucide';
 import {
-  SquareKanban, Building2, Package, Ticket, CircleDot, GitPullRequest, GitMerge, GitBranch, Inbox, Loader, Hand, Eye,
+  SquareKanban, Building2, Package, Ticket, CircleDot, GitPullRequest, GitMerge, GitBranch, GitCommitHorizontal, Inbox, Loader, Hand, Eye,
   CirclePause, CircleCheck, Archive, Hourglass, Play, Square, RotateCw, RefreshCw, ArrowRightLeft, Pencil, Trash2,
   Paperclip, Bot, MessageSquare, Mail, SquareTerminal, FileDiff, Target, MapPin, Settings, X, ChevronDown,
   ChevronRight, ChevronLeft, Search, Plus, ListFilter, Box, Ellipsis, CodeXml, Lock, ExternalLink, FileText, Check,
@@ -26,6 +26,7 @@ export const ICONS = {
   'git-pull-request': GitPullRequest,
   'git-merge': GitMerge,
   'git-branch': GitBranch,
+  'git-commit-horizontal': GitCommitHorizontal,
   'inbox': Inbox,
   'loader': Loader,
   'hand': Hand,

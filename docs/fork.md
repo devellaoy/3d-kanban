@@ -84,6 +84,10 @@ Back to the [README](../README.md).
   `shared/protocol/{github,accounts}.ts` (`GhState.host` and `.note`, `signins.needed` for a host), `shared/protocol.ts`,
   `ui/boards.ts`, `ui/github/pull-window.ts`, `ui/signins.ts`, `features/boards/world.ts` and the multiplayer tables.
   GitHub's own paths are unchanged.
+- The PR window's history, thread state, Resolve and Reply (#446): `server/github-history.ts` is new; the seams in upstream's files are
+  `server/github.ts` (`pullDetail` reads the history beside its other reads, `reply` and `resolveThread`; the line-comment mapping moved
+  to `reviewCommentOf`), `hosting/hosted-board.ts` (refuses both), `ws/handlers/github.ts` (`gh.reply`, `gh.resolve`),
+  `shared/protocol/github.ts` and the two multiplayer tables.
 - When #219 merges upstream, syncing it means resolving the same hunks once more (the SHAs differ). Upstream #220
   (the `settings.ts` ceiling in `size.test.ts`) and #221 (party dimming against the lamp boost in `lamplight`) are
   likely to conflict later.

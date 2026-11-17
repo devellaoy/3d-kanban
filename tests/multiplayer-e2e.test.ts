@@ -250,6 +250,8 @@ test('a visitor cannot do what only the owner may, and the owner sees none of it
     { t: 'worker.spawn', deskId: 'desk-1', prompt: 'visitor-made-this' },
     { t: 'queue.add', prompt: 'visitor-made-this', title: 'x' },
     { t: 'gh.comment', number: 1, body: 'visitor-made-this' },
+    { t: 'gh.reply', number: 1, to: 2, body: 'visitor-made-this' },
+    { t: 'gh.resolve', number: 1, thread: 'PRRT_x', resolved: true },
     { t: 'kanban.task.create', project: 'pub', title: 'visitor-made-this' },
     { t: 'kanban.subscribe', project: null },
     { t: 'kanban.subscribe', project: 'vault' },

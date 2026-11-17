@@ -62,12 +62,39 @@
 .gh-badge.ok { color: var(--good-ink); }
 .gh-badge.bad { color: var(--danger-ink); }
 .gh-badge.muted { color: var(--muted); }
-/* A thread of line comments: the file and line it is on, then the comments. */
+/* A thread of line comments: a fold whose header says the file and line it is on and how it stands (with
+   Resolve), then the comments and a place to answer. A resolved one comes folded. */
 .gh-thread { margin-left: 38px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius); overflow: clip; }
-.gh-thread-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: var(--fs-xs); color: var(--muted); background: var(--paper-2); border-bottom: var(--bw-sm) solid var(--rule-soft); }
+.gh-thread-head { display: flex; align-items: center; gap: 8px; padding: 8px 12px; font-size: var(--fs-xs); color: var(--muted); background: var(--paper-2); border-bottom: var(--bw-sm) solid var(--rule-soft); list-style: none; cursor: pointer; }
+.gh-thread-head::-webkit-details-marker { display: none; }
+.gh-thread:not([open]) > .gh-thread-head { border-bottom: 0; }
 .gh-thread-head > svg { flex: none; }
-.gh-thread-head code { flex: 1; min-width: 0; font: var(--fs-xs) var(--font-mono); color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh-thread[open] > .gh-thread-head > .gh-thread-caret { transform: rotate(90deg); }
+.gh-thread-head code, .gh-thread-where { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh-thread-head code { font: var(--fs-xs) var(--font-mono); color: var(--text); }
+.gh-thread.resolved > .gh-thread-head code { color: var(--text-2); }
+.gh-thread-head > .btn, .gh-thread-head > .link-btn, .gh-thread-head > .gh-badge { flex: none; }
 .gh-thread .pd-thread { margin: 0; border: 0; border-radius: 0; box-shadow: none; }
+.gh-thread-actions { display: flex; flex-direction: column; align-items: flex-start; padding: 8px 12px; font-family: var(--font); border-top: var(--bw-sm) solid var(--rule-soft); }
+.gh-thread-actions:empty { display: none; }
+.gh-thread-actions > .gh-compose { align-self: stretch; }
+.gh-thread > .gh-merge-result { margin: 0 12px 10px; font-family: var(--font); }
+/* What happened between the comments (timeline.ts): one quiet line each, its icon in the avatars' column. */
+.gh-event { display: flex; align-items: center; gap: 10px; min-width: 0; font-size: var(--fs-xs); color: var(--muted); }
+.gh-event-icon { flex: none; display: inline-grid; place-items: center; width: var(--ctl-h-sm); }
+.gh-event-text { min-width: 0; overflow-wrap: anywhere; }
+.gh-event-text strong { font-weight: var(--fw-semibold); color: var(--text); }
+.gh-event > .when { flex: none; font-weight: inherit; }
+.gh-event.merged > .gh-event-icon { color: var(--pr-merged-ink); }
+.gh-event.closed > .gh-event-icon { color: var(--danger-ink); }
+/* Lines that follow one another stand closer than the comments do. */
+.gh-event + .gh-event, .gh-event + .gh-commits, .gh-commits + .gh-event { margin-top: -8px; }
+.gh-commits { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
+.gh-commit-list { list-style: none; margin: 0; padding: 0 0 0 38px; display: flex; flex-direction: column; gap: 2px; }
+.gh-commit-list li { display: flex; align-items: baseline; gap: 10px; min-width: 0; font-size: var(--fs-xs); }
+.gh-commit-msg { min-width: 0; color: var(--text-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gh-sha { flex: none; font: var(--fs-xs) var(--font-mono); color: var(--muted); text-decoration: none; }
+.gh-sha:hover { color: var(--link); text-decoration: underline; }
 .gh-loading { display: flex; align-items: center; justify-content: center; gap: 10px; padding: 18px; color: var(--muted); }
 .gh-error { align-self: center; max-width: 560px; display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 14px 18px; text-align: center; overflow-wrap: anywhere; background: var(--bad-wash); border: var(--bw-sm) solid var(--bad); border-radius: var(--radius); }
 .gh-quiet { margin: 4px 0; color: var(--muted); text-align: center; }

@@ -4,7 +4,7 @@ import { store } from '../../state';
 import { ghUrl, ghWaiter, namedRepo } from './ghrepo';
 
 // Talking to the office about GitHub: the reads (over HTTP, for the floor you're on), and the
-// answers to what the dialogs asked for over the socket (merged, commented, closed, labeled).
+// answers to what the dialogs asked for over the socket (merged, commented, replied, resolved, closed, labeled).
 
 /** The board windows ask about the floor you're on. */
 function onFloor(url: string): string {
@@ -35,6 +35,10 @@ export const commentWaiters = new Map<string, (msg: Extract<ServerMsg, { t: 'gh.
 export const closeWaiters = new Map<string, (msg: Extract<ServerMsg, { t: 'gh.closed' }>) => void>();
 /** Open label pickers, by "issue:N" or "pull:N". */
 export const labelWaiters = new Map<string, (msg: Extract<ServerMsg, { t: 'gh.labeled' }>) => void>();
+/** Open reply boxes, by the id of the thread's first comment (no two threads share one, whichever repository). */
+export const replyWaiters = new Map<number, (msg: Extract<ServerMsg, { t: 'gh.replied' }>) => void>();
+/** Threads being resolved or reopened, by the thread's id (GhThread.id). */
+export const resolveWaiters = new Map<string, (msg: Extract<ServerMsg, { t: 'gh.resolved' }>) => void>();
 
 /** Main feeds server messages through here so an open merge, close or label dialog or comment box hears back. */
 export function routePullMessage(msg: ServerMsg) {
@@ -43,4 +47,7 @@ export function routePullMessage(msg: ServerMsg) {
   if (msg.t === 'gh.commented') ghWaiter(commentWaiters, msg.kind, msg.number, namedRepo(msg))?.(msg);
   if (msg.t === 'gh.closed') ghWaiter(closeWaiters, msg.kind, msg.number, namedRepo(msg))?.(msg);
   if (msg.t === 'gh.labeled') ghWaiter(labelWaiters, msg.kind, msg.number, namedRepo(msg))?.(msg);
+  // These two echo what was asked about (the comment answered, the thread), which says whose answer it is.
+  if (msg.t === 'gh.replied') replyWaiters.get(msg.to)?.(msg);
+  if (msg.t === 'gh.resolved') resolveWaiters.get(msg.thread)?.(msg);
 }

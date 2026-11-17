@@ -123,6 +123,38 @@ export interface GhReviewComment {
   side: 'LEFT' | 'RIGHT';
 }
 
+/**
+ * One step of a pull request's history, in the order GitHub lists them. `at` is when it happened
+ * (a commit's committed date), used only to place what the list doesn't name.
+ */
+export type GhTimelineEvent =
+  /** Where a conversation comment or a review stands in the order: `id` is its GhComment.id. */
+  | { kind: 'ref'; at: string; id: string }
+  | { kind: 'commit'; at: string; oid: string; headline: string; author: string; url: string }
+  | { kind: 'force-push'; at: string; actor: string; before?: string; after?: string }
+  | { kind: 'state'; at: string; actor: string; what: 'merged' | 'closed' | 'reopened' | 'ready' | 'draft' }
+  | { kind: 'review-request'; at: string; actor: string; reviewer: string; removed?: boolean }
+  | { kind: 'label'; at: string; actor: string; label: string; removed?: boolean }
+  | { kind: 'assign'; at: string; actor: string; assignee: string; removed?: boolean }
+  | { kind: 'rename'; at: string; actor: string; from: string; to: string }
+  | { kind: 'base'; at: string; actor: string; from: string; to: string }
+  | { kind: 'branch'; at: string; actor: string; what: 'deleted' | 'restored'; name?: string };
+
+/** A thread of line comments as GitHub groups it, and whether it is resolved. */
+export interface GhThread {
+  /** GraphQL node id: what gh.resolve takes. */
+  id: string;
+  /** GhReviewComment.id of the thread's first comment. */
+  rootId: number;
+  resolved: boolean;
+  /** Who resolved it. */
+  resolvedBy?: string;
+  /** The review the thread came with: that review's GhComment.id. */
+  review?: string;
+  /** When the thread's first comment was published (a review's comments are drafted before that). */
+  at?: string;
+}
+
 export interface GhCheck {
   name: string;
   state: 'pass' | 'fail' | 'pending' | 'skip';
@@ -150,6 +182,14 @@ export interface GhPullDetail {
   repo: GhRepoInfo;
   /** Who gh is signed in as on the server, and so who comments from the office appear from ('' if unknown). */
   viewer: string;
+  /** GitHub only: what happened to the PR, its comments and reviews included as `ref`s, in GitHub's order. */
+  events?: GhTimelineEvent[];
+  /** GitHub only: the line-comment threads and whether each is resolved. */
+  threads?: GhThread[];
+  /** Why `events` and `threads` are missing, when GitHub didn't give them; the rest of the answer stands. */
+  historyError?: string;
+  /** The PR has more events or threads than were read. */
+  historyCut?: boolean;
 }
 
 /** GET /api/gh/issue?number=N */
@@ -175,6 +215,10 @@ export type GitHubClientMsg =
   | { t: 'gh.merge'; number: number; repo?: string; method: GhMergeMethod; deleteBranch: boolean; auto?: boolean }
   /** Comment on an issue or a PR's conversation, as the server's gh account; answered with gh.commented. */
   | { t: 'gh.comment'; kind: 'issue' | 'pull'; number: number; repo?: string; body: string }
+  /** Answer a thread of line comments on a PR (`to`: the id of its first comment); answered with gh.replied. */
+  | { t: 'gh.reply'; number: number; repo?: string; to: number; body: string }
+  /** Resolve a thread of line comments (GhThread.id), or reopen it; answered with gh.resolved. */
+  | { t: 'gh.resolve'; number: number; repo?: string; thread: string; resolved: boolean }
   /** Close an issue, or a pull request without merging it; the answer comes back as gh.closed. */
   | { t: 'gh.close'; kind: 'issue' | 'pull'; number: number; repo?: string; comment?: string; reason?: GhCloseReason; deleteBranch?: boolean }
   /** Put labels on an issue or PR and take others off, as the server's gh account; answered with gh.labeled. */
@@ -188,6 +232,10 @@ export type GitHubServerMsg =
   | { t: 'gh.merged'; number: number; repo?: string; error?: string }
   /** Sent to whoever commented: the comment as GitHub saved it, or why it wasn't. */
   | { t: 'gh.commented'; kind: 'issue' | 'pull'; number: number; repo?: string; comment?: GhComment; error?: string }
+  /** Sent to whoever answered the thread: the reply as GitHub saved it, or why it wasn't. `to` echoes the request's. */
+  | { t: 'gh.replied'; number: number; repo?: string; to: number; reply?: GhReviewComment; error?: string }
+  /** Sent to whoever asked: how the thread stands now, or why it didn't change. `thread` echoes the request's. */
+  | { t: 'gh.resolved'; number: number; repo?: string; thread: string; resolved?: boolean; error?: string }
   /** Sent to whoever asked to close it. */
   | { t: 'gh.closed'; kind: 'issue' | 'pull'; number: number; repo?: string; error?: string }
   /** Sent to whoever changed them: the labels it has now, or why they didn't change. */

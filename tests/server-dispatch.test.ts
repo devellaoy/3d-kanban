@@ -12,6 +12,7 @@ import WebSocket from 'ws';
 import { loadConfig } from '../src/server/config.js';
 import { startServer } from '../src/server/server.js';
 import type { ServerMsg } from '../src/shared/protocol.js';
+import { GH_COMMENT_MAX } from '../src/shared/protocol.js';
 
 type Office = Awaited<ReturnType<typeof startServer>>;
 type Msg<T extends ServerMsg['t']> = Extract<ServerMsg, { t: T }>;
@@ -482,6 +483,22 @@ test('settings, accounts, sign-ins and the boards answer as before', async () =>
   a.send({ t: 'gh.close', kind: 'nope', number: 3 });
   a.send({ t: 'gh.comment', kind: 'issue', number: 3, body: '  ' });
   assert.deepEqual(await a.take('gh.commented'), { t: 'gh.commented', kind: 'issue', number: 3, error: 'The comment is empty' });
+  a.send({ t: 'gh.reply', number: 3, to: 77, body: '  ' });
+  assert.deepEqual(await a.take('gh.replied'), { t: 'gh.replied', number: 3, to: 77, error: 'The reply is empty' });
+  a.send({ t: 'gh.reply', number: 3, repo: 'o/r', to: 77, body: 'x'.repeat(GH_COMMENT_MAX + 1) });
+  assert.deepEqual(await a.take('gh.replied'), { t: 'gh.replied', number: 3, repo: 'o/r', to: 77, error: `GitHub takes comments of up to ${GH_COMMENT_MAX} characters` });
+  a.send({ t: 'gh.reply', number: 3, to: -1, body: 'hi' });
+  assert.equal((await a.take('gh.replied')).error, 'No thread to answer');
+  a.send({ t: 'gh.reply', number: 3, to: 1.5, body: 'hi' });
+  assert.equal((await a.take('gh.replied')).error, 'No thread to answer');
+  for (const thread of ['', 'has space', 'x'.repeat(201), 'PRRT;drop', 7]) {
+    a.send({ t: 'gh.resolve', number: 3, thread, resolved: true });
+    const bad = await a.take('gh.resolved');
+    assert.equal(bad.error, 'No thread to resolve', String(thread));
+    assert.equal(bad.thread, typeof thread === 'string' ? thread : '');
+  }
+  a.send({ t: 'gh.resolve', number: 3, thread: 'PRRT_kwDOU0y1Bc633Eit', resolved: 'yes' });
+  assert.deepEqual(await a.take('gh.resolved'), { t: 'gh.resolved', number: 3, thread: 'PRRT_kwDOU0y1Bc633Eit', error: 'Say whether to resolve the thread or reopen it' });
   a.send({ t: 'gh.labels', kind: 'pull', number: 3, add: [], remove: [''] });
   assert.deepEqual(await a.take('gh.labeled'), { t: 'gh.labeled', kind: 'pull', number: 3, error: 'No labels to change' });
   a.send({ t: 'queue.add', prompt: 'x', provider: 'nope' });

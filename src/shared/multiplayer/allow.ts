@@ -132,6 +132,8 @@ export const CLIENT_MSG_CLASS = {
   'gh.refresh': 'deny',
   'gh.merge': 'deny',
   'gh.comment': 'deny',
+  'gh.reply': 'deny',
+  'gh.resolve': 'deny',
   'gh.close': 'deny',
   'gh.labels': 'deny',
   'queue.add': 'deny',

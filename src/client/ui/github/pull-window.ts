@@ -17,12 +17,15 @@ import { conflicted, hostedMergeStatus, mergeBox, mergeStatus, openMerge } from 
 import { commentCard, errorBox, nodes, reviewBadge, spinnerRow, stateOf } from './pieces';
 import { FILES_KEY, mergePref, pref, savePref, TAB_KEY } from './prefs';
 import { fixAndMergePrompt, fixConflictsPrompt, type BoardActions } from './prompts';
-import { buildTree, looksGenerated, parseDiff, renderFileDiff, renderThread, repliesOf, Reviewed, STATUS_WORD, treeOrder, type DiffFile, type TreeDir } from './pulldiff';
+import { buildTree, looksGenerated, parseDiff, renderFileDiff, repliesOf, Reviewed, STATUS_WORD, treeOrder, type DiffFile, type TreeDir } from './pulldiff';
 import { pullFooter, pullRail } from './pull-rail';
+import { ThreadsUi } from './thread';
+import { commitsBlock, eventRow, historyCut, historyError } from './timeline';
+import { groupCommits, takeThreadChange, timelineItems, type ThreadChange } from './timeline-model';
 
 // The window behind a card on the PR board, in the shared shell (ui/shell.ts). A PR opens on its
-// conversation (how it stands and its checks, the description, comments, reviews and line comments,
-// the comment box) beside a rail of details and ways to hand it to a worker (pull-rail.ts), with a Files
+// conversation (how it stands and its checks, the description, then its history as GitHub lists it: commits
+// and other events between the comments, reviews and threads of line comments, and the comment box) beside a rail of details and ways to hand it to a worker (pull-rail.ts), with a Files
 // tab for the diff, where you tick files off as reviewed; closing and merging it are in the footer.
 
 export function openPull(first: GhPull, net: Net, actions: BoardActions) {
@@ -129,10 +132,10 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
   };
 
   // --- Conversation
-  const showInDiff = (c: GhReviewComment) => {
-    setTab('files');
-    requestAnimationFrame(() => revealLine(c.path, c.side, c.line));
-  };
+  const showInDiff = (c: GhReviewComment) => (setTab('files'), void requestAnimationFrame(() => revealLine(c.path, c.side, c.line)));
+
+  // The threads' cards are drawn again with the tabs; what they keep between draws lives here (thread.ts).
+  const threads: ThreadsUi = new ThreadsUi({ itemUrl, number: it.number, repo, net, onGitHub, showing: () => (tab === 'files' ? 'diff' : 'conversation'), showInDiff, apply: (rootId, change) => applyThreadChange(rootId, change) });
 
   const renderConv = () => {
     const opened = commentCard({ id: 'body', author: it.author, body: detail?.body ?? it.body, createdAt: it.createdAt, url: it.url }, itemUrl, 'opened this', { role: 'Author' });
@@ -140,30 +143,24 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     if (!detail) return thread.replaceChildren(opened, spinnerRow('Loading the conversation…'));
     const d = detail;
     const replies = repliesOf(d.reviewComments);
-    const items: { at: string; node: HTMLElement }[] = [
-      ...d.comments.map((c) => ({ at: c.createdAt, node: commentCard(c, itemUrl, '', c.author === it.author ? { role: 'Author' } : {}) })),
-      ...d.reviews.map((r) => ({ at: r.createdAt, node: commentCard(r, itemUrl, '', { review: r.state ?? '', role: 'Reviewer' }) })),
-      ...d.reviewComments
-        .filter((c) => !c.replyTo)
-        .map((c) => ({
-          at: c.createdAt,
-          node: h(
-            'article.gh-thread',
-            {},
-            h(
-              'header.gh-thread-head',
-              {},
-              icon('message-square', { size: 14 }),
-              h('code', { title: c.path }, `${c.path}${c.line ? `:${c.line}` : ''}`),
-              c.line == null ? h('span.gh-badge.muted', {}, 'Outdated') : h('button.link-btn', { type: 'button', onclick: () => showInDiff(c) }, 'Show in diff'),
-            ),
-            renderThread(c, replies, itemUrl),
-          ),
-        })),
-    ].sort((a, b) => a.at.localeCompare(b.at));
+    const card = threads.cards('conversation', d.threads);
+    const items = groupCommits(timelineItems(d)).map((x) => {
+      if (x.kind === 'comment') return commentCard(x.comment, itemUrl, '', x.comment.author === it.author ? { role: 'Author' } : {});
+      if (x.kind === 'review') return commentCard(x.review, itemUrl, '', { review: x.review.state ?? '', role: 'Reviewer' });
+      return x.kind === 'thread' ? card(x.root, replies) : x.kind === 'commits' ? commitsBlock(x.commits) : eventRow(x.event);
+    });
     // How it stands comes first: elsewhere the office doesn't merge, and the box says where it does.
-    thread.replaceChildren(mergeBox(onGitHub ? mergeStatus(d) : hostedMergeStatus(d, hostLabel(host)), d.checks), opened, ...items.map((x) => x.node));
+    thread.replaceChildren(...nodes(mergeBox(onGitHub ? mergeStatus(d) : hostedMergeStatus(d, hostLabel(host)), d.checks), historyError(d), opened, historyCut(d, it.url), ...items));
     if (!items.length) thread.append(h('p.gh-quiet', {}, 'No comments or reviews yet.'));
+  };
+  /** A reply GitHub saved or a thread it resolved goes into what the window knows, and the thread is drawn again on both tabs, where they stand. */
+  const applyThreadChange = (rootId: number, change?: ThreadChange) => {
+    if (!detail) return;
+    if (change) takeThreadChange(detail, change);
+    const path = detail.reviewComments.find((c) => c.id === rootId)?.path;
+    renderConv();
+    for (const f of files ?? []) if (f.path === path && sections.get(f.path)?.built) buildBody(f);
+    renderFrame();
   };
 
   // --- Files
@@ -182,7 +179,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     const s = sections.get(f.path)!;
     s.body.replaceChildren();
     s.built = true;
-    s.body.append(renderFileDiff(f, detail?.reviewComments ?? [], itemUrl));
+    s.body.append(renderFileDiff(f, detail?.reviewComments ?? [], itemUrl, threads.cards('diff', detail?.threads)));
   };
 
   let budget = 0;
@@ -444,6 +441,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     tab = t;
     savePref(TAB_KEY, t);
     renderFrame();
+    threads.place();
     if (t === 'files') filesPane.querySelector<HTMLElement>('.pd-main')?.focus({ preventScroll: true });
   };
 
@@ -459,6 +457,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
         if (g !== generation) return;
         detail = d;
         comment.setViewer(d.viewer);
+        threads.setViewer(d.viewer);
         // Who owns it is asked once, on open, and again when its state changes (a merged PR is nobody's to fix).
         if (d.state !== it.state) owner.load(renderFrame);
         it = { ...it, state: d.state, isDraft: d.isDraft, reviewDecision: d.reviewDecision };
@@ -492,6 +491,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     onClose: () => {
       unsub();
       comment.dispose();
+      threads.dispose();
     },
   });
   renderFrame();
