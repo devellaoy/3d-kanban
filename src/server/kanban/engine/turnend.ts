@@ -64,17 +64,16 @@ export class TurnEnd<L extends EndLive> {
   async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Promise<Ending> {
     // The Stop gate is deciding on this turn's Stop (it reads the log and asks git): what it says comes first, a blocked Stop being no end.
     // Until none is under way: a second Stop may have joined the wait while this stood in it.
+    const turn = live.turn;
     if (live.gating && !o.planExit) {
-      const turn = live.turn;
       while (live.gating) await live.gating.catch(() => undefined);
-      if (live.ended) return { end: false };
-      // A prompt came in the wait (typed into its terminal, a comment of the office's): what was read is the turn before it, whose answer must not
-      // end the run while the new turn goes. The run is held for that turn's own Stop.
-      if (live.turn !== turn) return (expireSignal(live), this.wait(live));
       // The same turn still: its result as the log has it now, not as it was before the wait.
-      result = (await this.deps.read(live)) ?? result;
+      if (!live.ended && live.turn === turn) result = (await this.deps.read(live)) ?? result;
     }
     if (live.ended) return { end: false };
+    // A prompt came in the wait (typed into its terminal, a comment of the office's): what was read is the turn before it, whose answer must not
+    // end the run while the new turn goes. The run is held for that turn's own Stop, and what the new turn has announced since is its own: kept.
+    if (live.turn !== turn) return this.wait(live);
     const ending = this.judge(live, result, o);
     // An announcement is for the turn it was made in: one this Stop did not end the run on (work still out, a turn not over) is none for the next.
     if (!ending.end) expireSignal(live);

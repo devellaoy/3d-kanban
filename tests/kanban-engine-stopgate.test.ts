@@ -6,7 +6,7 @@ import path from 'node:path';
 import { gateDirty, gateUnconfirmed } from '../src/shared/kanban/prompts.js';
 import type { TurnResult } from '../src/server/kanban/engine/adapters/types.js';
 import { prLines, workDone } from '../src/server/kanban/engine/markers.js';
-import { newTurn, StopGate, type GateRun, type StopGateDeps } from '../src/server/kanban/engine/signals.js';
+import { acceptSignal, newTurn, StopGate, type GateRun, type StopGateDeps } from '../src/server/kanban/engine/signals.js';
 import { TurnEnd, type EndLive, type TurnEndDeps } from '../src/server/kanban/engine/turnend.js';
 import { worktreeDir } from '../src/server/worktree-home.js';
 import { ADA, engineFixture, midTurn, type EngineFixture } from './kanban-engine-fixture.js';
@@ -470,4 +470,34 @@ test('a pull request reported with the command counts when the turn ends on the 
   const l2: EndLive = { ...l, signalPrs: [url] };
   const e2 = await end.decide(l2, turn({ text: `Opened it.\nPR: ${url}\nWORK DONE` }), { planExit: false, force: false });
   assert.equal(e2.end && e2.result?.text, `Opened it.\nPR: ${url}\nWORK DONE`);
+});
+
+test('what the new turn announces while an old Stop\'s gate decision is still out is kept: the old Stop\'s handling expires nothing of it', async () => {
+  let answer!: (folders: string[]) => void;
+  let asked!: () => void;
+  const asking = new Promise<void>((r) => (asked = r));
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => (asked(), new Promise<string[]>((r) => (answer = r))), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live({ phase: 'pr' });
+  const { end, held } = endOf();
+  const url = 'https://github.com/o/r/pull/9';
+  // The old Stop's decision waits for git, and the run's end waits for it.
+  const gating = gate.decide(l, stop(DONE));
+  await asking;
+  const deciding = end.decide(l as EndLive, turn({ text: DONE }), { planExit: false, force: false });
+  await new Promise((r) => setTimeout(r, 20));
+  // A new prompt, and the new turn reports its pull request and that it is done.
+  newTurn(l);
+  assert.equal(acceptSignal(l, { kind: 'pr', url }), undefined);
+  assert.equal(acceptSignal(l, { kind: 'done' }), undefined);
+  // The old decision comes back.
+  answer([]);
+  assert.deepEqual(await gating, {});
+  assert.deepEqual(await deciding, { end: false }, 'the old turn\'s answer ends nothing');
+  assert.deepEqual(held, ['hold w']);
+  assert.deepEqual(l.signal, { kind: 'done' }, 'the new turn\'s announcement is still there');
+  assert.deepEqual(l.signalPrs, [url]);
+  clearTimeout((l as EndLive).nudgeTimer);
+  // The new turn's own Stop then ends the run on it, the pull request with it.
+  const e = await end.decide(l as EndLive, turn({ text: 'Opened the pull request.' }), { planExit: false, force: false });
+  assert.equal(e.end && e.result?.text, `Opened the pull request.\nPR: ${url}\nWORK DONE`);
 });
