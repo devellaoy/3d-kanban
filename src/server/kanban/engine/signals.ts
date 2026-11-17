@@ -147,22 +147,31 @@ export class StopGate<L extends GateRun> {
 
   /** `block`: the text to hand back to the agent (its Stop does not end the turn); an empty answer lets the Stop through. Never throws. */
   async decide(live: L | undefined, payload: unknown): Promise<{ block?: string }> {
-    let timer: NodeJS.Timeout | undefined;
-    // Past the deadline the Stop has been let through: a judgement that comes later must not count a block nobody was told of.
-    const late = { is: false };
+    // A subagent's or teammate's Stop is none of the lead's: it is let through here, before it could touch the lead's decision under way.
+    if (!live || agentHook(payload)) return {};
+    const judged = async (): Promise<{ block?: string }> => {
+      let timer: NodeJS.Timeout | undefined;
+      // Past the deadline the Stop has been let through: a judgement that comes later must not count a block nobody was told of.
+      const late = { is: false };
+      try {
+        const deadline = new Promise<{ block?: string }>((resolve) => {
+          timer = setTimeout(() => ((late.is = true), resolve({})), this.deps.deadlineMs ?? 10_000);
+        });
+        return await Promise.race([this.judge(live, payload, late), deadline]);
+      } catch {
+        return {};
+      } finally {
+        clearTimeout(timer);
+      }
+    };
+    // The run's end waits for this (TurnEnd.decide): a `done` the worker shows meanwhile must not end the run the gate is about to send back to work.
+    // A second Stop of the lead's while one is still judged is judged after it, and the wait covers both: neither replaces nor ends the other's.
+    const answer = live.gating ? live.gating.then(judged, judged) : judged();
+    live.gating = answer;
     try {
-      const deadline = new Promise<{ block?: string }>((resolve) => {
-        timer = setTimeout(() => ((late.is = true), resolve({})), this.deps.deadlineMs ?? 10_000);
-      });
-      const answer = Promise.race([this.judge(live, payload, late), deadline]).catch(() => ({}));
-      // The run's end waits for this (TurnEnd.decide): a `done` the worker shows meanwhile must not end the run the gate is about to send back to work.
-      if (live) live.gating = answer;
       return await answer;
-    } catch {
-      return {};
     } finally {
-      clearTimeout(timer);
-      if (live) live.gating = undefined;
+      if (live.gating === answer) live.gating = undefined;
     }
   }
 

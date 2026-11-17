@@ -333,3 +333,49 @@ test('an announcement a Stop was held on is gone: the turn after the background 
   assert.deepEqual(held, ['hold w', 'hold w']);
   clearTimeout(l.nudgeTimer);
 });
+
+test('a subagent\'s Stop while the lead\'s is judged leaves the lead\'s decision alone: the done that follows still waits for it', async () => {
+  let asked!: () => void;
+  const asking = new Promise<void>((r) => (asked = r));
+  let answer!: (folders: string[]) => void;
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => (asked(), new Promise<string[]>((r) => (answer = r))), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live();
+  const { end, held } = endOf();
+  const gating = gate.decide(l, stop(DONE));
+  await asking;
+  const waited = l.gating;
+  assert.ok(waited);
+  // A subagent's Stop (it has the lead's token) comes back at once and touches nothing.
+  assert.deepEqual(await gate.decide(l, stop('A helper is done.', { agent_id: 'a1' })), {});
+  assert.equal(l.gating, waited, 'the lead\'s decision is still the one waited for');
+  let ended: Awaited<ReturnType<typeof end.decide>> | undefined;
+  const deciding = end.decide(l as EndLive, turn({ text: DONE }), { planExit: false, force: false }).then((e) => (ended = e));
+  await new Promise((r) => setTimeout(r, 30));
+  assert.equal(ended, undefined, 'the end still waits for the gate');
+  answer(['wt']);
+  assert.deepEqual(await gating, { block: gateDirty(['wt']) });
+  await deciding;
+  assert.deepEqual(ended, { end: false });
+  assert.deepEqual(held, ['hold w']);
+  assert.equal(l.gating, undefined);
+  clearTimeout((l as EndLive).nudgeTimer);
+});
+
+test('a second Stop of the lead\'s while one is judged neither replaces nor ends its wait: it is judged after it', async () => {
+  const answers: ((folders: string[]) => void)[] = [];
+  const gate = new StopGate<GateRun>({ task: () => ({ id: 1, project: 'p', type: 'implement' }), note() {}, read: async () => turn({ text: DONE }), uncommitted: () => new Promise<string[]>((r) => answers.push(r)), maxBlocks: () => 2, readPauseMs: () => 1 });
+  const l = live();
+  const first = gate.decide(l, stop(DONE));
+  await new Promise((r) => setTimeout(r, 20));
+  const second = gate.decide(l, stop(DONE));
+  await new Promise((r) => setTimeout(r, 20));
+  assert.equal(answers.length, 1, 'the second is not judged while the first is');
+  answers[0](['wt']);
+  assert.deepEqual(await first, { block: gateDirty(['wt']) });
+  assert.ok(l.gating, 'the wait goes on for the second');
+  await new Promise((r) => setTimeout(r, 20));
+  answers[1]([]);
+  assert.deepEqual(await second, {});
+  assert.equal(l.gating, undefined);
+  assert.equal(l.gateBlocks, 1);
+});

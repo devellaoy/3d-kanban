@@ -49,7 +49,7 @@ export interface HeldRun {
   /** The Stop hook gate: how many Stops it blocked in this run, whether one was blocked and no Stop since (the worker's `done` is then the blocked turn's), and whether the run's note that the cap was reached is made. */
   gateBlocks?: number;
   /** The gate's decision on a Stop under way: the run's end waits for it (see TurnEnd.decide). */
-  gating?: Promise<unknown>;
+  gating?: Promise<{ block?: string }>;
   gated?: boolean;
   gateNoted?: boolean;
   /** Comments the office typed into the run while it worked (when, and the start of their text): its own prompts, not a person's (see readTurnResult). */
