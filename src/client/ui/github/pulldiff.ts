@@ -1,7 +1,7 @@
 import './pulldiff.css';
 import type { GhReviewComment } from '../../../shared/protocol';
-import { h, timeAgo } from '../dom';
-import { ghMarkdown } from './md';
+import { h } from '../dom';
+import { renderThread } from './thread';
 
 // A PR's unified diff (`gh pr diff`), split into files, and the pieces the Files tab draws with it:
 // each file's lines with inline review comments, the file list/tree, and which files you've reviewed.
@@ -171,23 +171,6 @@ export function looksGenerated(path: string): boolean {
   return /(^|\/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|bun\.lockb?|Cargo\.lock|Gemfile\.lock|poetry\.lock|composer\.lock|go\.sum)$|\.min\.(js|css)$|\.snap$|(^|\/)dist\//.test(path);
 }
 
-/** A line comment and its replies. */
-export function renderThread(root: GhReviewComment, replies: Map<number, GhReviewComment[]>, itemUrl: string): HTMLElement {
-  const all = [root, ...(replies.get(root.id) ?? [])];
-  return h(
-    'div.pd-thread',
-    {},
-    ...all.map((c) =>
-      h(
-        'div.pd-comment',
-        {},
-        h('div.pd-comment-head', {}, h('b', {}, c.author), h('a', { href: c.url, target: '_blank', rel: 'noopener noreferrer', title: new Date(c.createdAt).toLocaleString() }, timeAgo(c.createdAt))),
-        ghMarkdown(c.body, itemUrl),
-      ),
-    ),
-  );
-}
-
 /** Line comments on this file that are still on a line, keyed "RIGHT:12" / "LEFT:7". */
 export function threadsByLine(comments: GhReviewComment[], path: string): Map<string, GhReviewComment[]> {
   const out = new Map<string, GhReviewComment[]>();
@@ -205,8 +188,11 @@ export function repliesOf(comments: GhReviewComment[]): Map<number, GhReviewComm
   return out;
 }
 
-/** The lines of one file's diff, with its line comments under the lines they're on. */
-export function renderFileDiff(f: DiffFile, comments: GhReviewComment[], itemUrl: string): HTMLElement {
+/**
+ * The lines of one file's diff, with its line comments under the lines they're on. `thread` draws a
+ * thread some other way than plainly (the PR window's cards, with their state and buttons: thread.ts).
+ */
+export function renderFileDiff(f: DiffFile, comments: GhReviewComment[], itemUrl: string, thread: (root: GhReviewComment, replies: Map<number, GhReviewComment[]>) => HTMLElement = (root, replies) => renderThread(root, replies, itemUrl)): HTMLElement {
   const out = h('div.pd-lines');
   if (f.binary) {
     out.append(h('div.pd-note', {}, 'Binary file — not shown.'));
@@ -233,7 +219,7 @@ export function renderFileDiff(f: DiffFile, comments: GhReviewComment[], itemUrl
     if (l.old !== undefined) row.dataset.old = String(l.old);
     out.append(row);
     const here = [...(l.new !== undefined ? (threads.get(`RIGHT:${l.new}`) ?? []) : []), ...(l.old !== undefined && l.kind !== 'ctx' ? (threads.get(`LEFT:${l.old}`) ?? []) : [])];
-    for (const c of here) out.append(renderThread(c, replies, itemUrl));
+    for (const c of here) out.append(thread(c, replies));
   }
   return out;
 }

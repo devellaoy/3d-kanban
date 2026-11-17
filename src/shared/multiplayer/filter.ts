@@ -101,6 +101,8 @@ export const SERVER_MSG_OUT = {
   'worker.worktree': 'drop',
   'gh.merged': 'drop',
   'gh.commented': 'drop',
+  'gh.replied': 'drop',
+  'gh.resolved': 'drop',
   'gh.closed': 'drop',
   'gh.labeled': 'drop',
   'floor.repos': 'drop',

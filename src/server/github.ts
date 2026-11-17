@@ -9,6 +9,7 @@ import { hostedRepoOf, type HostedRepo } from './hosting/board.js';
 import type { HostAs } from './hosting/provider.js';
 import { HostedBoard } from './hosting/hosted-board.js';
 import { GhAssets, type GhAssetResult } from './ghassets.js';
+import { readHistory, resolveMutation, resolvedOf, reviewCommentOf, threadIsOf, REVIEW_COMMENT_JQ, THREAD_OWNER_QUERY } from './github-history.js';
 
 const REFRESH_MS = 90_000;
 /** How long the repo's list of labels is kept before the label picker asks GitHub again. */
@@ -200,29 +201,21 @@ export class GitHub {
    */
   async pullDetail(n: number, me?: string): Promise<GhPullDetail> {
     const fields = 'number,body,state,isDraft,reviewDecision,headRefName,baseRefName,mergeable,mergeStateStatus,commits,comments,reviews,statusCheckRollup';
-    const jq = '.[] | {id, in_reply_to_id, path, line, side, body, user: .user.login, created_at, html_url}';
-    const [view, lines, repo, viewer] = await Promise.all([
+    const jq = `.[] | ${REVIEW_COMMENT_JQ}`;
+    const [view, lines, repo, viewer, history] = await Promise.all([
       this.gh(['pr', 'view', String(n), ...repoFlag(this.target), '--json', fields], this.dir),
       this.gh(['api', repoApi(this.target, `pulls/${n}/comments?per_page=100`), '--paginate', '--jq', jq], this.dir),
       this.repoInfo(),
       me ?? this.viewer(),
+      // Asked beside the rest but never holding it up: it answers with an error rather than rejecting.
+      this.repoInfo().then((r) => readHistory(this.gh, this.target ?? r.nameWithOwner, n, this.dir)),
     ]);
     const p = JSON.parse(view);
     const reviewComments: GhReviewComment[] = lines
       .split('\n')
       .filter((l) => l.trim())
       .map((l) => JSON.parse(l))
-      .map((c: any) => ({
-        id: c.id,
-        replyTo: c.in_reply_to_id ?? undefined,
-        author: c.user ?? 'ghost',
-        body: String(c.body ?? ''),
-        createdAt: c.created_at,
-        url: c.html_url,
-        path: c.path,
-        line: c.line ?? null,
-        side: c.side === 'LEFT' ? 'LEFT' : 'RIGHT',
-      }));
+      .map(reviewCommentOf);
     this.assets.note(p.body, ...[...(p.comments ?? []), ...(p.reviews ?? [])].map((c: any) => c?.body), ...reviewComments.map((c) => c.body));
     return {
       number: p.number,
@@ -242,6 +235,7 @@ export class GitHub {
       checks: (p.statusCheckRollup ?? []).map(checkOf),
       repo,
       viewer,
+      ...('error' in history ? { historyError: history.error } : { events: history.events, threads: history.threads, ...(history.cut ? { historyCut: true } : {}) }),
     };
   }
 
@@ -281,6 +275,37 @@ export class GitHub {
     // The issue board counts comments; a PR's card shows when it was last updated.
     void (kind === 'issue' ? this.refreshIssues() : this.refreshPulls());
     return { comment };
+  }
+
+  /** Answers a thread of line comments (`to`: its first comment's id), as `as` or else the office. Returns the reply as GitHub saved it, or why it couldn't. */
+  async reply(n: number, to: number, body: string, as?: GhAs): Promise<{ reply?: GhReviewComment; error?: string }> {
+    let reply: GhReviewComment;
+    try {
+      // -f sends the body as a plain string: no @file reading, no {owner} filling in.
+      const out = await this.gh(['api', '--method', 'POST', repoApi(this.target, `pulls/${n}/comments/${to}/replies`), '-f', `body=${body}`, '--jq', REVIEW_COMMENT_JQ], this.dir, undefined, as?.env);
+      reply = reviewCommentOf(JSON.parse(out));
+      this.assets.note(reply.body);
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+    void this.refreshPulls();
+    return { reply };
+  }
+
+  /** Resolves a thread of line comments (GhThread.id), or reopens it, as `as` or else the office. Returns how it stands now, or why it didn't change. */
+  async resolveThread(n: number, thread: string, resolved: boolean, as?: GhAs): Promise<{ resolved?: boolean; error?: string }> {
+    let now: boolean | undefined;
+    try {
+      // Only a thread of this PR: the id comes from the client, and the mutation takes any thread.
+      const owner = await this.gh(['api', 'graphql', '-f', `query=${THREAD_OWNER_QUERY}`, '-f', `id=${thread}`], this.dir, undefined, as?.env);
+      if (!threadIsOf(owner, n, this.target ?? (await this.repoInfo()).nameWithOwner)) return { error: 'That thread is not on this pull request' };
+      now = resolvedOf(await this.gh(['api', 'graphql', '-f', `query=${resolveMutation(resolved)}`, '-f', `id=${thread}`], this.dir, undefined, as?.env));
+    } catch (err) {
+      return { error: (err as Error).message };
+    }
+    // The cards' unresolved marks follow at the next look at the PRs.
+    void this.refreshPulls();
+    return now === undefined ? { error: `GitHub didn't say whether the thread of PR #${n} is resolved` } : { resolved: now };
   }
 
   /**

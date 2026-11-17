@@ -25,6 +25,7 @@ with a token. It doesn't need the `az` CLI or any Bitbucket tool.
 | Checks and reviews on the board | ✅ | statuses and branch policies (build validation, required statuses: a posted status shows the policy's state when that is worse), votes | build statuses, approvals |
 | Approval and unresolved comments on a task's PR rows | ✅ | approval only (from the votes) | approval only |
 | The PR window | everything | description, checks, comments, commenting, the diff | description, checks, comments, commenting, the diff |
+| The PR window's history in GitHub's order (commits, force-pushes, review requests, labels, assignees, title and base changes, branch deletion, ready/draft, closing, reopening and merging between the comments; cross-references, dismissed reviews and auto-merge are not shown; line-comment threads sit under the review they came with), resolved state of line-comment threads, Resolve / Unresolve and replying to a thread | ✅ (`server/github-history.ts`; a failed or slow read, over 8 s, leaves the window as it was with a note) | no (threads can be answered and resolved only on GitHub) | no (same) |
 | Merging, closing, labels from the office | ✅ | do it on Azure DevOps | do it on Bitbucket |
 | Fix PRs, Resolve conflicts, Review (kanban) | ✅ | ✅ (the agent uses `office-pr`) | ✅ (the agent uses `office-pr`) |
 | 🤝 Review panel | ✅ | the review is posted as a comment | the review is posted as a comment |
