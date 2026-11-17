@@ -12,7 +12,8 @@ import type { KanbanSettings } from '../../shared/kanban/types.js';
 import { KANBAN_CONTRACTS, PROMPT_CONTRACT, isKanbanPromptId, kanbanPromptSource } from '../../shared/kanban/prompts.js';
 import { kanbanApi } from './api';
 import { officeCss } from './officecss';
-import { run } from './ui';
+import { orderedProjects } from './model';
+import { projectOptions, run } from './ui';
 
 export interface PromptScope {
   /** The bar (scope picker, what applies now, a reset) and the contract block, for under the prompt's description. */
@@ -41,11 +42,11 @@ export function promptScope(net: Net, changed: () => void): PromptScope {
 
   const projectText = (id: PromptId) => (project && isKanbanPromptId(id) ? settings?.projects[project]?.prompts[id] : undefined);
 
-  const floorIds = () => store.floors.filter((f) => !f.cloning).map((f) => f.id);
+  const floorIds = () => orderedProjects(store.floors.filter((f) => !f.cloning)).map((f) => f.id);
   const optionIds = () => [...sel.options].slice(1).map((o) => o.value);
   const paintOptions = () => {
     const floors = store.floors.filter((f) => !f.cloning);
-    sel.replaceChildren(h('option', { value: '' }, 'The whole office'), ...floors.map((f) => h('option', { value: f.id }, f.name)));
+    sel.replaceChildren(...projectOptions(floors, { first: ['', 'The whole office'] }));
     if (!floors.some((f) => f.id === project)) project = '';
     sel.value = project;
   };

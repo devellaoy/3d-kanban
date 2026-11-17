@@ -28,11 +28,11 @@ import { openPulls } from './pulls';
 import { officeActions } from '../shared/officeactions';
 import { workerOpener } from '../shared/openworker';
 import { installWorkerBar } from './workerbar';
-import { boardStats, deepLink, EMPTY_FILTER, filterActive, isTaskTab, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
+import { boardStats, deepLink, EMPTY_FILTER, filterActive, isTaskTab, orderedProjects, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
 import { kstore } from './store';
 import { TaskWindows } from './taskwindow';
 import { toolName } from './labels';
-import { run, select, textInput } from './ui';
+import { projectSelect, run, select, textInput } from './ui';
 import { initAppearance } from '../themes';
 
 initAppearance();
@@ -207,7 +207,7 @@ let syncChips: (() => void)[] = [];
 function renderBar() {
   const searching = document.activeElement === search;
   const projects = kstore.projects;
-  const projectSel = select<string>([['', 'All projects'], ...projects.map((p) => [p.id, `${p.name}${p.open ? '' : ' (closed)'}`] as const)], kstore.project ?? '', { 'aria-label': 'Project', id: 'kb-project' });
+  const projectSel = projectSelect(projects, kstore.project ?? '', { 'aria-label': 'Project', id: 'kb-project' }, { first: ['', 'All projects'], label: (p) => `${p.name}${p.open ? '' : ' (closed)'}` });
   // A remembered project that's gone: all of them instead.
   if (kstore.loaded && kstore.project && !projects.some((p) => p.id === kstore.project)) projectSel.value = '';
   projectSel.addEventListener('change', () => pickProject(projectSel.value || null));

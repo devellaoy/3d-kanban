@@ -536,7 +536,9 @@ Every window of the kanban is built the same way (`ui/shell.ts`, see [Code layou
 ## Projects and repositories
 
 A project is a floor of the building. The floor's own checkout is the **primary** repository; a floor
-without more repositories is a one-repository project, as in upstream agent-office.
+without more repositories is a one-repository project, as in upstream agent-office. The kanban's project
+pickers (the board's top bar, New task, Settings → Projects and the prompt scope) list the projects the way the
+elevator does: top floor first, under their GitHub owner (or Local).
 
 An admin can create a project: Settings → **Projects** → **New project**, then either a **local
 folder** (its full path on the office's machine, `~` works) or a **GitHub repository** to clone. A folder
