@@ -1147,7 +1147,7 @@ export class Orchestrator {
   }
 
   /** Whether a Claude Stop hook of the worker may end its turn (KanbanEngineApi.stopGate). */
-  stopGate(workerId: string, payload: unknown): Promise<{ block?: string }> {
+  stopGate(workerId: string, payload: unknown): Promise<{ block?: string; stale?: true }> {
     return this.gate.decide(this.live.get(workerId), payload);
   }
 
@@ -1446,10 +1446,10 @@ export class Orchestrator {
     if (live.ended || live.restating || this.live.get(live.workerId) !== live) return;
     // Read before ending: a log that lags (the launch's result not in it yet) shows the background tasks only by now.
     // Nothing else ends the run meanwhile: they all go through `serial`, and this re-checks after the wait.
-    const read: TurnResult | undefined = await this.readResult(live);
+    const turn = live.turn, read: TurnResult | undefined = await this.readResult(live);
     if (live.ended || this.live.get(live.workerId) !== live) return;
     // The agent's final marker ends the run; a turn without it is an interim update the run waits through (see TurnEnd).
-    const ending = await this.turnEnd.decide(live, read, { planExit, force });
+    const ending = await this.turnEnd.decide(live, read, { planExit, force, turn });
     if (!ending.end) return;
     const result = ending.result;
     const unfinished = ending.unfinished;

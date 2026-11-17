@@ -9,7 +9,10 @@ import { prLines, workDone } from '../src/server/kanban/engine/markers.js';
 import { acceptSignal, newTurn, StopGate, type GateRun, type StopGateDeps } from '../src/server/kanban/engine/signals.js';
 import { TurnEnd, type EndLive, type TurnEndDeps } from '../src/server/kanban/engine/turnend.js';
 import { worktreeDir } from '../src/server/worktree-home.js';
-import { ADA, engineFixture, midTurn, type EngineFixture } from './kanban-engine-fixture.js';
+import { ADA, engineFixture, hookToken, midTurn, type EngineFixture } from './kanban-engine-fixture.js';
+import { createSignals } from '../src/server/kanban/signals.js';
+import { Readable } from 'node:stream';
+import type { IncomingMessage, ServerResponse } from 'node:http';
 
 // The Stop hook gate (Claude only): a Stop that is no end of the work, or leaves uncommitted changes, is answered with feedback and the agent goes on.
 
@@ -428,7 +431,7 @@ test('a prompt that comes while the gate decides: the answer read before it does
   // Someone types a prompt into the terminal while git is asked: a new turn.
   newTurn(l);
   answer([]);
-  assert.deepEqual(await gating, {}, 'the Stop itself is let through');
+  assert.deepEqual(await gating, { stale: true }, 'nothing is blocked, and the Stop is a past turn\'s');
   await deciding;
   assert.deepEqual(ended, { end: false }, 'the old turn\'s WORK DONE ends nothing');
   assert.deepEqual(held, ['hold w']);
@@ -491,7 +494,7 @@ for (const dirty of [[], ['wt']]) test(`what the new turn announces while an old
   assert.equal(acceptSignal(l, { kind: 'done' }), undefined);
   // The old decision comes back.
   answer(dirty);
-  assert.deepEqual(await gating, {}, 'a decision about a past turn blocks nothing');
+  assert.deepEqual(await gating, { stale: true }, 'a decision about a past turn blocks nothing');
   assert.equal(l.gated, undefined);
   assert.equal(l.gateBlocks, undefined);
   assert.deepEqual(await deciding, { end: false }, 'the old turn\'s answer ends nothing');
@@ -502,4 +505,42 @@ for (const dirty of [[], ['wt']]) test(`what the new turn announces while an old
   // The new turn's own Stop then ends the run on it, the pull request with it.
   const e = await end.decide(l as EndLive, turn({ text: 'Opened the pull request.' }), { planExit: false, force: false });
   assert.equal(e.end && e.result?.text, `Opened the pull request.\nPR: ${url}\nWORK DONE`);
+});
+
+// --- Through the route and the engine: a Stop a new prompt overtook -----------------------------------------
+
+/** Posts a Stop hook payload to the kanban's own route as the hook's wrapper does, with the worker's token. */
+async function postStop(fx: EngineFixture, w: string, payload: unknown): Promise<{ status: number; body: unknown }> {
+  const handler = createSignals(fx.ctx).hook!['/office/tasks/stop'];
+  const req = Object.assign(Readable.from([Buffer.from(JSON.stringify(payload))]), { method: 'POST', headers: { authorization: `Bearer ${hookToken(fx, w)}` } }) as unknown as IncomingMessage;
+  let status = 0;
+  let text = '';
+  const res = { writeHead: (s: number) => void (status = s), end: (t: string) => void (text = t) } as unknown as ServerResponse;
+  assert.equal(await handler(req, res, new URL('/office/tasks/stop', 'http://127.0.0.1'), { workerId: w, floorId: fx.ctx.projects()[0].id }), true);
+  return { status, body: JSON.parse(text) };
+}
+
+test('route and engine: a Stop a new prompt overtook while the gate judged it is dropped, and its WORK DONE does not end the turn that goes now', async (t) => {
+  // The gate reads the log again after a pause when it has no finished answer yet: long enough here for a prompt to come in between.
+  const fx = await engineFixture({ engine: { readPauseMs: 300, nudgeIdleMs: 60_000 } });
+  t.after(() => fx.close());
+  const { task, w } = await working(fx);
+  const posting = postStop(fx, w, { last_assistant_message: DONE });
+  await new Promise((r) => setTimeout(r, 120));
+  // Someone types into the terminal while the gate still looks: the agent has a new turn.
+  fx.workers.handleHook(w, hookToken(fx, w), 'UserPromptSubmit', { prompt: 'One more thing' });
+  assert.deepEqual(await posting, { status: 200, body: {} }, 'nothing is blocked');
+  await new Promise((r) => setTimeout(r, 1500));
+  assert.equal(fx.workers.get(w)?.status, 'working', 'the Stop was not passed on: the worker still works on its new turn');
+  assert.equal(fx.task(task.id).status, 'in_progress');
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running', 'the old answer ended nothing');
+  assert.equal(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result').length, 0);
+});
+
+test('route and engine: a Stop no prompt overtook is passed on as ever: the worker rests', async (t) => {
+  const fx = await engineFixture({ engine: { readPauseMs: 50, nudgeIdleMs: 60_000 } });
+  t.after(() => fx.close());
+  const { w } = await working(fx);
+  assert.deepEqual(await postStop(fx, w, { last_assistant_message: 'Looked at it.', stop_hook_active: true, background_tasks: [{ id: 'b1', status: 'running' }] }), { status: 200, body: {} });
+  assert.equal(fx.workers.get(w)?.status, 'done', 'upstream heard the Stop');
 });

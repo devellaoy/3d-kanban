@@ -112,8 +112,8 @@ export interface KanbanEngineApi {
   reviewPrs(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string>;
   /** An agent's own announcement of how its turn ends. Returns an error text when refused (no live run of this worker, wrong phase, …). */
   signal(workerId: string, sig: TurnSignal): string | void;
-  /** Whether a Claude Stop hook of this worker may end its turn: `block` is the text handed back to the agent, which then goes on. Never throws. */
-  stopGate(workerId: string, payload: unknown): Promise<{ block?: string }>;
+  /** Whether a Claude Stop hook of this worker may end its turn: `block` is the text handed back to the agent, which then goes on; `stale` says the Stop is a past turn's (a new prompt overtook it) and is to be dropped. Never throws. */
+  stopGate(workerId: string, payload: unknown): Promise<{ block?: string; stale?: true }>;
 }
 
 /** The part of upstream's RunAs (workers.ts) the engine asks before it hires as an account. */

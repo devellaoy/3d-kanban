@@ -157,13 +157,13 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 export class StopGate<L extends GateRun> {
   constructor(private deps: StopGateDeps<L>) {}
 
-  /** `block`: the text to hand back to the agent (its Stop does not end the turn); an empty answer lets the Stop through. Never throws. */
-  async decide(live: L | undefined, payload: unknown): Promise<{ block?: string }> {
+  /** `block`: the text to hand back to the agent (its Stop does not end the turn); `stale`: the Stop is a past turn's (a prompt came while it was judged) and is to be dropped, not passed on; an empty answer lets the Stop through. Never throws. */
+  async decide(live: L | undefined, payload: unknown): Promise<{ block?: string; stale?: true }> {
     // A subagent's or teammate's Stop is none of the lead's: it is let through here, before it could touch the lead's decision under way.
     if (!live || agentHook(payload)) return {};
     // The turn this Stop ends, as the run counts them (newTurn): a judgement that comes back after a new prompt is about a turn that is past.
     const turn = live.turn;
-    const judged = async (): Promise<{ block?: string }> => {
+    const judged = async (): Promise<{ block?: string; stale?: true }> => {
       let timer: NodeJS.Timeout | undefined;
       // Past the deadline the Stop has been let through: a judgement that comes later must not count a block nobody was told of.
       const late = { is: false };
@@ -171,7 +171,9 @@ export class StopGate<L extends GateRun> {
         const deadline = new Promise<{ block?: string }>((resolve) => {
           timer = setTimeout(() => ((late.is = true), resolve({})), this.deps.deadlineMs ?? 10_000);
         });
-        return await Promise.race([this.judge(live, payload, late, turn), deadline]);
+        const out = await Promise.race([this.judge(live, payload, late, turn), deadline]);
+        // Its agent has a new prompt since: the Stop is a past turn's, and must not be heard as the end of the one that goes now.
+        return live.turn !== turn ? { stale: true as const } : out;
       } catch {
         return {};
       } finally {

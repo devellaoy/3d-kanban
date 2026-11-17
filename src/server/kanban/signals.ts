@@ -1,7 +1,8 @@
 // What a task's worker tells the office about its own turn, on the hook server (worker token already checked by officeTasks):
 //  POST /office/tasks/signal  how the turn ends: `office-tasks done`, the MCP tool report_turn (the engine decides what it counts for).
 //  POST /office/tasks/stop    a kanban Claude worker's Stop hook (the wrapper in launch.ts posts it here). The engine may block the
-//                             Stop with a text for the agent; otherwise the Stop goes on to upstream as /hooks/claude?event=Stop would.
+//                             Stop with a text for the agent, or drop one that a new prompt has overtaken; otherwise the Stop goes on to
+//                             upstream as /hooks/claude?event=Stop would.
 // Each handler answers 404 for any other path and 405 for a non-POST: the refs plugin answers 405 to every non-GET under /office/tasks.
 
 import type { KanbanContext, KanbanHookHandler, KanbanPlugin } from './registry.js';
@@ -33,7 +34,10 @@ export function createSignals(ctx: KanbanContext): KanbanPlugin {
     const payload = typeof body === 'string' || body === undefined ? {} : body;
     let block: string | undefined;
     try {
-      block = (await ctx.engine.stopGate(who.workerId, payload)).block || undefined;
+      const answer = await ctx.engine.stopGate(who.workerId, payload);
+      // A prompt came while the gate looked at this Stop: it is a past turn's. Passed on, it would set the worker done and end the turn that goes now on the answer before it.
+      if (answer.stale) return sendJson(res, 200, {}), true;
+      block = answer.block || undefined;
     } catch (err) {
       // Any error of the gate is no block: the Stop must still reach the office.
       console.error(`agent-office: the kanban's Stop gate failed: ${(err as Error).message}`);

@@ -16,7 +16,7 @@ import type { TurnSignal } from '../src/shared/kanban/signals.js';
 
 type Json = Record<string, any>;
 
-function setup(opts: { refuse?: string; block?: string; gateThrows?: boolean } = {}) {
+function setup(opts: { refuse?: string; block?: string; gateThrows?: boolean; stale?: boolean } = {}) {
   const signals: [string, TurnSignal][] = [];
   const gates: [string, unknown][] = [];
   const forwarded: unknown[][] = [];
@@ -26,7 +26,7 @@ function setup(opts: { refuse?: string; block?: string; gateThrows?: boolean } =
       stopGate: async (id: string, payload: unknown) => {
         gates.push([id, payload]);
         if (opts.gateThrows) throw new Error('boom');
-        return opts.block ? { block: opts.block } : {};
+        return opts.stale ? { stale: true } : opts.block ? { block: opts.block } : {};
       },
     },
     floor: (id: string) => (id === 'app' ? { workers: { handleProviderHook: (...a: unknown[]) => (forwarded.push(a), true) } } : undefined),
@@ -222,4 +222,11 @@ test('writeKanbanSettings wraps the Stop command, keeps the rest, and leaves it 
     else process.env.AGENT_OFFICE_KANBAN_STOP_GATE = prev;
     rmSync(dir, { recursive: true, force: true });
   }
+});
+
+test('/office/tasks/stop: a Stop the engine calls stale (a new prompt overtook it) is neither blocked nor passed on', async () => {
+  const s = setup({ stale: true });
+  assert.deepEqual(await s.call('/office/tasks/stop', { last_assistant_message: 'Done.\nWORK DONE' }), { status: 200, body: {} });
+  assert.equal(s.gates.length, 1);
+  assert.deepEqual(s.forwarded, [], 'upstream never hears it: it would set the worker done in its new turn');
 });

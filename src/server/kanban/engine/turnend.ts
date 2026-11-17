@@ -61,10 +61,10 @@ export class TurnEnd<L extends EndLive> {
    * heard) until its next one; otherwise until the agent is nudged for its marker. A usage limit, an unreadable turn and an agent that
    * has been nudged as often as it is end the run on what there is. `force`: the hold's timeout; the run is nudged then, or ends.
    */
-  async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean }): Promise<Ending> {
+  async decide(live: L, result: TurnResult | undefined, o: { planExit: boolean; force: boolean; /** The run's turn when this end began (before its result was read), when the caller kept it. */ turn?: number }): Promise<Ending> {
     // The Stop gate is deciding on this turn's Stop (it reads the log and asks git): what it says comes first, a blocked Stop being no end.
     // Until none is under way: a second Stop may have joined the wait while this stood in it.
-    const turn = live.turn;
+    const turn = 'turn' in o ? o.turn : live.turn;
     if (live.gating && !o.planExit) {
       while (live.gating) await live.gating.catch(() => undefined);
       // The same turn still: its result as the log has it now, not as it was before the wait.
@@ -73,7 +73,7 @@ export class TurnEnd<L extends EndLive> {
     if (live.ended) return { end: false };
     // A prompt came in the wait (typed into its terminal, a comment of the office's): what was read is the turn before it, whose answer must not
     // end the run while the new turn goes. The run is held for that turn's own Stop, and what the new turn has announced since is its own: kept.
-    if (live.turn !== turn) return this.wait(live);
+    if (live.turn !== turn && !o.planExit && !o.force) return this.wait(live);
     const ending = this.judge(live, result, o);
     // An announcement is for the turn it was made in: one this Stop did not end the run on (work still out, a turn not over) is none for the next.
     if (!ending.end) expireSignal(live);
