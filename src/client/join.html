@@ -6,9 +6,9 @@
     <title>Agent Office · Join</title>
     <link rel="icon" href="/favicon.svg" />
     <!-- The installed app's colour (docs/configuration.md#pwa). -->
-    <meta name="theme-color" content="#fff1de" />
-    <!-- The chosen appearance, set before the first paint so there's no flash (themes/index.ts). -->
-    <script>try{var t=localStorage.getItem('agent-office.appearance');if(t)document.documentElement.dataset.theme=t}catch(e){}</script>
+    <meta name="theme-color" content="#0F1115" />
+    <!-- The chosen appearance, set before the first paint so there's no flash (themes/index.ts); with no choice yet it is Midnight. -->
+    <script>var t;try{t=localStorage.getItem('agent-office.appearance')}catch(e){}document.documentElement.dataset.theme=/^(default|dark|glossy|daylight|midnight)$/.test(t)?t:'midnight'</script>
     <link rel="stylesheet" href="./login.css" />
   </head>
   <body>

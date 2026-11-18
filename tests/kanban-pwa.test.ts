@@ -36,6 +36,8 @@ test('the manifest has what an install needs', () => {
   assert.equal(m.display, 'standalone');
   assert.match(m.theme_color, /^#[0-9a-f]{6}$/i);
   assert.match(m.background_color, /^#[0-9a-f]{6}$/i);
+  assert.equal(m.theme_color.toLowerCase(), '#0f1115'); // Midnight, what a browser with no choice gets
+  assert.equal(m.background_color.toLowerCase(), '#0f1115');
   const has = (sizes: string, purpose: string) => m.icons.some((i) => i.sizes === sizes && i.type === 'image/png' && (i.purpose ?? 'any').split(' ').includes(purpose));
   assert.ok(has('192x192', 'any'));
   assert.ok(has('512x512', 'any'));

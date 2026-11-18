@@ -171,7 +171,7 @@ The relay listens on `/mp` (`ws://host:4700/mp`, or `wss://` with TLS) and keeps
   **Reload**: that switches to the new version and reloads. ✕ puts it off until the next time the page
   opens. It also checks for a new version every hour.
 
-- **Colour.** The title bar's colour follows the theme chosen in ⚙️ Settings (the page keeps it in its `theme-color` tag). The manifest's own colours stay the default look, since an install can't change them.
+- **Colour.** The title bar's colour follows the theme chosen in ⚙️ Settings (the page keeps it in its `theme-color` tag). The manifest's own colours (the splash screen) are Midnight's, the look a browser gets before it has chosen one, since an install can't change them.
 
 The manifest (`/manifest.webmanifest`), the service worker (`/sw.js`), the icons (`/icons/`) and the
 offline page are served without a session. The icons are made from `src/client/public/favicon.svg` by

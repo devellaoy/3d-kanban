@@ -5,7 +5,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readdirSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { APPEARANCES, APPEARANCE_KEY, parseAppearance } from '../src/client/themes/index.ts';
+import { APPEARANCES, APPEARANCE_KEY, appearanceOf, parseAppearance } from '../src/client/themes/index.ts';
 
 const root = path.join(import.meta.dirname, '..');
 const client = path.join(root, 'src/client');
@@ -25,9 +25,15 @@ function walk(dir: string, ext: RegExp, out: string[] = []): string[] {
   return out;
 }
 
-test('parseAppearance keeps the known ids and makes anything else the default', () => {
+test('parseAppearance keeps the known ids and makes anything else Midnight', () => {
   for (const a of APPEARANCES) assert.equal(parseAppearance(a.id), a.id);
-  for (const bad of [null, undefined, '', 'Dark', 'neon', 42, {}, ['dark']]) assert.equal(parseAppearance(bad), 'default');
+  for (const bad of [null, undefined, '', 'Dark', 'neon', 42, {}, ['dark']]) assert.equal(parseAppearance(bad), 'midnight');
+});
+
+const midnight = APPEARANCES.find((a) => a.id === 'midnight')!;
+
+test('with nothing chosen the appearance is Midnight', () => {
+  assert.equal(appearanceOf(parseAppearance(undefined)).id, 'midnight');
 });
 
 test('the appearances are well formed', () => {
@@ -179,6 +185,11 @@ test('every page sets its appearance before the stylesheet', () => {
     assert.ok(script >= 0, `${page}.html has the boot script`);
     assert.ok(script < html.indexOf('rel="stylesheet"'), `${page}.html runs it before the stylesheet`);
     assert.equal(html.match(/name="theme-color"/g)?.length, 1, `${page}.html has one theme-color`);
+    // With nothing stored (or something unknown) the script sets Midnight, and the static colour is Midnight's.
+    assert.ok(html.includes(`:'midnight'`), `${page}.html falls back to midnight`);
+    const ids = html.match(/\.test\(t\)/) && html.match(/\/\^\(([^)]*)\)\$\//)?.[1].split('|');
+    assert.deepEqual(ids, APPEARANCES.map((a) => a.id), `${page}.html's script knows every appearance`);
+    assert.ok(html.includes(`name="theme-color" content="${midnight.themeColor}"`), `${page}.html starts with Midnight's colour`);
   }
 });
 
@@ -193,4 +204,6 @@ test('offline.html has a block and a theme-color for every appearance', () => {
   const colours = Object.fromEntries([...map[1].matchAll(/(\w+):'(#[0-9a-f]{6})'/gi)].map((m) => [m[1], m[2].toLowerCase()]));
   assert.deepEqual(colours, Object.fromEntries(APPEARANCES.map((a) => [a.id, a.themeColor.toLowerCase()])));
   assert.equal(html.match(/name="theme-color"/g)?.length, 1, 'offline.html has one theme-color');
+  assert.ok(html.includes(`name="theme-color" content="${midnight.themeColor}"`), 'offline.html starts with Midnight\'s colour');
+  assert.ok(html.includes(`if(!c[t])t='midnight'`), 'offline.html falls back to midnight');
 });

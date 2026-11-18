@@ -76,7 +76,7 @@ test('the Theme row follows a change made in another tab, and clicking the old o
   seg.isConnected = true;
   assert.equal(seg.children.length, 5);
   assert.deepEqual((seg.children as FakeEl[]).map((b) => b.textContent), ['Office', 'Dark', 'Glossy', 'Daylight', 'Midnight']);
-  assert.deepEqual(checked(seg), ['Office']);
+  assert.deepEqual(checked(seg), ['Midnight']); // nothing stored: the fallback
 
   // Another tab picks Dark: the storage event makes the page apply it.
   storage.set(APPEARANCE_KEY, 'dark');

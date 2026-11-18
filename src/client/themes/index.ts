@@ -31,16 +31,16 @@ export type AppearanceId = (typeof APPEARANCES)[number]['id'];
 /** Where this browser keeps its choice (the pages' head scripts read the same key). */
 export const APPEARANCE_KEY = 'agent-office.appearance';
 
-/** What the page has until a choice is made. */
-const FALLBACK: AppearanceId = 'default';
+/** What the page has until a choice is made (the pages' head scripts fall back to the same one). */
+const FALLBACK: AppearanceId = 'midnight';
 
-/** The appearance an id names; anything unknown is the default. */
+/** The appearance an id names; anything unknown is the fallback (Midnight). */
 export function parseAppearance(raw: unknown): AppearanceId {
   return APPEARANCES.find((a) => a.id === raw)?.id ?? FALLBACK;
 }
 
 export function appearanceOf(id: AppearanceId): (typeof APPEARANCES)[number] {
-  return APPEARANCES.find((a) => a.id === id) ?? APPEARANCES[0];
+  return APPEARANCES.find((a) => a.id === id) ?? APPEARANCES.find((a) => a.id === FALLBACK)!;
 }
 
 /** This browser's choice. */
