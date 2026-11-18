@@ -94,4 +94,8 @@ test('withIcon and iconButton', (t) => {
   assert.equal(b.getAttribute('title'), 'Settings');
   assert.equal(b.getAttribute('data-focus'), 'x');
   assert.equal(b.children[0].getAttribute('aria-hidden'), 'true');
+  // A longer tooltip of its own stays; the label is still the name.
+  const r = iconButton('refresh-cw', 'Refresh', { title: 'Refresh: read it again' }) as unknown as FakeEl;
+  assert.equal(r.getAttribute('aria-label'), 'Refresh');
+  assert.equal(r.getAttribute('title'), 'Refresh: read it again');
 });

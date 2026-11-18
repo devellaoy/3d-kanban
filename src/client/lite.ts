@@ -6,6 +6,7 @@
 
 import { Net } from './net';
 import { initAppearance } from './themes';
+import { installTooltips } from './ui/tooltip';
 import { AVATAR_COLORS, loadProfile, loadSettings, saveProfile, store } from './state';
 import { randomLook } from '../shared/avatar';
 import { ROOF } from '../shared/rooftop';
@@ -29,6 +30,7 @@ import { workerOpener } from './shared/openworker';
 import { renderTitle } from './shared/title';
 
 initAppearance();
+installTooltips();
 
 // Sent here because this browser can't draw the 3D office (see noWebGL in core/scene.ts).
 if (new URLSearchParams(location.search).get('why') === 'webgl') {
