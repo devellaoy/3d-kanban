@@ -195,7 +195,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     // Big files and lock files wait for a click, so a huge PR doesn't lock up the window.
     if (s.big && !open.get(f.path)) {
       s.body.replaceChildren(
-        h('div.pd-big', {}, looksGenerated(f.path) ? 'Generated or lock file — not shown by default.' : `Large diff (${f.lines.length} lines) — not shown by default.`, h('button.btn', { type: 'button', onclick: () => (open.set(f.path, true), buildBody(f)) }, 'Show diff')),
+        h('div.pd-big', {}, looksGenerated(f.path) ? 'Generated or lock file — not shown by default.' : `Large diff (${f.lines.length} lines) — not shown by default.`, h('button.btn', { type: 'button', title: 'Draw this file’s diff here after all', onclick: () => (open.set(f.path, true), buildBody(f)) }, 'Show diff')),
       );
       return;
     }
@@ -384,7 +384,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
         h(
           'header.pd-fh',
           {},
-          h('button.pd-fold', { type: 'button', 'aria-label': 'Show or hide this file', onclick: () => (open.set(f.path, !isOpenFile(f)), syncSection(f)) }, icon('chevron-down', { size: 16 })),
+          h('button.pd-fold', { type: 'button', 'aria-label': 'Show or hide this file', title: 'Show or hide this file’s diff', onclick: () => (open.set(f.path, !isOpenFile(f)), syncSection(f)) }, icon('chevron-down', { size: 16 })),
           h('span.pd-st', { class: f.status, title: STATUS_WORD[f.status] }, f.status),
           h('span.pd-fpath', { title: f.path }, f.status === 'R' && f.oldPath ? `${f.oldPath} → ${f.path}` : f.path),
           h('span.gh-pm', {}, f.binary ? h('span.bin', {}, 'binary') : h('span', {}, h('span.add', {}, `+${f.additions}`), ' ', h('span.del', {}, `−${f.deletions}`))),

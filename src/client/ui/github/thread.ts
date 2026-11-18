@@ -126,7 +126,7 @@ export class ThreadsUi {
       this.fill(where, rootId);
       this.box(rootId).focus();
     };
-    if (!st.replying) return slot.replaceChildren(btn('Reply', { kind: 'quiet', size: 'sm', icon: 'corner-up-left', attrs: { onclick: reply } }));
+    if (!st.replying) return slot.replaceChildren(btn('Reply', { kind: 'quiet', size: 'sm', icon: 'corner-up-left', attrs: { title: 'Write a reply to this thread', onclick: reply } }));
     if (this.host.showing() !== where) return slot.replaceChildren();
     const box = this.box(rootId);
     if (box.el.parentElement === slot) return;
@@ -219,7 +219,7 @@ export function threadCard(root: GhReviewComment, replies: Map<number, GhReviewC
       {},
       icon('chevron-right', { size: 14, cls: 'gh-thread-caret' }),
       where === 'diff' ? h('span.gh-thread-where', {}, `${n} comment${n === 1 ? '' : 's'}`) : h('code', { title: root.path }, `${root.path}${root.line ? `:${root.line}` : ''}`),
-      where === 'diff' ? null : root.line == null ? h('span.gh-badge.muted', {}, 'Outdated') : h('button.link-btn', { type: 'button', onclick: act(() => host.showInDiff(root)) }, 'Show in diff'),
+      where === 'diff' ? null : root.line == null ? h('span.gh-badge.muted', {}, 'Outdated') : h('button.link-btn', { type: 'button', title: 'Go to the line this thread is on, in the Files tab', onclick: act(() => host.showInDiff(root)) }, 'Show in diff'),
       !thread ? null : resolved ? h('span.gh-badge.ok', {}, icon('circle-check', { size: 13 }), thread.resolvedBy ? `Resolved by @${thread.resolvedBy}` : 'Resolved') : h('span.gh-badge', {}, 'Unresolved'),
       thread && host.onGitHub
         ? btn(st.busy ? (resolved ? 'Unresolving…' : 'Resolving…') : resolved ? 'Unresolve' : 'Resolve', { size: 'sm', attrs: { disabled: st.busy, title: resolved ? 'Reopen this thread on GitHub' : 'Mark this thread resolved on GitHub', onclick: act(() => ui.resolve(root.id, thread)) } })

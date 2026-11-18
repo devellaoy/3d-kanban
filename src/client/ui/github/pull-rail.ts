@@ -58,8 +58,8 @@ export function pullRail(s: PullSide): Node[] {
   return [
     h('h3.rail-h', {}, 'Details'),
     detailsRail([
-      { label: 'Task', value: task ? (open ? h('button.link-btn', { type: 'button', onclick: () => open(task) }, `Task #${task}`) : `Task #${task}`) : null },
-      { label: 'Worker', value: w ? h('span.gh-worker', {}, w.name, h('button.link-btn', { type: 'button', onclick: () => actions.goToDesk(w.deskId) }, 'Go to the desk')) : null },
+      { label: 'Task', value: task ? (open ? h('button.link-btn', { type: 'button', title: 'Open the kanban task this pull request belongs to', onclick: () => open(task) }, `Task #${task}`) : `Task #${task}`) : null },
+      { label: 'Worker', value: w ? h('span.gh-worker', {}, w.name, h('button.link-btn', { type: 'button', title: 'Close this window and go to stand at the desk of the worker on this pull request', onclick: () => actions.goToDesk(w.deskId) }, 'Go to the desk')) : null },
       { label: 'Review', value: reviewLine(s) },
       {
         label: 'Changes',
@@ -93,7 +93,7 @@ export function pullFooter(s: PullSide): Node[] {
   if (s.it.state !== 'OPEN' || !s.onGitHub) return [];
   const { it, net } = s;
   return [
-    btn('Close pull request', { kind: 'quiet-danger', icon: 'git-pull-request-closed', attrs: { title: 'Close this pull request without merging it', onclick: () => openClose('pull', it, net, s.reload) } }),
-    btn('Merge', { kind: s.conflicts ? 'secondary' : 'primary', icon: 'git-merge', attrs: { disabled: !s.detail, title: s.detail ? 'Merge this pull request' : 'Loading…', onclick: s.merge } }),
+    btn('Close pull request', { kind: 'quiet-danger', icon: 'git-pull-request-closed', attrs: { title: 'Close this pull request on GitHub without merging it; it asks first', onclick: () => openClose('pull', it, net, s.reload) } }),
+    btn('Merge', { kind: s.conflicts ? 'secondary' : 'primary', icon: 'git-merge', attrs: { disabled: !s.detail, title: s.detail ? 'Open the merge dialog: pick how to merge, see what stands in the way, then merge' : 'Loading…', onclick: s.merge } }),
   ];
 }

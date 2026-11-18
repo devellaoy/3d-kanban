@@ -103,7 +103,7 @@ function compose(itemUrl: string, wire: Wire): CommentBox {
   // One toggle: the text box, or what it will look like.
   const preview = btn('Preview', { kind: 'quiet', size: 'sm', attrs: { 'aria-pressed': 'false', title: `Show the ${noun} as it will look` } });
   const who = h('span.gh-compose-who', {}, "Posts to GitHub as the office's gh account");
-  const cancel = wire.cancel ? btn('Cancel', { kind: 'quiet', size: 'sm', attrs: { onclick: wire.cancel } }) : null;
+  const cancel = wire.cancel ? btn('Cancel', { kind: 'quiet', size: 'sm', attrs: { title: 'Close the box without posting; what you wrote is kept as a draft', onclick: wire.cancel } }) : null;
   const post = btn(verb, { size: 'sm' });
   const result = h('div.gh-merge-result.error.hidden', { role: 'alert' });
   const el = h('div.gh-compose', {}, h('div.composite', {}, ta, shown, h('div.composite-bar', {}, who, cancel, preview, post)), result);
@@ -112,6 +112,7 @@ function compose(itemUrl: string, wire: Wire): CommentBox {
     post.disabled = busy || !ta.value.trim();
     ta.readOnly = busy;
     post.textContent = busy ? 'Posting…' : verb;
+    post.title = busy ? 'Waiting for GitHub’s answer…' : ta.value.trim() ? `Post the ${noun} on GitHub from the office's gh account` : `Write the ${noun} first`;
   };
   const saveDraft = () => {
     if (ta.value) savePref(draftKey, ta.value);
