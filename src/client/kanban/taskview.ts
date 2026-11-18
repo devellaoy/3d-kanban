@@ -362,7 +362,7 @@ class View implements TaskView {
       }
     }
     if (task && this.embedded && !this.o.onKanban) {
-      tools.push(h('a.btn.quiet.sm', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}`, 'data-focus': 'tool-kanban' }, icon('square-kanban'), 'Open in the kanban'));
+      tools.push(h('a.btn.quiet.sm', { href: `/kanban?project=${encodeURIComponent(task.project)}&task=${id}${this.current !== 'overview' ? `&tab=${this.current}` : ''}`, title: 'Open this task on the kanban board’s page', 'data-focus': 'tool-kanban' }, icon('square-kanban'), 'Open in the kanban'));
     }
     const d = this.d;
     const planWaits = status === 'waiting' && waitingReason === 'plan_approval';
@@ -477,7 +477,7 @@ class View implements TaskView {
     this.body.setAttribute('aria-labelledby', `kbtab-${this.current}`);
     const d = this.d;
     if (!d) {
-      const again = btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { 'data-focus': 'load-retry', onclick: () => void this.load() } });
+      const again = btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { 'data-focus': 'load-retry', title: 'Ask the office for the task again', onclick: () => void this.load() } });
       this.body.replaceChildren(this.error ? h('div.kb-error.kb-row', { role: 'alert' }, icon('triangle-alert'), h('span.grow', {}, this.error), again) : h('p.kb-muted', {}, 'Loading…'));
       this.showRail(null);
       return;

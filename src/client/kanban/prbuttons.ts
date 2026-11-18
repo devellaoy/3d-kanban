@@ -31,21 +31,25 @@ export function prModeButton(task: KanbanTask, id: 'fix-prs' | 'resolve-conflict
   return b;
 }
 
+/** Find PRs' tooltip, and what it says while the button is greyed out for a search. */
+const FIND = 'Look for this task’s pull requests by its branches and ticket, and link them here';
+const FINDING = 'Looking for the pull requests…';
+
 /** Tasks being searched, kept here because the PRs tab is drawn anew on every update: its button stays off meanwhile. */
 const finding = new Set<number>();
 
 /** Find PRs: links the PRs of the task's branches, asks about the ones that only mention its ticket. Not for an archived task. */
 export function findPrsButton(task: KanbanTask, api: KanbanApi): HTMLButtonElement | null {
   if (task.status === 'archived') return null;
-  const b = btn('Find PRs', { icon: 'search', attrs: { class: 'kb-find-prs', disabled: finding.has(task.id), title: 'Look for this task’s pull requests by its branches and ticket, and link them here', 'data-task': String(task.id), 'data-focus': 'act-find-prs' } });
+  const b = btn('Find PRs', { icon: 'search', attrs: { class: 'kb-find-prs', disabled: finding.has(task.id), title: finding.has(task.id) ? FINDING : FIND, 'data-task': String(task.id), 'data-focus': 'act-find-prs' } });
   // Only this task's buttons (the view may be mounted twice, and the tab is redrawn on updates).
   const mine = () => document.querySelectorAll<HTMLButtonElement>(`button.kb-find-prs[data-task="${task.id}"]`);
   b.addEventListener('click', async () => {
     finding.add(task.id);
-    mine().forEach((x) => (x.disabled = true));
+    mine().forEach((x) => ((x.disabled = true), (x.title = FINDING)));
     const found = await run(() => api.request<Extract<KanbanServerMsg, { t: 'kanban.prFound' }>>({ t: 'kanban.pr.find', project: task.project, taskId: task.id }));
     finding.delete(task.id);
-    mine().forEach((x) => (x.disabled = false));
+    mine().forEach((x) => ((x.disabled = false), (x.title = FIND)));
     if (!found) return;
     // The reply may come after the task view was closed or switched to another task: then no window opens over it.
     const shown = mine().length > 0;

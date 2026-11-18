@@ -39,7 +39,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   const el = h('div.kb-ia', { role: 'group', 'aria-label': `Actions on ${issue.key}` });
   // `focus` keys the button for the task view, which puts the focus back after a redraw (data-focus).
   const errorLine = (msg: string, retry: () => void, focus: string) => {
-    const again = h('button.btn.small', { type: 'button', 'data-focus': focus }, ...withIcon('rotate-cw', 'Retry'));
+    const again = h('button.btn.small', { type: 'button', title: 'Ask the issue’s source again', 'data-focus': focus }, ...withIcon('rotate-cw', 'Retry'));
     again.addEventListener('click', retry);
     return h('p.kb-ia-error', { role: 'alert' }, icon('triangle-alert', { size: 14 }), `${msg} `, again);
   };
@@ -120,8 +120,8 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
     const site = github ? '' : jiraSite(issue.url);
     const who = h('span.kb-ia-now');
     const mine = h('button.btn.small', { type: 'button', 'data-focus': 'issue-assign-me' }, ...withIcon('user', 'Assign to me')) as HTMLButtonElement;
-    const other = h('button.btn.small', { type: 'button', 'aria-expanded': 'false', 'data-focus': 'issue-assign-other' }, 'Someone else…') as HTMLButtonElement;
-    const none = h('button.btn.small', { type: 'button', 'data-focus': 'issue-unassign' }, 'Unassign') as HTMLButtonElement;
+    const other = h('button.btn.small', { type: 'button', title: 'Search the people who can be assigned and pick one', 'aria-expanded': 'false', 'data-focus': 'issue-assign-other' }, 'Someone else…') as HTMLButtonElement;
+    const none = h('button.btn.small', { type: 'button', title: 'Take the assignee off the issue at its source', 'data-focus': 'issue-unassign' }, 'Unassign') as HTMLButtonElement;
     const search = textInput('', { type: 'search', placeholder: 'Search people', 'aria-label': 'Search people to assign', 'data-focus': 'issue-people-search' });
     const hint = h('p.kb-ia-quiet');
     const results = h('ul.kb-ia-people', { 'aria-live': 'polite' });
@@ -201,7 +201,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   if (sections.includes('comments')) {
     const list = h('ol.kb-ia-comments', { 'aria-label': 'Comments' });
     const ta = textArea('', { rows: 3, placeholder: `Comment on ${issue.key} · ${sendHint()}`, 'aria-label': `Comment on ${issue.key}`, 'data-focus': 'issue-comment' });
-    const send = h('button.btn.small', { type: 'button', 'data-focus': 'issue-comment-send' }, 'Comment') as HTMLButtonElement;
+    const send = h('button.btn.small', { type: 'button', title: 'Post the comment on the issue at its source', 'data-focus': 'issue-comment-send' }, 'Comment') as HTMLButtonElement;
     const composer = h('div.kb-ia-composer', {}, ta, h('div.kb-ia-row', {}, h('small.kb-ia-quiet.grow', {}, sendHint()), send));
     let gen = 0;
     const comment = (c: IssueCommentItem) =>

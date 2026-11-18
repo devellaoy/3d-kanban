@@ -6,6 +6,7 @@ import { btn } from '../ui/kit';
 import { store } from '../state';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTask } from '../../shared/kanban/types.js';
+import { isRunning } from '../../shared/kanban/moves.js';
 import { attachBox, type AttachBox } from './attachbox';
 import { commentItem } from './commentview';
 import { kstore } from './store';
@@ -15,15 +16,23 @@ import type { Detail, TaskCtx } from './taskctx';
 
 export const COMMENTS_PAGE = 30;
 
+/** What sending a comment does to the task as it is now (docs/kanban.md, "Comments"): Send's tooltip. */
+function sendTitle(task: Pick<KanbanTask, 'status' | 'runState'>): string {
+  if (task.status === 'todo' || task.status === 'done' || task.status === 'archived') return 'Add the comment to the task: it is kept with it, and no agent starts';
+  if (task.status === 'on_hold') return 'Add the comment: the agent gets it when the task is resumed';
+  if (isRunning(task)) return 'Add the comment: the agent gets it in its terminal now, or at its next rest when it can’t take it yet';
+  return 'Add the comment: the agent takes it and goes back to work';
+}
+
 export class Conversation {
-  private composer: { el: HTMLElement; ta: HTMLTextAreaElement; attach: AttachBox } | null = null;
+  private composer: { el: HTMLElement; ta: HTMLTextAreaElement; attach: AttachBox; send: HTMLButtonElement } | null = null;
   private loadingOlder = false;
 
   constructor(private c: TaskCtx) {}
 
   private makeComposer(task: KanbanTask) {
     const ta = textArea('', { rows: 3, placeholder: 'Write a comment, answer, or tell the agent what to do next… (paste or drop files)', 'aria-label': 'Comment', 'data-focus': 'comment' });
-    const send = btn('Send', { icon: 'send', size: 'sm', attrs: { 'data-focus': 'act-comment' } });
+    const send = btn('Send', { icon: 'send', size: 'sm', attrs: { 'data-focus': 'act-comment', title: sendTitle(task) } });
     const hint = h('span.composite-note', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
     const wrap = h('div.kb-composer.composite');
     const attach = attachBox({ target: ta, dropZone: wrap, insertLinks: true });
@@ -41,11 +50,13 @@ export class Conversation {
     send.addEventListener('click', () => void go());
     onSendKey(ta, () => void go());
     wrap.append(ta, h('div.composite-bar', {}, attach.el, hint, send));
-    return { el: wrap, ta, attach };
+    return { el: wrap, ta, attach, send };
   }
 
   pane(d: Detail): HTMLElement[] {
     this.composer ??= this.makeComposer(d.task);
+    // The box is made once and the task moves on under it: the tooltip follows the task.
+    this.composer.send.title = sendTitle(d.task);
     const byId = new Map(d.attachments.map((a) => [a.id, a]));
     const list = h('ol.kb-comments', { 'aria-label': 'Conversation' });
     const runs = new Map(d.runs.map((r) => [r.id, r]));
@@ -53,7 +64,7 @@ export class Conversation {
     for (const comment of [...d.comments].reverse()) list.append(commentItem(comment, byId, (id) => this.c.openTask(id), { runs, openFile }));
     if (!d.comments.length) list.append(h('li.kb-muted', {}, 'No comments yet.'));
     const more = d.commentsMore
-      ? btn(this.loadingOlder ? 'Loading…' : 'Older comments', { size: 'sm', attrs: { class: 'kb-older', disabled: this.loadingOlder, 'data-focus': 'older', onclick: () => void this.older() } })
+      ? btn(this.loadingOlder ? 'Loading…' : 'Older comments', { size: 'sm', attrs: { class: 'kb-older', disabled: this.loadingOlder, 'data-focus': 'older', title: 'Load the comments from before these', onclick: () => void this.older() } })
       : null;
     return [this.composer.el, list, ...(more ? [more] : [])];
   }
