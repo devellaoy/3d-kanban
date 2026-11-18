@@ -1,9 +1,9 @@
-/* The kanban page's bottom bar (workerbar.ts): the floor's plain workers as tabs, and the buttons for
-   a new one. The mirror of the top bar (.kb-bar): the same surface, with the ink line on top. */
+/* The kanban page's bottom bar (workerbar.ts): the floor's meeting rooms and plain workers as tabs, and
+   the buttons for a new meeting, worker or shell. The mirror of the top bar (.kb-bar): the same surface, with the ink line on top. */
 .kb-wbar { flex: none; z-index: 30; display: flex; align-items: center; gap: 8px; min-width: 0; padding: 5px 24px; padding-bottom: max(5px, env(safe-area-inset-bottom)); padding-left: max(24px, env(safe-area-inset-left)); padding-right: max(24px, env(safe-area-inset-right)); background: var(--bar-bg); border-top: var(--bw) solid var(--ink); color: var(--text); }
 .kb-wbar-note { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 40px; color: var(--muted); }
 /* Another floor's project is on the board: the way back takes the tabs' place. */
-/* Only the two on the right keep their width: the way back gives way to a long project name. */
+/* Only the buttons on the right keep their width: the way back gives way to a long project name. */
 .kb-wbar-actions .btn { flex: none; }
 .kb-wbar .kb-wbar-back { flex: 0 1 auto; min-width: 0; margin: 4px auto 4px 0; }
 .kb-wbar-back > span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -26,6 +26,12 @@
 .kb-wtab-open:has(+ .kb-wtab-close.hidden) { padding-right: 7px; }
 .kb-wtab-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-wtab .pill { flex: none; }
+/* A meeting room's tab is one button (nothing to close): the room, how many sit at its table, and how
+   the meeting stands. Its pill never pulses: the tint says when someone at the table waits on you. */
+.kb-wtab-room .kb-wtab-open { padding-right: 7px; }
+.kb-wtab-room .kb-wtab-people { flex: none; margin-right: -3px; color: var(--muted); }
+.kb-wtab-count { flex: none; font-weight: var(--fw-semibold); color: var(--muted); font-variant-numeric: tabular-nums; }
+.kb-wtab-room .pill { animation: none; }
 /* One that's waiting on you stands out; one that's asleep or gone steps back. */
 .kb-wtab.needs_input { background: var(--bad-soft); }
 .kb-wtab.needs_input:hover { background: var(--bad-hover); }

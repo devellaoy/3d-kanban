@@ -264,6 +264,11 @@ export function meetingsOf(state: Pick<MeetingState, 'rooms'>): Meeting[] {
   return state.rooms.flatMap((r) => (r.current ? [r.current] : []));
 }
 
+/** Whether every room is running a meeting: none is free to call one in (also true of a floor without a room). */
+export function everyRoomRunning(state: Pick<MeetingState, 'rooms'>): boolean {
+  return state.rooms.every((r) => r.current?.status === 'running');
+}
+
 /** Whether a meeting is running in any room. */
 export function anyMeetingRunning(state: Pick<MeetingState, 'rooms'>): boolean {
   return state.rooms.some((r) => r.current?.status === 'running');

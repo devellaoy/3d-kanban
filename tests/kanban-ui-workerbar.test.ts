@@ -3,8 +3,9 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { barState, barWorkers, isPlainWorker, tabName, tabTitle } from '../src/client/kanban/workerbarmodel.js';
-import type { WorkerInfo } from '../src/shared/protocol.js';
+import { barRooms, barState, barWorkers, isPlainWorker, tabName, tabTitle } from '../src/client/kanban/workerbarmodel.js';
+import { everyRoomRunning } from '../src/shared/meetings.js';
+import type { Meeting, MeetingState, WorkerInfo } from '../src/shared/protocol.js';
 
 const DESK = 'desk-1';
 const w = (id: string, o: Partial<WorkerInfo> = {}) => ({ id, kind: 'agent', deskId: DESK, name: id, createdAt: 1, ...o }) as WorkerInfo;
@@ -22,6 +23,34 @@ test('barWorkers: only the plain ones, oldest first, ties by id, whatever the in
   const list = [w('c', { createdAt: 5 }), w('b', { createdAt: 2 }), w('a', { createdAt: 2 }), w('t', { createdAt: 1, kanban: { taskId: 1 } as WorkerInfo['kanban'] })];
   assert.deepEqual(barWorkers(list).map((x) => x.id), ['a', 'b', 'c']);
   assert.deepEqual(barWorkers(new Map(list.map((x) => [x.id, x])).values()).map((x) => x.id), ['a', 'b', 'c']);
+});
+
+test('barWorkers: a meeting worker a room tab covers is out, one nothing covers is a plain tab, a kanban one is never in', () => {
+  const list = [w('a', { createdAt: 1 }), w('m1', { createdAt: 2, meeting: 'room-1' }), w('m2', { createdAt: 3, meeting: 'room-1' }), w('t', { createdAt: 4, meeting: 'room-1', kanban: { taskId: 1 } as WorkerInfo['kanban'] }), w('k', { createdAt: 5, meeting: 'room-1', deskId: 'station-issues' })];
+  assert.deepEqual(barWorkers(list).map((x) => x.id), ['a', 'm1', 'm2']);
+  assert.deepEqual(barWorkers(list, new Set(['m1'])).map((x) => x.id), ['a', 'm2']);
+  assert.deepEqual(barWorkers(list, new Set(['m1', 'm2'])).map((x) => x.id), ['a']);
+});
+
+const meeting = (title: string, status: Meeting['status'], ...ids: (string | undefined)[]) => ({ title, status, seats: ids.map((workerId) => ({ role: 'r', deskId: 'chair', workerId })) }) as unknown as Meeting;
+const rooms = (...r: [string, Meeting | null][]) => ({ rooms: r.map(([id, current]) => ({ id, label: `Room ${id}`, current })) }) as Pick<MeetingState, 'rooms'>;
+const map = (...ws: WorkerInfo[]) => new Map(ws.map((x) => [x.id, x]));
+
+test('barRooms: no tab for an empty room or one whose workers are all gone; the rest in room order with status and workers', () => {
+  const ws = map(w('a'), w('b'), w('c'));
+  const state = rooms(['1', meeting('Debate', 'running', 'a', 'x', 'b')], ['2', null], ['3', meeting('Old', 'done', 'gone')], ['4', meeting('Review', 'done', 'c')], ['5', meeting('Halted', 'stopped', undefined, 'b')]);
+  assert.deepEqual(barRooms(state, ws), [
+    { id: '1', label: 'Room 1', title: 'Debate', status: 'running', workers: ['a', 'b'], needsInput: false },
+    { id: '4', label: 'Room 4', title: 'Review', status: 'done', workers: ['c'], needsInput: false },
+    { id: '5', label: 'Room 5', title: 'Halted', status: 'stopped', workers: ['b'], needsInput: false },
+  ]);
+});
+
+test('barRooms: needsInput follows a worker\'s shown status, and a room the map does not have still shows', () => {
+  const state = rooms(['room-x', meeting('T', 'running', 'a', 'b')]);
+  assert.equal(barRooms(state, map(w('a', { status: 'working' }), w('b', { status: 'needs_input' })))[0].needsInput, true);
+  assert.equal(barRooms(state, map(w('a', { status: 'working' }), w('b', { status: 'idle' })))[0].needsInput, false);
+  assert.deepEqual(barRooms(state, map(w('a'))).map((r) => r.id), ['room-x']);
 });
 
 test('tabTitle: the name, its work when it has one, shell for a shell', () => {
@@ -54,4 +83,11 @@ test('barState: none on the roof, elsewhere when the picked project is not the p
   assert.equal(barState('web', 'web', true), 'tabs');
   assert.equal(barState('api', 'web', true), 'elsewhere');
   assert.equal(barState(null, 'web', true), 'tabs');
+});
+
+test('everyRoomRunning: New meeting has a free room unless every room is in a meeting', () => {
+  assert.equal(everyRoomRunning(rooms(['a', null])), false);
+  assert.equal(everyRoomRunning(rooms(['a', meeting('m', 'running', 'x')], ['b', meeting('n', 'stopped', 'y')])), false);
+  assert.equal(everyRoomRunning(rooms(['a', meeting('m', 'running', 'x')], ['b', meeting('n', 'done', 'y')])), false);
+  assert.equal(everyRoomRunning(rooms(['a', meeting('m', 'running', 'x')], ['b', meeting('n', 'running', 'y')])), true);
 });

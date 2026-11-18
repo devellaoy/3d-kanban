@@ -5,6 +5,7 @@
 
 import { DESK_BY_ID, nextFreeSeat } from '../../shared/layout';
 import { officeFull, pressureNote } from '../../shared/machine';
+import { everyRoomRunning } from '../../shared/meetings';
 import { isAsleep } from '../../shared/status';
 import type { AgentEffort, AgentProvider } from '../../shared/protocol';
 import type { Net } from '../net';
@@ -127,7 +128,7 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
     };
   }
 
-  function showMeeting(preset?: MeetingPreset) {
+  function showMeeting(preset?: MeetingPreset, room?: string) {
     openMeeting(
       net,
       {
@@ -149,10 +150,19 @@ export function officeActions(net: Net, openWorker: (id: string) => void) {
           officeIsFull,
           hire: (deskId, prompt, o) => hire(deskId, prompt, o.worktree, o.provider, o.model, o.effort, o.repos, o),
         },
+        floorName: () => store.currentFloor()?.name ?? store.project?.name,
       },
       preset,
+      room,
     );
   }
 
-  return { boardActions, sendToWorker, showMeeting, freeSeat, hire, officeIsFull, hireNew, openShell };
+  /** The kanban page's New meeting: the form in the first free room, or the running meeting when every room has one. */
+  function newMeeting() {
+    if (everyRoomRunning(store.meeting)) showMeeting(); // a form would be a dead end
+    // An empty preset: openMeeting opens straight on the form when it gets one, and with no room the office picks the first free one.
+    else showMeeting({});
+  }
+
+  return { boardActions, sendToWorker, showMeeting, newMeeting, freeSeat, hire, officeIsFull, hireNew, openShell };
 }

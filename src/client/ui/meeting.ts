@@ -1,5 +1,5 @@
 import './meeting.css';
-import { MEETING_PATTERNS, MEETING_PATTERN_IDS, PAST_LINES, TOKENS_PER_SEAT, meetingAt, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
+import { MEETING_PATTERNS, MEETING_PATTERN_IDS, PAST_LINES, TOKENS_PER_SEAT, everyRoomRunning, meetingAt, meetingSpend, meetingStage, outputProblem, slugify } from '../../shared/meetings';
 import { fmtTokens, type Meeting, type MeetingPattern, type MeetingState, type MeetingTurn } from '../../shared/protocol';
 import type { Net } from '../net';
 import { store } from '../state';
@@ -30,6 +30,8 @@ export interface MeetingActions {
   openPr(workerId: string): void;
   /** Hands a finished meeting's output on as a kanban task or a worker (not offered when it's missing, or to visitors). */
   handoff?: HandoffHost;
+  /** The floor a meeting called from here is held on, named in the form's title where the floor isn't in sight (the kanban page and the 2D view). */
+  floorName?: () => string | undefined;
 }
 
 /** A meeting about a GitHub issue: the form filled in with it. */
@@ -142,7 +144,8 @@ export function openMeeting(net: Net, actions: MeetingActions, preset?: MeetingP
       });
     }
     if (body.firstChild !== form.body) {
-      title.textContent = '🤝 Call a meeting';
+      const floor = actions.floorName?.();
+      title.textContent = floor ? `🤝 Call a meeting · ${floor}` : '🤝 Call a meeting';
       body.replaceChildren(form.body);
       foot.replaceChildren(...form.foot.slice(0, 1), ...present(pastBtn), ...form.foot.slice(1));
     }
@@ -215,7 +218,7 @@ function renderStatus(m: Meeting, body: HTMLElement, foot: HTMLElement, net: Net
 const present = (...xs: (Node | null)[]): Node[] => xs.filter((x): x is Node => x !== null);
 
 /** No room to call a meeting in: the one asked for is running a meeting, or (without one) every room is. */
-const roomBusy = (state: MeetingState, room: string | undefined) => (room ? meetingAt(state, room)?.status === 'running' : state.rooms.every((r) => r.current?.status === 'running'));
+const roomBusy = (state: MeetingState, room: string | undefined) => (room ? meetingAt(state, room)?.status === 'running' : everyRoomRunning(state));
 
 /** What the form says about the room it calls the meeting in: why it can't, or what starting does to a finished meeting; empty when there's nothing to say. */
 function busyText(state: MeetingState, room: string | undefined): string {
