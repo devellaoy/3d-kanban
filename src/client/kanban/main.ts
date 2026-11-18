@@ -356,7 +356,7 @@ function newTask() {
 }
 
 /** The pull requests board (and the meeting room, hiring and prompts its buttons lead to), as the 2D view has them. */
-const { boardActions, hireNew, openShell } = officeActions(net, (id) => {
+const { boardActions, hireNew, openShell, showMeeting, newMeeting } = officeActions(net, (id) => {
   // "Go to its desk" is its terminal here: a task worker's in its task's window, as everywhere on this page.
   // Nothing is resumed on the way (for a waiting task that would be its Retry).
   const task = store.workers.get(id)?.kanban?.taskId;
@@ -364,9 +364,9 @@ const { boardActions, hireNew, openShell } = officeActions(net, (id) => {
   else showTerminal(id);
 });
 
-/** The bottom bar: the floor's plain workers as tabs (their terminals as the 2D view opens them), and a new worker or shell. */
+/** The bottom bar: the floor's meeting rooms and plain workers as tabs (their windows as the 2D view opens them), and a new meeting, worker or shell. */
 const { openWorker: openPlainWorker, sendHome } = workerOpener(net, { keypad: () => window.matchMedia('(max-width: 700px)').matches });
-const workerBar = installWorkerBar({ root: $('kb-workers'), openWorker: openPlainWorker, sendHome, hireNew, openShell, boardProject: () => kstore.project, projectName: (id) => kstore.projectOf(id)?.name, goToFloor: (id) => net.send({ t: 'floor.go', floor: id }) });
+const workerBar = installWorkerBar({ root: $('kb-workers'), openWorker: openPlainWorker, sendHome, openRoom: (room) => showMeeting(undefined, room), newMeeting, hireNew, openShell, boardProject: () => kstore.project, projectName: (id) => kstore.projectOf(id)?.name, goToFloor: (id) => net.send({ t: 'floor.go', floor: id }) });
 
 function showIssues() {
   const p = kstore.project ?? (kstore.projectOf(store.floor ?? undefined) ? store.floor : orderedProjects(kstore.projects)[0]?.id);

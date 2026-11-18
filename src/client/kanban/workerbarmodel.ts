@@ -1,17 +1,54 @@
-// The kanban page's bar of plain workers, without the DOM (workerbar.ts): which workers it shows, in
-// what order, a tab's name and tooltip, and whether the bar has tabs at all.
+// The kanban page's bar of workers and meeting rooms, without the DOM (workerbar.ts): which workers and
+// rooms it shows a tab for, in what order, a tab's name and tooltip, and whether the bar has tabs at all.
 
 import { DESK_BY_ID } from '../../shared/layout';
-import type { WorkerInfo } from '../../shared/protocol';
+import type { Meeting, MeetingState, WorkerInfo } from '../../shared/protocol';
+import { shownStatus } from '../../shared/status';
 
-/** A worker the bar shows: not a kanban task's, not a board agent at its kiosk, not a meeting's. Shells are in. */
+/** A worker the bar always shows: not a kanban task's, not a board agent at its kiosk, not a meeting's. Shells are in. */
 export function isPlainWorker(w: WorkerInfo): boolean {
-  return !w.kanban && !w.meeting && !DESK_BY_ID.get(w.deskId)?.station;
+  return notKanbanOrStation(w) && !w.meeting;
 }
 
-/** The bar's workers, oldest first (by id when hired in the same ms), so a tab never jumps. */
-export function barWorkers(workers: Iterable<WorkerInfo>): WorkerInfo[] {
-  return [...workers].filter(isPlainWorker).sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+/** Not a kanban task's worker and not a board agent at its kiosk (what both kinds of tab need). */
+const notKanbanOrStation = (w: WorkerInfo) => !w.kanban && !DESK_BY_ID.get(w.deskId)?.station;
+
+/**
+ * The bar's workers, oldest first (by id when hired in the same ms), so a tab never jumps. A meeting's
+ * worker is in only when no room tab `covers` it (e.g. it was left without a meeting by a restart), so it stays reachable.
+ */
+export function barWorkers(workers: Iterable<WorkerInfo>, covered: ReadonlySet<string> = new Set()): WorkerInfo[] {
+  return [...workers]
+    .filter((w) => notKanbanOrStation(w) && (!w.meeting || !covered.has(w.id)))
+    .sort((a, b) => a.createdAt - b.createdAt || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
+}
+
+/** A meeting room's tab: its meeting and the workers still at its table. */
+export interface BarRoom {
+  id: string;
+  label: string;
+  title: string;
+  status: Meeting['status'];
+  /** The ids of the table's workers that are still in the office, in seat order. */
+  workers: string[];
+  /** Any of them waits on an answer. */
+  needsInput: boolean;
+}
+
+/**
+ * The rooms the bar shows a tab for: those whose meeting still has a worker at the table, in room order.
+ * Not filtered by the floor's map: a room the map no longer has still gets its tab, so it can be cleared.
+ */
+export function barRooms(state: Pick<MeetingState, 'rooms'>, workers: ReadonlyMap<string, WorkerInfo>): BarRoom[] {
+  const out: BarRoom[] = [];
+  for (const r of state.rooms) {
+    const m = r.current;
+    if (!m) continue;
+    const here = m.seats.flatMap((s) => (s.workerId && workers.has(s.workerId) ? [workers.get(s.workerId)!] : []));
+    if (!here.length) continue;
+    out.push({ id: r.id, label: r.label, title: m.title, status: m.status, workers: here.map((w) => w.id), needsInput: here.some((w) => shownStatus(w) === 'needs_input') });
+  }
+  return out;
 }
 
 /** The longest name a tab shows, its closing "..." included. */
