@@ -1,0 +1,8 @@
+/* A button's tooltip (ui/tooltip.ts): one bubble for the page, above every window, placed by the script.
+   It never takes the pointer, so it can't get between the pointer and the button it describes. */
+.ui-tip { position: fixed; left: 0; top: 0; z-index: 120; width: max-content; max-width: min(280px, calc(100vw - 16px)); padding: 6px 10px; border-radius: var(--radius-xs); background: var(--strong); color: var(--text-on-strong); font-family: var(--font); font-size: var(--fs-sm); font-weight: var(--fw-semibold); line-height: 1.35; text-align: left; text-wrap: balance; white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; user-select: none; animation: ui-tip-in .12s ease-out; }
+/* The arrow: a corner of a small square, at the button's middle (--tip-arrow, from the bubble's left edge). */
+.ui-tip::after { content: ''; position: absolute; left: var(--tip-arrow, 50%); top: 100%; width: 8px; height: 8px; margin: -4px 0 0 -4px; background: inherit; transform: rotate(45deg); }
+.ui-tip.below::after { top: 0; }
+@keyframes ui-tip-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ui-tip { animation: none; } }

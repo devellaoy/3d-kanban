@@ -96,6 +96,7 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
   const paintGo = () => {
     go.textContent = onlySelf() ? (mode === 'panel' ? 'Call the panel for this PR' : 'Review this PR') : `Review ${picked.size} PRs together`;
     go.disabled = picked.size === 0;
+    go.title = !picked.size ? 'Tick at least one pull request first' : mode === 'panel' ? 'A few workers review the ticked pull requests in the meeting room' : 'One worker reviews the ticked pull requests together';
     count.textContent = `${picked.size} selected`;
   };
 

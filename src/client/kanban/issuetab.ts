@@ -62,7 +62,7 @@ export function mountIssueTab(api: KanbanApi, openTask: (id: number) => void): {
   const fail = (task: KanbanTask, why: string) => {
     const url = safeUrl(task.ticketUrl);
     failed = { why, url };
-    const again = btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { 'data-focus': 'issue-retry' } });
+    const again = btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { 'data-focus': 'issue-retry', title: 'Read the issue from its source again' } });
     again.addEventListener('click', () => show(task, true));
     put(true, [url ? outLink(task.ticket ?? '', url, { class: 'kb-iw-key', title: 'Open it at the source' }) : h('span.kb-iw-key', {}, task.ticket), h('p.kb-muted', {}, why), again]);
   };

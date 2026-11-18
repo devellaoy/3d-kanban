@@ -51,7 +51,7 @@ export function terminalPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
         'div.kb-worker-row',
         {},
         workerLabel(w.id, w.role, task.project),
-        c.o.openTerminal ? btn('Open the terminal', { icon: 'square-terminal', attrs: { 'data-focus': `term-${w.id}`, onclick: () => c.o.openTerminal?.(w.id, task.project) } }) : null,
+        c.o.openTerminal ? btn('Open the terminal', { icon: 'square-terminal', attrs: { 'data-focus': `term-${w.id}`, title: 'Open this worker’s live terminal in a window of its own: you can type in it', onclick: () => c.o.openTerminal?.(w.id, task.project) } }) : null,
       ),
     ),
   ];

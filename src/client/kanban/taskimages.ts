@@ -109,7 +109,7 @@ export function mountTaskImages(taskId: number, onCount: () => void, repos: () =
     if (canRemove && asking === img.name) {
       // Asked here in the picture's row: a window over the task's would be one more to shut.
       const no = btn('Cancel', { kind: 'quiet', size: 'xs', attrs: { 'data-focus': `img-no-${img.name}` } });
-      const yes = btn('Remove', { kind: 'danger', size: 'xs', attrs: { 'data-focus': `img-yes-${img.name}` } });
+      const yes = btn('Remove', { kind: 'danger', size: 'xs', attrs: { 'data-focus': `img-yes-${img.name}`, title: `Yes, remove ${img.name} from the task` } });
       no.addEventListener('click', () => {
         asking = '';
         draw();

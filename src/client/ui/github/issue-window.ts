@@ -76,7 +76,7 @@ export function openIssue(first: GhIssue, net: Net, actions: BoardActions, extra
   const kanban = actions.kanbanTask;
   const start = kanban
     ? btn('Create and start', { kind: 'primary', icon: 'play', attrs: { title: 'A kanban task for it (plan → implement → review), started at a free desk', onclick: () => (modal.close(), kanban(it)) } })
-    : btn('Hand to a worker', { kind: 'primary', icon: 'bot', attrs: { onclick: assign } });
+    : btn('Hand to a worker', { kind: 'primary', icon: 'bot', attrs: { title: 'Pick a worker or hire one: it gets this issue as its prompt', onclick: assign } });
   const toTask = h('button.link-btn.iw-task-link.hidden', { type: 'button', title: 'Open the kanban task made from it', onclick: () => it.taskId && (modal.close(), extras.openTask?.(it.taskId)) }) as HTMLButtonElement;
   const refresh = iconButton('refresh-cw', 'Refresh', { title: 'Refresh: read it from GitHub again' });
   const shell = modalShell({

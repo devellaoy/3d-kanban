@@ -174,7 +174,7 @@ export function withIcon(name: IconName, text: string, size?: number): [SVGSVGEl
   return [icon(name, { size }), text];
 }
 
-/** A button that is only an icon: its name for screen readers and its tooltip is `label`. */
+/** A button that is only an icon: its name for screen readers is `label`, and so is its tooltip unless `attrs` has a `title` that says more. */
 export function iconButton(name: IconName, label: string, attrs: Record<string, unknown> = {}, size?: number): HTMLButtonElement {
   // Built without ui/dom.ts's h(), which draws its ✕ with icon(): the two files would import each other.
   const b = document.createElement('button');
@@ -187,7 +187,8 @@ export function iconButton(name: IconName, label: string, attrs: Record<string, 
     else b.setAttribute(k, v === true ? '' : String(v));
   }
   b.setAttribute('aria-label', label);
-  b.setAttribute('title', label);
+  // A longer tooltip given in `attrs` stays; the label is the tooltip otherwise.
+  if (typeof attrs.title !== 'string' || !attrs.title) b.setAttribute('title', label);
   b.append(icon(name, { size }));
   return b;
 }

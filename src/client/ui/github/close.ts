@@ -23,7 +23,10 @@ export function openClose(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Net
 
   const goText = h('span');
   const go = h('button.btn.danger.lg', { type: 'button' }, icon(pull ? 'git-pull-request-closed' : 'circle-check'), goText) as HTMLButtonElement;
-  const paintGo = () => (goText.textContent = pull ? 'Close pull request' : `Close as ${reason}`);
+  const paintGo = () => {
+    goText.textContent = pull ? 'Close pull request' : `Close as ${reason}`;
+    go.title = pull ? 'Close the pull request on GitHub without merging it, with the comment if you wrote one' : `Close the issue on GitHub as ${reason}, with the comment if you wrote one`;
+  };
   const reasons = segmented<GhCloseReason>((Object.keys(REASON_LABEL) as GhCloseReason[]).map((r) => [r, REASON_LABEL[r]] as const), reason, (r) => ((reason = r), paintGo()), 'Why');
   const comment = h('textarea.inp', { rows: 4, placeholder: 'Leave a comment', 'aria-label': 'Closing comment', autofocus: true }) as HTMLTextAreaElement;
   const del = pull ? checkLine(['Delete ', h('code.code-chip', {}, pull.headRefName), ' too'], { id: 'close-del' }) : null;

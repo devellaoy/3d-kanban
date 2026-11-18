@@ -35,7 +35,7 @@ export function issueLink(api: KanbanApi): IssueLink {
   const unlink = btn('Unlink', { kind: 'quiet', size: 'sm', icon: 'unlink', attrs: { title: 'Take the issue off the task (the issue itself is not touched)', 'data-focus': 'issue-unlink' } });
   const key = textInput('', { maxlength: KANBAN_LIMITS.ticket, placeholder: 'UYT-1415 / gh:owner/repo#12', 'aria-label': 'Issue key', 'data-focus': 'issue-key' });
   const link = textInput('', { maxlength: KANBAN_LIMITS.url, placeholder: 'https://… (optional)', type: 'url', 'aria-label': 'Issue link', 'data-focus': 'issue-link' });
-  const saveBtn = btn('Save', { kind: 'primary', size: 'sm', attrs: { type: 'submit', 'data-focus': 'issue-save' } });
+  const saveBtn = btn('Save', { kind: 'primary', size: 'sm', attrs: { type: 'submit', title: 'Link the issue with this key to the task', 'data-focus': 'issue-save' } });
   const cancel = btn('Cancel', { kind: 'quiet', size: 'sm', attrs: { 'data-focus': 'issue-cancel' } });
   const form = h('form.kb-il-form.hidden', { 'aria-label': 'The issue’s key and link' }, key, link, saveBtn, cancel) as HTMLFormElement;
 

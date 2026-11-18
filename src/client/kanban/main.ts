@@ -34,8 +34,10 @@ import { TaskWindows } from './taskwindow';
 import { toolName } from './labels';
 import { projectSelect, run, select, textInput } from './ui';
 import { initAppearance } from '../themes';
+import { installTooltips } from '../ui/tooltip';
 
 initAppearance();
+installTooltips();
 
 const link = parseDeepLink(location.search);
 const FILTER_KEY = 'kanban.filter';

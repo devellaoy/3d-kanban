@@ -53,7 +53,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
 /** One reviewer takes every open pull request of the task at once. */
 function reviewButton(c: TaskCtx, task: KanbanTask): HTMLButtonElement {
   const reviewable = task.prs.filter((p) => p.repo && (p.state === 'OPEN' || p.state === 'DRAFT'));
-  const rev = btn(`Review these ${reviewable.length} PRs together`, { icon: 'eye', attrs: { title: 'One reviewer takes every pull request of the task at once', 'data-focus': 'act-review-prs' } });
+  const rev = btn(`Review these ${reviewable.length} PRs together`, { icon: 'eye', attrs: { title: 'One reviewer takes the task’s open and draft pull requests together; the office may make the review a task of its own', 'data-focus': 'act-review-prs' } });
   rev.addEventListener('click', async () => {
     const ok = await c.req({ t: 'kanban.pr.review', project: task.project, taskId: task.id, prs: reviewable.map((p) => ({ repo: p.repo!, number: p.number })) }, rev, 'A reviewer takes the PRs together');
     // The review runs as a task: another one than this, when the office made a new one.

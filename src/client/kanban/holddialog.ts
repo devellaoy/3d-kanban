@@ -16,8 +16,8 @@ import { textArea } from './ui';
 type Subject = Pick<KanbanTaskCard, 'id' | 'status' | 'hold'>;
 
 /** A dialog with Cancel and the one confirm button; ✕, Esc and Cancel close it without calling `submit`. */
-function ask(head: { icon: IconName; title: string; id: number }, fields: (Node | null)[], confirm: string, submit: () => void) {
-  const ok = btn(confirm, { kind: 'primary' });
+function ask(head: { icon: IconName; title: string; id: number }, fields: (Node | null)[], confirm: { label: string; title: string }, submit: () => void) {
+  const ok = btn(confirm.label, { kind: 'primary', attrs: { title: confirm.title } });
   const no = btn('Cancel', { kind: 'quiet' });
   const body = h('div.kb-hold-fields', {}, ...fields);
   const shell = modalShell({ cls: 'kb-hold w480', icon: head.icon, title: head.title, id: `#${head.id}`, label: `${head.title}: task ${head.id}`, body, footerRight: [no, ok] });
@@ -43,7 +43,7 @@ export function openHoldDialog(task: Pick<KanbanTaskCard, 'id'>, onSubmit: (extr
   ask(
     { icon: 'circle-pause', title: 'Put on hold', id: task.id },
     [formField('What is it waiting for?', note, { optional: true }), formField('Hold until', until, { optional: true, hint: 'Shown on the card. The task is not resumed by itself.' })],
-    'Put on hold',
+    { label: 'Put on hold', title: 'Move the task to On hold: its worker goes home and the worktree is kept' },
     () => {
       const text = note.value.trim();
       const day = dayStartMs(until.value);
@@ -59,7 +59,7 @@ export function openResumeDialog(task: Pick<KanbanTaskCard, 'id' | 'hold'>, onSu
   ask(
     { icon: 'play', title: 'Resume', id: task.id },
     [since, formField('A message for the agent', note, { optional: true, hint: 'The agent carries on where it left off, with the comments written while it was on hold.' })],
-    'Resume',
+    { label: 'Resume', title: 'Move the task back to In progress: the agent carries on where it left off' },
     () => {
       const text = note.value.trim();
       onSubmit(text ? { note: text } : {});

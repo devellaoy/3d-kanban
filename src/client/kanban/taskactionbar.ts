@@ -36,15 +36,15 @@ function specOf(id: Exclude<ActionId, 'fix-prs' | 'resolve-conflicts' | 'find-pr
   const move = (to: 'in_progress' | 'on_hold', b: HTMLButtonElement, extras: { note?: string; until?: number }) => void c.req({ t: 'kanban.task.move', id: tid, to, ...extras }, b);
   switch (id) {
     case 'start':
-      return { label: 'Start', icon: 'play', go: send({ t: 'kanban.task.start', id: tid }, 'Started') };
+      return { label: 'Start', icon: 'play', title: 'An agent takes the task to a free desk and works through its phases', go: send({ t: 'kanban.task.start', id: tid }, 'Started') };
     case 'edit':
-      return { label: 'Edit', icon: 'pencil', go: () => c.o.edit?.(task) };
+      return { label: 'Edit', icon: 'pencil', title: 'Change the task’s text and settings before it starts', go: () => c.o.edit?.(task) };
     case 'stop':
-      return { label: 'Stop', icon: 'square', go: send({ t: 'kanban.task.stop', id: tid }, 'Stopping…') };
+      return { label: 'Stop', icon: 'square', title: 'Interrupt the agent’s turn: its worker stays at the desk and the task waits for you', go: send({ t: 'kanban.task.stop', id: tid }, 'Stopping…') };
     case 'approve': {
       // The plan on the screen is the one approved: the office refuses when a newer one came meanwhile.
       const plan = draftPlan(c);
-      return { label: 'Approve the plan', icon: 'check', go: send({ t: 'kanban.plan.approve', id: tid, ...(plan ? { planId: plan.id } : {}) }, 'Plan approved') };
+      return { label: 'Approve the plan', icon: 'check', title: 'Accept this plan: the agent goes on to implement it', go: send({ t: 'kanban.plan.approve', id: tid, ...(plan ? { planId: plan.id } : {}) }, 'Plan approved') };
     }
     case 'request-changes':
       return {
@@ -57,11 +57,11 @@ function specOf(id: Exclude<ActionId, 'fix-prs' | 'resolve-conflicts' | 'find-pr
         },
       };
     case 'retry-now':
-      return { label: 'Retry now', icon: 'rotate-cw', go: send({ t: 'kanban.task.retry', id: tid }, 'Trying again') };
+      return { label: 'Retry now', icon: 'rotate-cw', title: 'Try again now, without waiting for the usage limit to reset', go: send({ t: 'kanban.task.retry', id: tid }, 'Trying again') };
     case 'retry':
-      return { label: 'Retry', icon: 'rotate-cw', go: send({ t: 'kanban.task.retry', id: tid }, 'Trying again') };
+      return { label: 'Retry', icon: 'rotate-cw', title: 'Run the phase that failed or was interrupted again', go: send({ t: 'kanban.task.retry', id: tid }, 'Trying again') };
     case 'continue':
-      return { label: 'Continue', icon: 'play', go: send({ t: 'kanban.task.continue', id: tid }, 'Continuing') };
+      return { label: 'Continue', icon: 'play', title: 'The agent carries on in the same session from where it stopped', go: send({ t: 'kanban.task.continue', id: tid }, 'Continuing') };
     case 'continue-unanswered':
       return { label: 'Continue without answering', title: 'The agent goes on with assumptions of its own, and names them', go: send({ t: 'kanban.task.continue', id: tid }, 'Continuing') };
     case 'review-round':
@@ -85,6 +85,7 @@ function specOf(id: Exclude<ActionId, 'fix-prs' | 'resolve-conflicts' | 'find-pr
       return {
         label: 'Delete',
         icon: 'trash-2',
+        title: 'Delete the task with its plan, comments and runs; it asks first',
         go: (b) =>
           confirmDialog(
             'Delete task',

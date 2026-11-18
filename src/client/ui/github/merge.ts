@@ -107,7 +107,17 @@ export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: (
   const auto = checkLine('Merge automatically once the requirements pass', { id: 'merge-auto' });
   auto.el.title = 'gh pr merge --auto (the repo must allow auto-merge)';
   auto.box.checked = st.auto && st.cls !== 'ok';
-  const paintGo = () => (goText.textContent = auto.box.checked ? 'Merge when ready' : METHOD_LABEL[method]);
+  const paintGo = () => {
+    goText.textContent = auto.box.checked ? 'Merge when ready' : METHOD_LABEL[method];
+    // Greyed out, it says why: what stands in the way, or that GitHub is at it.
+    go.title = busy
+      ? 'Waiting for GitHub’s answer…'
+      : !st.can
+        ? st.text
+        : auto.box.checked
+          ? 'GitHub merges the pull request by itself once its requirements pass'
+          : `Merge the pull request into ${it.baseRefName} on GitHub now, the way picked above`;
+  };
   const methodBtns = segmented<GhMergeMethod>(methods.map((m) => [m, METHOD_SHORT[m]] as const), method, (m) => ((method = m), savePref(MERGE_KEY, { method, deleteBranch }), paintGo()), 'How to merge');
   for (const [m, b] of methodBtns.buttons) b.title = METHOD_LABEL[m];
   auto.box.addEventListener('change', paintGo);
@@ -156,6 +166,7 @@ export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: (
     if (busy) return;
     busy = true;
     go.disabled = true;
+    paintGo();
     result.className = 'gh-merge-result';
     result.replaceChildren(h('span.spinner'), auto.box.checked && st.auto ? 'Asking GitHub to merge it when ready…' : 'Merging…');
     // key.
@@ -164,6 +175,7 @@ export function openMerge(it: GhPull, d: GhPullDetail, net: Net, handToWorker: (
       busy = false;
       if (msg.error) {
         go.disabled = false;
+        paintGo();
         result.className = 'gh-merge-result error';
         result.replaceChildren(msg.error);
         return;

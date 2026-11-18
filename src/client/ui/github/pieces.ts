@@ -71,7 +71,7 @@ export function spinnerRow(text: string) {
 }
 
 export function errorBox(text: string, retry?: () => void) {
-  return h('div.gh-error', { role: 'alert' }, `Couldn't load from GitHub: ${text}`, retry ? btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { onclick: retry } }) : null);
+  return h('div.gh-error', { role: 'alert' }, `Couldn't load from GitHub: ${text}`, retry ? btn('Retry', { icon: 'rotate-cw', size: 'sm', attrs: { title: 'Ask GitHub again', onclick: retry } }) : null);
 }
 
 /** A pull request's state as the kit's tone (ui/kit.ts prPill). */

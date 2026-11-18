@@ -62,6 +62,7 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
     const { add, remove } = changes();
     save.disabled = busy || (!add.length && !remove.length);
     save.textContent = busy ? 'Saving…' : 'Save labels';
+    save.title = busy ? 'Waiting for GitHub’s answer…' : add.length || remove.length ? 'Put the ticked labels on it on GitHub and take the unticked ones off' : 'Tick or untick a label first: nothing has changed';
     summary.textContent = add.length || remove.length ? [...add.map((l) => `+${l}`), ...remove.map((l) => `−${l}`)].join('  ') : `${on.size} label${on.size === 1 ? '' : 's'} on it`;
     for (const box of list.querySelectorAll('input')) box.disabled = busy;
   };
@@ -161,6 +162,6 @@ export function openLabels(kind: 'issue' | 'pull', it: GhIssue | GhPull, net: Ne
 /** The button that opens the label picker, after an issue's or PR's labels. */
 export function labelButton(kind: 'issue' | 'pull', it: () => GhIssue | GhPull, net: Net, onSaved: (labels: GhLabel[]) => void) {
   const open = () => openLabels(kind, it(), net, onSaved);
-  if (it().labels.length > 0) return iconButton('pencil', 'Edit labels', { class: 'xs', onclick: open }, 14);
-  return h('button.link-btn', { type: 'button', onclick: open }, 'Add labels');
+  if (it().labels.length > 0) return iconButton('pencil', 'Edit labels', { class: 'xs', title: 'Pick which of the repository’s labels it has', onclick: open }, 14);
+  return h('button.link-btn', { type: 'button', title: 'Pick which of the repository’s labels it has', onclick: open }, 'Add labels');
 }

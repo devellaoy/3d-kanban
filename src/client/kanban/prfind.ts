@@ -41,7 +41,13 @@ export function openFindWindow(api: KanbanApi, task: Pick<KanbanTask, 'id' | 'ti
   const { project, ticket } = task;
   const taskId = task.id;
   const picked = new Set<KanbanPrBundleItem>();
-  const link = btn('Link selected', { kind: 'primary', attrs: { disabled: true } });
+  const link = btn('Link selected', { kind: 'primary' });
+  /** Greyed out until something is ticked, and its tooltip says so. */
+  const paintLink = () => {
+    link.disabled = !picked.size;
+    link.title = picked.size ? 'Link the ticked pull requests to the task: they show on its Pull requests tab' : 'Tick at least one pull request first';
+  };
+  paintLink();
   const cancel = btn('Cancel', { kind: 'quiet' });
   const count = h('span', { 'aria-live': 'polite' }, pickedText(0, candidates.length));
   const rows = candidates.map((p) => {
@@ -53,7 +59,7 @@ export function openFindWindow(api: KanbanApi, task: Pick<KanbanTask, 'id' | 'ti
       }
       if (box.checked) picked.add(p);
       else picked.delete(p);
-      link.disabled = !picked.size;
+      paintLink();
       count.textContent = pickedText(picked.size, candidates.length);
     });
     return prPickRow({ box, title: p.title, name: prName(p).replace('#', ' #'), url: p.url, branch: p.branch, state: p.state });
@@ -74,8 +80,9 @@ export function openFindWindow(api: KanbanApi, task: Pick<KanbanTask, 'id' | 'ti
   cancel.addEventListener('click', () => modal.close());
   link.addEventListener('click', async () => {
     const prs = [...picked].map((p) => ({ repo: p.repo, number: p.number }));
+    link.title = 'Linking them…';
     const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.link', project, taskId, prs }), link);
-    if (!ok) return;
+    if (!ok) return paintLink();
     modal.close();
     toast(linkedText(prs));
   });

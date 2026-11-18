@@ -37,7 +37,7 @@ function agentEditor(c: TaskCtx, task: Detail['task']): HTMLElement {
     c.paint('overview');
     c.focusBox('agent-change');
   };
-  const save = btn('Save', { size: 'sm', attrs: { 'data-focus': 'agent-save' } });
+  const save = btn('Save', { size: 'sm', attrs: { 'data-focus': 'agent-save', title: 'Use this agent, model and effort from the task’s next phase on' } });
   save.addEventListener('click', async () => {
     const m = model.input.value.trim();
     if (await c.req({ t: 'kanban.task.update', id: task.id, patch: { tool: tool.value as KanbanTool, model: m || null, effort: (effort.value as KanbanEffort) || null } }, save, 'Agent changed')) close();
@@ -55,7 +55,7 @@ export function detailsPane(c: TaskCtx, d: Detail): HTMLElement[] {
   const review = c.review(task);
   const editable = !isRunning(task) && task.status !== 'archived';
   if (!editable) c.ui.agentOpen = false;
-  const change = editable && !c.ui.agentOpen ? h('button.link-btn', { type: 'button', 'data-focus': 'agent-change' }, 'Change the agent') : null;
+  const change = editable && !c.ui.agentOpen ? h('button.link-btn', { type: 'button', 'data-focus': 'agent-change', title: 'Pick another agent, model or effort for the task’s next phases' }, 'Change the agent') : null;
   change?.addEventListener('click', () => {
     c.ui.agentOpen = true;
     c.paint('overview');
