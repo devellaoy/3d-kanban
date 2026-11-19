@@ -21,7 +21,7 @@ import { takeIssueForTask } from './autoassign.js';
 import { takeIssue } from './take.js';
 import { agentCreateHook } from './agent-create.js';
 import { agentIssueHook } from './agent-read.js';
-import { TICKET_VERIFIED, urlSite, type TicketBinding } from './agent-read-scope.js';
+import { bindTicket, taskTickets } from './ticket-binding.js';
 import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
 import type { runOneShot } from '../../oneshot.js';
 import { draftHandlers } from './draft.js';
@@ -210,6 +210,11 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       // The sources changed while it ran: these are the old ones' issues.
       if ((generation.get(project) ?? 0) !== gen) return state(project);
       cache.set(project, next);
+      // The tasks of the listed Jira issues are bound to them (ticket-binding.ts).
+      if (items.some((i) => i.source === 'jira')) {
+        const tasks = taskTickets(ctx, project);
+        for (const i of items) bindTicket(ctx, project, i, tasks);
+      }
       // Only a fetch that every source answered shows the issues as they are.
       if (!errors.length) settle(project, startedAt);
       return next;
@@ -302,14 +307,6 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     return seen && now() - seen.at < BROWSED_TTL_MS ? seen.issue : undefined;
   };
 
-  /** A task made from a Jira issue the office itself had from Jira is bound to it (agent-read.ts: an open source then still lets its worker read it). */
-  const bind = (taskId: number, issue: NormalizedIssue) => {
-    const site = issue.source === 'jira' ? urlSite(issue.url) : undefined;
-    if (!site) return;
-    const data: TicketBinding = { ticket: issue.key, site, ...(issue.sourceId ? { source: issue.sourceId } : {}) };
-    ctx.repo.appendEvent(taskId, TICKET_VERIFIED, data);
-  };
-
   /**
    * The task for an issue, once per ticket: made, or the one it has already (started if it is still
    * in To do and `start` is asked). The caller answers with `result` first and then awaits `claim`,
@@ -352,7 +349,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         { start: opts.start, deskId: opts.deskId, event: { ticket: issue.key } },
       );
       if (typeof made === 'string') return made;
-      bind(made.task.id, issue);
+      bindTicket(ctx, project, issue);
       ctx.broadcast(message(project), project);
       wallChanged(project);
       const r: IssueTaskResult = { taskId: made.task.id, existed: false, ...(made.startError ? { startError: made.startError } : opts.start ? { started: true } : {}) };
@@ -368,7 +365,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       opts.start,
       startOpts,
     );
-    if (!made.existed) bind(made.task.id, issue);
+    if (!made.existed) bindTicket(ctx, project, issue);
     ctx.broadcast(message(project), project);
     wallChanged(project);
     const r: IssueTaskResult = { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) };
@@ -379,13 +376,18 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
 
   const loadIssue = async (project: string, key: string, source?: string) => {
     const issue = await browsing.load(project, key, source);
-    if (issue) browse(project, issue);
+    if (issue) {
+      browse(project, issue);
+      bindTicket(ctx, project, issue);
+    }
     return issue;
   };
   const rememberIssue = (project: string, issue: NormalizedIssue) => {
     const kept = acted.get(project) ?? new Map();
     acted.set(project, kept);
     kept.set(issue.key, { issue, at: now() });
+    // What a person's window shows came from Jira (the list, or a fresh read): its tasks are bound to it.
+    bindTicket(ctx, project, issue);
   };
   const drafting = draftHandlers(ctx, { find, load: loadIssue, remember: rememberIssue, ...(opts.oneShot ? { run: opts.oneShot } : {}) });
 

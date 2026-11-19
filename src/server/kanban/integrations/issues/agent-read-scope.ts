@@ -27,19 +27,15 @@ export interface ReadRefusal { status: 403 | 409; error: string }
 /** The issue the office already knows from Jira under a key (the issues plugin's `find`), if any. */
 export type KnownIssue = (key: string) => NormalizedIssue | undefined;
 
-/** The task event that binds a task to the Jira ticket the SERVER itself had from Jira (never a typed value): data is TicketBinding. */
-export const TICKET_VERIFIED = 'ticket.verified';
+/** A task's server-verified binding to the Jira ticket the SERVER itself had from Jira (never a typed value), as db/ticketbindings.ts stores it. */
 export interface TicketBinding { ticket: string; site: string; source?: string }
 
-/** Whether the task's events hold a server-verified binding of `ticket` (its current one) on `site`. */
-export function hasBinding(events: readonly { kind: string; data?: unknown }[], ticket: string, site: string): boolean {
-  return events.some((e) => {
-    const d = e.kind === TICKET_VERIFIED ? (e.data as Partial<TicketBinding> | null) : undefined;
-    return !!d && typeof d.ticket === 'string' && typeof d.site === 'string' && d.ticket.toUpperCase() === ticket.toUpperCase() && sameJiraSite(d.site, site);
-  });
+/** Whether the binding is for `ticket` (the task's current one, case-insensitively) on `site`. */
+export function bindingCovers(b: TicketBinding | undefined, ticket: string, site: string): boolean {
+  return !!b && b.ticket.toUpperCase() === ticket.toUpperCase() && sameJiraSite(b.site, site);
 }
 
-/** Whether a source is bound to the key (a task's own ticket, see hasBinding): decided by the caller from data it holds. */
+/** Whether a source is bound to the key (a task's own ticket, see bindingCovers): decided by the caller from data it holds. */
 export type Bound = (s: JiraSource, key: string) => boolean;
 
 const OPEN_HINT = ' An admin can name the Jira project keys on the source in Settings → Projects → Issue sources to let agents read its tickets.';

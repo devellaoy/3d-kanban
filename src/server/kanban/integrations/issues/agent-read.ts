@@ -14,8 +14,9 @@ import { JIRA_KEY_RE, jiraCovers } from './browse/jql.js';
 import { sameJiraSite } from '../../../../shared/kanban/jira-connections.js';
 import { jiraCall, jiraChildren, jiraComments } from './jira-ops.js';
 import { jiraIssue } from './jira.js';
-import { TICKET_VERIFIED, hasBinding, jiraReadSource, jiraSourcesOf, readCovers, urlSite, type Bound, type JiraSource, type KnownIssue, type TicketBinding } from './agent-read-scope.js';
-import { TASK_EVENTS_CAP } from '../../db/repository.js';
+import { bindingCovers, jiraReadSource, jiraSourcesOf, readCovers, urlSite, type Bound, type JiraSource, type KnownIssue } from './agent-read-scope.js';
+import { getTicketBinding } from '../../db/ticketbindings.js';
+import { bindTicket } from './ticket-binding.js';
 import { ISSUE_BODY_MAX, type IssueActIo, type IssueSourceIo } from './source.js';
 import type { NormalizedIssue } from '../../../../shared/kanban/types.js';
 
@@ -91,12 +92,10 @@ export async function readIssueFor(ctx: KanbanContext, deps: AgentReadDeps, who:
   let target: { key: string; url?: string } | Answer;
   /** The task whose OWN ticket is read (no ref, or a task ref of this project): its server-verified bindings widen an open source. */
   let ownTask: KanbanTask | undefined;
-  let events: { kind: string; data?: unknown }[] | undefined;
   const bound: Bound = (s, k) => {
     const t = ownTask;
     if (!t?.ticket || t.ticket.toUpperCase() !== k.toUpperCase()) return false;
-    events ??= ctx.repo.listEvents(t.id, TASK_EVENTS_CAP);
-    return hasBinding(events, t.ticket, s.site);
+    return bindingCovers(getTicketBinding(ctx.repo.db, t.id), t.ticket, s.site);
   };
   /** A task's own ticket is classified as it is, never read as a reference again. */
   const ticketOf = (t: KanbanTask): { key: string; url?: string } | Answer =>
@@ -129,18 +128,10 @@ export async function readIssueFor(ctx: KanbanContext, deps: AgentReadDeps, who:
   const { key } = target;
   const source = jiraReadSource(scoped, connections, key, target.url, known, bound);
   if ('error' in source) return refuse(source.status, source.error);
-  // Jira had the task's own ticket through a source of the project: bound for good, so it stays readable once it leaves the office's cache.
-  const verified = () => {
-    const t = ownTask;
-    if (!t?.ticket || bound(source, key) || t.ticket.toUpperCase() !== key.toUpperCase()) return;
-    const data: TicketBinding = { ticket: key, site: source.site, source: source.id };
-    ctx.repo.appendEvent(t.id, TICKET_VERIFIED, data);
-    events = undefined;
-  };
-  return fetchIssue(deps, project, scoped, source, key, known, bound, verified);
+  return fetchIssue(ctx, deps, project, scoped, source, key, known, bound);
 }
 
-async function fetchIssue(deps: AgentReadDeps, project: string, jiraSources: JiraSource[], source: JiraSource, key: string, known: KnownIssue, bound: Bound, verified: () => void): Promise<Answer> {
+async function fetchIssue(ctx: KanbanContext, deps: AgentReadDeps, project: string, jiraSources: JiraSource[], source: JiraSource, key: string, known: KnownIssue, bound: Bound): Promise<Answer> {
   // Shared: the office's own connection, whoever asks. Never a browse cache: one read is exactly three Jira calls.
   const io: IssueActIo = { ...deps.io(project), who: 'Agent Office', shared: true };
   const at = { site: source.site, ...(source.connection ? { connection: source.connection } : {}) };
@@ -157,7 +148,8 @@ async function fetchIssue(deps: AgentReadDeps, project: string, jiraSources: Jir
   // A moved issue answers under its new key, which this source may not cover.
   if (!readCovers(source, issue.key, known, bound)) return refuse(403, `${key} is now ${issue.key}, which isn't inside the project's Jira source: nothing more was asked of Jira`);
 
-  if (issue.key.toUpperCase() === key.toUpperCase()) verified();
+  // Jira had it through a source of the project, and the scope rule let the read through: the tasks of this ticket are bound to it.
+  if (issue.key.toUpperCase() === key.toUpperCase()) bindTicket(ctx, project, issue);
 
   const [cs, ch] = await Promise.allSettled([jiraComments(io, at, issue.key), jiraChildren(io, at, issue.key)]);
   const notes: string[] = [];

@@ -4,6 +4,8 @@ import assert from 'node:assert/strict';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
 import { ISSUE_READ_LIMITS, ISSUE_READ_NOTICE } from '../src/server/kanban/integrations/issues/agent-read.js';
+import { getTicketBinding, setTicketBinding } from '../src/server/kanban/db/ticketbindings.js';
+import { TASK_EVENTS_CAP } from '../src/server/kanban/db/repository.js';
 import { jiraReadAdvertised, jiraReadSource } from '../src/server/kanban/integrations/issues/agent-read-scope.js';
 import { officeTasks } from '../src/server/kanban/http/hooks.js';
 import type { KanbanHookCaller } from '../src/server/kanban/registry.js';
@@ -545,7 +547,8 @@ test('children and parent of an allowed issue: an open source covers all of them
   assert.deepEqual(rb.issue.parent, { key: 'ZZ-1' });
 });
 
-const bindings = (ctx: ReturnType<typeof setup>['ctx'], id: number) => ctx.repo.listEvents(id).filter((e) => e.kind === 'ticket.verified').map((e) => e.data);
+const binding = (ctx: ReturnType<typeof setup>['ctx'], id: number) => getTicketBinding(ctx.repo.db, id);
+const bind = (ctx: ReturnType<typeof setup>['ctx'], id: number, ticket: string, site: string) => setTicketBinding(ctx.repo.db, id, { ticket, site, source: 's1' });
 
 test('a task made from a Jira issue stays readable on an open source after the issue leaves the cache, and shows the new status', async () => {
   let status = 'To Do';
@@ -553,7 +556,7 @@ test('a task made from a Jira issue stays readable on an open source after the i
   await a.prime();
   const made = await a.createTaskOf('HR-1');
   assert.ok(made.taskId, JSON.stringify(made));
-  assert.deepEqual(bindings(a.ctx, made.taskId), [{ ticket: 'HR-1', site: SITE, source: 's1' }]);
+  assert.deepEqual(binding(a.ctx, made.taskId), { ticket: 'HR-1', site: SITE, source: 's1' });
   // The office restarts and the issue is Done now (off the list): the cache knows nothing.
   a.restart();
   a.calls.length = 0;
@@ -571,10 +574,10 @@ test('a task whose ticket was only typed has no binding: refused, Jira not asked
   const typed = a.task({ ticket: 'HR-1', ticketUrl: `https://${SITE}/browse/HR-1` });
   assert.equal((await a.call(undefined, a.worker({ taskId: typed.id }))).status, 403);
   assert.equal(a.calls.length, 0);
-  assert.deepEqual(bindings(a.ctx, typed.id), []);
+  assert.equal(binding(a.ctx, typed.id), undefined);
   // A binding for the old ticket does not cover a changed ticket.
   const t = a.task({ ticket: 'HR-1' });
-  a.ctx.repo.appendEvent(t.id, 'ticket.verified', { ticket: 'HR-1', site: SITE, source: 's1' });
+  bind(a.ctx, t.id, 'HR-1', SITE);
   assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
   a.ctx.repo.updateTask(t.id, { ticket: 'HR-2' });
   a.calls.length = 0;
@@ -582,12 +585,12 @@ test('a task whose ticket was only typed has no binding: refused, Jira not asked
   assert.equal(a.calls.length, 0);
   // A binding on another site does not cover this source's site.
   const o = a.task({ ticket: 'HR-3' });
-  a.ctx.repo.appendEvent(o.id, 'ticket.verified', { ticket: 'HR-3', site: OTHER, source: 'x' });
+  bind(a.ctx, o.id, 'HR-3', OTHER);
   assert.equal((await a.call(undefined, a.worker({ taskId: o.id }))).status, 403);
   assert.equal(a.calls.length, 0);
   // A bare key given as ref never uses a binding: another task's bound ticket is not readable by key.
   const b = a.task({ ticket: 'HR-9' });
-  a.ctx.repo.appendEvent(b.id, 'ticket.verified', { ticket: 'HR-9', site: SITE, source: 's1' });
+  bind(a.ctx, b.id, 'HR-9', SITE);
   assert.equal((await a.call('HR-9', a.worker({ taskId: b.id }))).status, 403);
   assert.equal((await a.call('HR-9')).status, 403);
   assert.equal(a.calls.length, 0);
@@ -596,14 +599,73 @@ test('a task whose ticket was only typed has no binding: refused, Jira not asked
 test('the first successful own-ticket read through the cache binds it, and a later read works with an empty cache', async () => {
   const a = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] } });
   await a.prime();
-  // Linked afterwards through the Issue tab: only typed, but the office knows the issue from Jira.
+  // Linked afterwards through the Issue tab: only typed, but the office knows the issue from Jira (the list refresh already bound it).
   const t = a.task({ ticket: 'HR-1', ticketUrl: `https://${SITE}/browse/HR-1` });
-  assert.deepEqual(bindings(a.ctx, t.id), []);
+  assert.equal(binding(a.ctx, t.id), undefined);
   assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
-  assert.deepEqual(bindings(a.ctx, t.id), [{ ticket: 'HR-1', site: SITE, source: 's1' }]);
-  // Read again: no second binding. Then the cache is gone and it still reads.
-  assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
-  assert.equal(bindings(a.ctx, t.id).length, 1);
+  assert.deepEqual(binding(a.ctx, t.id), { ticket: 'HR-1', site: SITE, source: 's1' });
   a.restart();
   assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
+});
+
+const linked = (a: ReturnType<typeof setup>) => a.task({ ticket: 'HR-1', ticketUrl: `https://${SITE}/browse/HR-1` });
+const worker = (a: ReturnType<typeof setup>, id: number) => a.worker({ taskId: id });
+const sendGet = (a: ReturnType<typeof setup>) => (a.issues().plugin.ws as any)['kanban.issue.get']({ name: 'Panu', accountId: 'acc1', send: () => {} }, { t: 'kanban.issue.get', project: 'app', rid: 'r', issueKey: 'HR-1' });
+
+test('a ticket linked afterwards is bound when the server reads it for a person, and survives a restart that finds it off the list', async () => {
+  let status = 'To Do';
+  const a = setup({ sources: [jira([])], jira: (c) => (c.url.includes('/rest/api/3/issue/HR-1?') ? { body: issueJson('HR-1', { status: { name: status } }) } : undefined) });
+  const t = linked(a);
+  await sendGet(a);
+  assert.deepEqual(binding(a.ctx, t.id), { ticket: 'HR-1', site: SITE, source: 's1' });
+  a.restart();
+  status = 'Done';
+  a.calls.length = 0;
+  const r = await a.call(undefined, worker(a, t.id));
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.body.issue.status, 'Done');
+});
+
+test('a ticket linked afterwards is bound by a list refresh that returns it', async () => {
+  const a = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] } });
+  const t = linked(a);
+  await a.prime();
+  assert.deepEqual(binding(a.ctx, t.id), { ticket: 'HR-1', site: SITE, source: 's1' });
+  a.restart();
+  assert.equal((await a.call(undefined, worker(a, t.id))).status, 200);
+});
+
+test('a typed ticket the server never got from Jira stays refused with no Jira call, also once the task started', async () => {
+  const a = setup({ sources: [jira([])] });
+  const t = a.task({ ticket: 'HR-1', ticketUrl: `https://${SITE}/browse/HR-1`, createdBy: 'agent' });
+  await a.issues().plugin.taskStarted?.(t.id, { name: 'Ada', accountId: 'a', send: () => {} } as any);
+  assert.equal((await a.call(undefined, worker(a, t.id))).status, 403);
+  assert.equal(binding(a.ctx, t.id), undefined);
+  assert.equal(a.calls.filter((c) => c.url.includes('/rest/api/3/issue/HR-1?')).length, 0);
+});
+
+test('changing the task’s ticket after binding: the old binding does not cover the new one, and a new verification replaces the row', async () => {
+  const a = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1', 'HR-2'] } });
+  await a.prime();
+  const t = linked(a);
+  await a.prime();
+  assert.equal(binding(a.ctx, t.id)?.ticket, 'HR-1');
+  a.ctx.repo.updateTask(t.id, { ticket: 'HR-7', ticketUrl: `https://${SITE}/browse/HR-7` });
+  a.restart();
+  a.calls.length = 0;
+  assert.equal((await a.call(undefined, worker(a, t.id))).status, 403);
+  assert.equal(a.calls.length, 0);
+});
+
+test('the binding outlives the event history: more than the trim cap of later events, and an empty cache', async () => {
+  const a = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] } });
+  await a.prime();
+  const made = await a.createTaskOf('HR-1');
+  for (let i = 0; i < TASK_EVENTS_CAP + 50; i++) a.ctx.repo.appendEvent(made.taskId, 'noise', { i });
+  assert.equal(a.ctx.repo.listEvents(made.taskId, TASK_EVENTS_CAP + 100).length, TASK_EVENTS_CAP);
+  a.restart();
+  assert.equal((await a.call(undefined, worker(a, made.taskId))).status, 200);
+  // Rows go with the task.
+  a.ctx.repo.deleteTask(made.taskId);
+  assert.equal(binding(a.ctx, made.taskId), undefined);
 });
