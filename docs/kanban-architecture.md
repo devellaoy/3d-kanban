@@ -107,7 +107,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   writes runs/comments/plans, emits WS deltas.
 - `adapters/{claude,codex}.ts` implement `TaskAgentAdapter`:
   - `launchArgs(phase, opts)` — per-phase CLI flags:
-    - claude plan, by `planPermission` (`shared/kanban/permissions.ts`; task > project > office, default `auto`): `plan` →
+    - claude plan, by `planPermission` (`shared/kanban/permissions.ts`; task > project > office, default `plan`): `plan` →
       `--permission-mode plan`; `auto` → `--permission-mode auto --disallowedTools Edit Write NotebookEdit EnterPlanMode ExitPlanMode`.
       implement/fix/resume/pr by `implementPermission` (default `auto`): `auto` → `--permission-mode auto`;
       `bypass` and `workspace-write` → `--permission-mode bypassPermissions`

@@ -170,7 +170,7 @@ is long) and a line saying which meeting it came from.
 
 ## The process
 
-1. **Plan** (when *Plan first* is on): the agent plans read-only (Claude in auto mode with its file editing tools off, or in plan mode, as *Plan phase runs* says; Codex in a read-only sandbox). It ends with the plan (the line
+1. **Plan** (when *Plan first* is on): the agent plans read-only (Claude in plan mode, or in auto mode with its file editing tools off, as *Plan phase runs* says; Codex in a read-only sandbox). It ends with the plan (the line
    `PLAN READY`), or with `QUESTIONS:`. Questions put the task in Waiting: answer in the box and
    **Send the answer**, or **Continue without answering** (the agent makes and names its assumptions).
    With plan approval *wait for approval* a finished plan waits for **Approve the plan** or
@@ -368,7 +368,7 @@ over it, and the task's own over both.
 | Plan approval | Kanban → New tasks; Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
 | Review rounds | Kanban → New tasks | on | New tasks get reviewed. |
 | UI testing | Kanban → New tasks; Projects → Project; per task | on | Implementers save before and after screenshots of the UI they change (see [UI testing](#ui-testing)). A project chooses *Default*, *On* or *Off*; a task's own choice (the create form's tick box) goes over both, and a task without one follows its project. |
-| Plan phase runs | Kanban → New tasks; Projects | auto mode | How the plan phase runs. *Auto mode*: Claude runs in auto mode with its file editing tools (and the plan-mode tools) off, and the office blocks the end of a plan turn that left uncommitted changes in the worktree. *Plan mode*: Claude's own plan mode. Codex plans in a read-only sandbox either way. |
+| Plan phase runs | Kanban → New tasks; Projects | plan mode | How the plan phase runs. *Plan mode* (the default): Claude's own plan mode, which cannot change files. *Auto mode*: Claude runs in auto mode with its file editing tools (and the plan-mode tools) off, and the office blocks the end of a plan turn that left uncommitted changes in the worktree. Codex plans in a read-only sandbox either way. |
 | Implementation runs | Kanban → New tasks; Projects | auto mode | How implement, fix, resume and PR phases run. *Auto mode*: Claude's auto mode, where a classifier reviews risky actions (Codex has no auto mode and runs without permission prompts, as *without permission prompts* does). *Without permission prompts*: Claude's bypass mode; Codex with no approvals and no sandbox. *In Codex's workspace sandbox* (`-s workspace-write -a never`) changes Codex; Claude then runs in bypass mode. Reviews are not affected: they always run in bypass mode with the editing tools off. |
 | Reviewer: agent, model, effort | Kanban → Reviews; Projects; per task | Claude | Who reviews. |
 | Rounds | Kanban → Reviews; Projects; per task | 2 | 1–10 review rounds. |
@@ -1105,7 +1105,7 @@ each worktree's own `node_modules` folder of links to its repository's packages 
 - **Upgrading from before auto mode**: settings files of the earlier version had *without permission prompts* as the
   office's default, and an office that never changed it moves to *auto mode* when it starts (once: the file is then
   written at version 2, and a bypass chosen later stays). A project's own choice, and *in Codex's workspace sandbox*, are kept.
-  To have the old behaviour back, choose *without permission prompts* under Kanban → New tasks, and *plan mode* for plans.
+  To have the old behaviour back, choose *without permission prompts* under Kanban → New tasks. The plan phase stays in plan mode, as before.
 - The task's own folders (attached files, referenced tasks, an investigation's reports) are given to Claude through a
   per-worker settings file (`permissions.additionalDirectories`), not `--add-dir`, which makes Claude ask whether
   it trusts the folder. A trust dialog for any other folder shows as *Waiting on a setup prompt*.

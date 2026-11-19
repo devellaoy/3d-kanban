@@ -118,7 +118,7 @@ const kprojects = floors.map(
 );
 const ksettings = {
   schemaVersion: 2,
-  defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'auto', planPermission: 'auto', uiTesting: true },
+  defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'auto', planPermission: 'plan', uiTesting: true },
   review: { tool: 'claude', rounds: 1, reReviewLastFix: false, sandbox: false },
   autoResume: { enabled: false, maxAttempts: 1, maxWaitHours: 1 },
   archiveAfterDays: 0,

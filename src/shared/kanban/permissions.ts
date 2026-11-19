@@ -5,7 +5,7 @@
 export type PlanPermission = 'auto' | 'plan';
 /** How implement/fix/resume/pr phases run. */
 export type ImplementPermission = 'auto' | 'bypass' | 'workspace-write';
-export const PLAN_PERMISSIONS: readonly PlanPermission[] = ['auto', 'plan'];
+export const PLAN_PERMISSIONS: readonly PlanPermission[] = ['plan', 'auto'];
 export const IMPLEMENT_PERMISSIONS: readonly ImplementPermission[] = ['auto', 'bypass', 'workspace-write'];
 
 interface PermissionInfo {

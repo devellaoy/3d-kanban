@@ -255,9 +255,10 @@ test('the engine gate: an investigation, a plan and a Codex agent are never gate
 
   const fx2 = await engineFixture();
   t.after(() => fx2.close());
+  fx2.settings.setProject('proj', { planPermission: 'auto' });
   const plan = await working(fx2, { usePlan: true });
   assert.deepEqual(await fx2.engine.stopGate(plan.w, { last_assistant_message: 'More to do.' }), {}, 'a plan with nothing changed is not asked for WORK DONE');
-  // A plan in auto mode (the default) is read-only by the gate: changes in its worktree block the Stop.
+  // A plan in auto mode (plan mode, the default, can't change files) is read-only by the gate: changes in its worktree block the Stop.
   writeFileSync(path.join(tree(fx2, plan.w), 'plan-notes.txt'), 'x\n');
   const blocked = await fx2.engine.stopGate(plan.w, { last_assistant_message: 'The plan.\n\nPLAN READY' });
   assert.match(blocked.block ?? '', /The plan phase must not change files/);

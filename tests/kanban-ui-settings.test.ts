@@ -286,13 +286,13 @@ test('🗂️ Kanban offers every way the plan and implementation phases run, sa
   const impl = permissionField(all, 'Implementation runs');
   assert.deepEqual(plan.options, PLAN_PERMISSIONS.map((v) => [v, PLAN_PERMISSION_INFO[v].name]));
   assert.deepEqual(impl.options, IMPLEMENT_PERMISSIONS.map((v) => [v, IMPLEMENT_PERMISSION_INFO[v].name]));
-  assert.equal(plan.pick.value, 'auto');
+  assert.equal(plan.pick.value, 'plan');
   assert.equal(impl.pick.value, 'auto');
-  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.auto.claude} · Codex: ${PLAN_PERMISSION_INFO.auto.codex}`);
+  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.plan.claude} · Codex: ${PLAN_PERMISSION_INFO.plan.codex}`);
   assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex}`);
-  plan.choose('plan');
+  plan.choose('auto');
   impl.choose('workspace-write');
-  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.plan.claude} · Codex: ${PLAN_PERMISSION_INFO.plan.codex}`, 'the hint follows the choice');
+  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.auto.claude} · Codex: ${PLAN_PERMISSION_INFO.auto.codex}`, 'the hint follows the choice');
   assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].claude} · Codex: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].codex}`);
   assert.ok(all.some((el) => el.className === 'kb-hint' && /implement, fix, resume and PR phases\. Reviews are not affected/.test(el.textContent)), 'says what implementation covers');
   assert.ok(!all.some((el) => /always read-only/.test(el.className === 'kb-hint' ? el.textContent : '')), 'plans are no longer called read-only');
@@ -300,7 +300,7 @@ test('🗂️ Kanban offers every way the plan and implementation phases run, sa
   save.fire('click');
   await new Promise((r) => setTimeout(r, 0));
   const { defaults } = sent.pop()!.settings;
-  assert.equal(defaults.planPermission, 'plan');
+  assert.equal(defaults.planPermission, 'auto');
   assert.equal(defaults.implementPermission, 'workspace-write');
 });
 
@@ -309,9 +309,9 @@ test('⚙️ Project overrides how the phases run, or leaves them to the office:
   const { PLAN_PERMISSION_INFO, IMPLEMENT_PERMISSION_INFO } = await import('../src/shared/kanban/permissions.js');
   const plan = permissionField(all, 'Plan phase runs');
   const impl = permissionField(all, 'Implementation runs');
-  assert.deepEqual(plan.options[0], ['', `Default (${PLAN_PERMISSION_INFO.auto.name})`]);
+  assert.deepEqual(plan.options[0], ['', `Default (${PLAN_PERMISSION_INFO.plan.name})`]);
   assert.deepEqual(impl.options[0], ['', `Default (${IMPLEMENT_PERMISSION_INFO.auto.name})`]);
-  assert.deepEqual(plan.options.slice(1).map((o) => o[0]), ['auto', 'plan']);
+  assert.deepEqual(plan.options.slice(1).map((o) => o[0]), ['plan', 'auto']);
   assert.deepEqual(impl.options.slice(1).map((o) => o[0]), ['auto', 'bypass', 'workspace-write']);
   assert.equal(plan.pick.value, '');
   assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex}`, 'Default: what the office’s value means');
@@ -322,12 +322,12 @@ test('⚙️ Project overrides how the phases run, or leaves them to the office:
   let settings = saved();
   assert.equal(settings.planPermission, null);
   assert.equal(settings.implementPermission, null);
-  plan.choose('plan');
+  plan.choose('auto');
   impl.choose('bypass');
   assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.bypass.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.bypass.codex}`);
   await click();
   settings = saved();
-  assert.equal(settings.planPermission, 'plan');
+  assert.equal(settings.planPermission, 'auto');
   assert.equal(settings.implementPermission, 'bypass');
   cleanups.run();
 });

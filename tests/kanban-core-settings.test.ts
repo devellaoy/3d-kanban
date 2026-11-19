@@ -339,11 +339,11 @@ test('UI testing: on by default, the project over the office, the task over both
 const writeSettings = (dir: string, body: unknown) => writeFileSync(path.join(dir, 'kanban-settings.json'), JSON.stringify(body));
 const readSettings = (dir: string) => JSON.parse(readFileSync(path.join(dir, 'kanban-settings.json'), 'utf8'));
 
-test('the defaults are auto mode for both the plan and the implement phases', () => {
+test('the defaults are plan mode for the plan phase and auto mode for the implement phases', () => {
   const d = defaultKanbanSettings();
   assert.equal(d.schemaVersion, 2);
   assert.equal(d.defaults.implementPermission, 'auto');
-  assert.equal(d.defaults.planPermission, 'auto');
+  assert.equal(d.defaults.planPermission, 'plan');
 });
 
 test('a version 1 file with bypass moves to auto once, is written back at version 2, and a later bypass stays', (t) => {
@@ -351,7 +351,7 @@ test('a version 1 file with bypass moves to auto once, is written back at versio
   writeSettings(dir, { schemaVersion: 1, defaults: { tool: 'codex', implementPermission: 'bypass' }, projects: { web: { implementPermission: 'bypass' } } });
   const store = new KanbanSettingsStore(dir);
   assert.equal(store.get().defaults.implementPermission, 'auto');
-  assert.equal(store.get().defaults.planPermission, 'auto');
+  assert.equal(store.get().defaults.planPermission, 'plan', 'the plan phase stays in plan mode');
   assert.equal(store.get().defaults.tool, 'codex');
   assert.equal(store.get().projects.web.implementPermission, 'bypass', 'a project value is kept');
   assert.equal(readSettings(dir).schemaVersion, 2, 'written back at once');
@@ -381,7 +381,7 @@ test('a file with no version is a version 1 file; workspace-write and a version 
 
 test('plan and implement permissions: the task over the project over the office, null clears the project', (t) => {
   const store = new KanbanSettingsStore(scratch(t));
-  assert.deepEqual(store.launchPermissions('web'), { permission: 'auto', planPermission: 'auto' });
+  assert.deepEqual(store.launchPermissions('web'), { permission: 'auto', planPermission: 'plan' });
   store.set({ defaults: { ...store.get().defaults, implementPermission: 'bypass', planPermission: 'plan' } });
   assert.deepEqual(store.launchPermissions('web'), { permission: 'bypass', planPermission: 'plan' });
   assert.equal(typeof store.setProject('web', { implementPermission: 'workspace-write', planPermission: 'auto' }), 'object');

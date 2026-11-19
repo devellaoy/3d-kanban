@@ -33,7 +33,7 @@ function sessionStarts(fx: Awaited<ReturnType<typeof engineFixture>>, workerId: 
 }
 const after = (inv: Invocation, flag: string) => inv.args[inv.args.indexOf(flag) + 1];
 
-test('claude, default settings: the plan in auto mode ends on PLAN READY (no ExitPlanMode), implement relaunches in auto mode, the reviewer keeps bypass mode', async (t) => {
+test('claude, the plan phase set to auto mode: the plan ends on PLAN READY (no ExitPlanMode), implement relaunches in auto mode, the reviewer keeps bypass mode', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
   fx.setRules([
@@ -41,6 +41,7 @@ test('claude, default settings: the plan in auto mode ends on PLAN READY (no Exi
     { when: 'Implement kanban task', reply: 'Changed the redirect; tests pass.', commit: 'Fix the redirect' },
     { when: 'This is review round 1 of', reply: 'Fine.\n\nREVIEW: APPROVED' },
   ]);
+  fx.settings.setProject('proj', { planPermission: 'auto' });
   const task = fx.newTask();
   assert.equal(await fx.engine.start(task.id, ADA), undefined);
   const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);

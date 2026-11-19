@@ -41,7 +41,7 @@ export function defaultProjectSettings(): ProjectSettings {
 export function defaultKanbanSettings(): KanbanSettings {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
-    defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'auto', planPermission: 'auto', uiTesting: true },
+    defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'auto', planPermission: 'plan', uiTesting: true },
     review: { ...DEFAULT_REVIEW },
     autoResume: { enabled: true, maxAttempts: 5, maxWaitHours: 6 },
     archiveAfterDays: 30,

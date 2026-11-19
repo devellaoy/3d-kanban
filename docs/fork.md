@@ -203,7 +203,7 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
   `--resume <id>`, `--session-id <uuid>`; `--json-schema` only works with `--print`, so interactive review
   verdicts are parsed from the final text. The setting `skipDangerousModePermissionPrompt` exists
   (skips the bypass-mode confirmation in the TUI; reviews still use bypass mode, so it is always on).
-  `--permission-mode auto` (Claude Code 2.1.327+) is the default of plan and implement phases: hook payloads carry
+  `--permission-mode auto` (Claude Code 2.1.327+) is the default of the implement phases (the plan phase's default is plan mode, auto mode its other choice): hook payloads carry
   `permission_mode` (`auto`, or `default` when auto mode was asked for and is unavailable: Claude starts in Manual mode
   without saying so). `--add-dir <untrusted folder>` shows a trust dialog in every mode; a folder in a `--settings`
   file's `permissions.additionalDirectories` doesn't, so the office's task folders go there. In plan mode an MCP tool

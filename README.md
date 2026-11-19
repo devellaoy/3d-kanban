@@ -16,7 +16,7 @@ board beside the office.
 
 **You need**, on the machine that runs it: Node.js 22 or newer; Python 3, make and a C++ compiler (the
 kanban's database module is built on install); `git`; the GitHub CLI signed in (`gh auth login`); and
-Claude Code (`claude`) or Codex (`codex`), signed in, for the kanban's tasks (the kanban's default, Claude's auto mode,
+Claude Code (`claude`) or Codex (`codex`), signed in, for the kanban's tasks (the implement phases' default, Claude's auto mode,
 needs Claude Code 2.1.327 or newer and a model that supports it; see [docs/kanban.md](docs/kanban.md#settings)). Details and the
 per-platform packages: [docs/configuration.md](docs/configuration.md#installing).
 
@@ -91,7 +91,7 @@ A task goes through the same steps whoever made it, and the office sees each ste
 (a final `WORK DONE` line, the plan's `PLAN READY`, a review's verdict), not when the logs look quiet:
 
 1. **A task is created**: by hand, from an issue, or by an agent.
-2. **Plan**: the agent plans read-only (Claude in auto mode with its file editing tools off, or in plan mode, as you set
+2. **Plan**: the agent plans read-only (Claude in plan mode, or in auto mode with its file editing tools off, as you set
    it; Codex in a read-only sandbox) and may ask questions. A finished plan is approved automatically or
    waits for your approval, as you set it.
 3. **Implement**: in a git worktree of its own, on its own branch (one worktree per repository).
