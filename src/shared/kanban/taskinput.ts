@@ -2,7 +2,8 @@
 // the field helpers kanban.task.update shares. It imports only validate.ts and types.ts: issueops.ts
 // needs it and protocol.ts imports issueops.ts, so reaching back into protocol.ts would make a cycle.
 
-import type { ImplementPermission, KanbanEffort, KanbanTool, PlanApproval, ReviewSettings, TaskType } from './types.js';
+import type { ImplementPermission, KanbanEffort, KanbanTool, PlanApproval, PlanPermission, ReviewSettings, TaskType } from './types.js';
+import { IMPLEMENT_PERMISSIONS, PLAN_PERMISSIONS } from './permissions.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, TASK_TYPES } from './types.js';
 import { KANBAN_LIMITS, PROJECT_ID_RE, bad, bool, isObj, list, model, optInt, optOneOf, optText, project, text, type Obj } from './validate.js';
 
@@ -31,6 +32,7 @@ export interface KanbanTaskInput {
   goal?: string;
   review?: Partial<ReviewSettings>;
   implementPermission?: ImplementPermission;
+  planPermission?: PlanPermission;
   /** Before/after UI images (the task's own choice over the project's and the office's). */
   uiTesting?: boolean;
   tags?: string[];
@@ -80,7 +82,6 @@ export function review(v: unknown): Partial<ReviewSettings> | undefined {
   return out;
 }
 export const PLAN_APPROVALS: readonly PlanApproval[] = ['auto', 'manual'];
-export const PERMISSIONS: readonly ImplementPermission[] = ['bypass', 'workspace-write'];
 
 /**
  * The task form's fields for a task made from an issue (`kanban.issues.createTask`'s `task`). The issue
@@ -106,7 +107,8 @@ function sharedFields(r: Obj): IssueTaskFields {
   assign('useReview', bool(r.useReview, 'useReview'));
   assign('goal', optText(r.goal, 'The acceptance criteria', KANBAN_LIMITS.goal)?.trim() || undefined);
   assign('review', review(r.review));
-  assign('implementPermission', optOneOf(r.implementPermission, 'implementPermission', PERMISSIONS));
+  assign('implementPermission', optOneOf(r.implementPermission, 'implementPermission', IMPLEMENT_PERMISSIONS));
+  assign('planPermission', optOneOf(r.planPermission, 'planPermission', PLAN_PERMISSIONS));
   assign('uiTesting', bool(r.uiTesting, 'uiTesting'));
   assign('tags', tags(r.tags));
   assign('attachmentIds', attachmentIds(r.attachmentIds));

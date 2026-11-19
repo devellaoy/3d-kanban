@@ -13,8 +13,8 @@ The user's request describes the desired outcome, not an exhaustive implementati
 
 ## Scope and team
 
-- In plan mode, develop and review the plan with a task-specific team. Do not implement.
-- Outside plan mode, use a team for medium-or-larger implementation: substantial workflows, cross-component behavior changes, or decisions whose mistakes would be costly to undo.
+- In plan mode, or on a turn you were told is for planning only, develop and review the plan with a task-specific team. Do not implement.
+- Otherwise (not plan mode, not a planning-only turn), use a team for medium-or-larger implementation: substantial workflows, cross-component behavior changes, or decisions whose mistakes would be costly to undo.
 - Handle genuinely small, mechanical edits directly, even when they touch several files. Do not inflate a task to satisfy this process.
 - Choose the smallest useful team, including exactly one distinct devil's advocate. Do not merge that role with implementation. Delegate independent work in parallel where useful; the primary agent owns integration and completion.
 - If subagents are unavailable, explicitly perform a separate critical-review pass instead of claiming independent review.

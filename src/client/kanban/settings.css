@@ -29,6 +29,10 @@
 .kb-set select:disabled, .kb-set input:disabled, .kb-set textarea:disabled { background: var(--field-off); color: var(--muted); }
 .kb-set .kb-two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; align-items: start; }
 .kb-set .kb-three { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; align-items: start; }
+.kb-set .kb-three.kb-last-wide { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) minmax(0, 2fr); }
+/* The plan and implementation permissions (project-fields.ts): the pair, then the line on what they cover */
+.kb-set .kb-perms { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.kb-set .kb-perms > .kb-hint { margin: 0; }
 .kb-set .kb-two > .kb-check, .kb-set .kb-three > .kb-check { align-self: center; }
 .kb-set .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper); }
 .kb-set .kb-subfields .kb-check { grid-column: 1 / -1; }
@@ -96,7 +100,7 @@
 .kb-new-project-modal .kb-np-err { margin: 0; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--danger-ink); overflow-wrap: anywhere; }
 
 @media (max-width: 700px) {
-  .kb-set .kb-two, .kb-set .kb-three { grid-template-columns: minmax(0, 1fr); }
+  .kb-set .kb-two, .kb-set .kb-three, .kb-set .kb-three.kb-last-wide { grid-template-columns: minmax(0, 1fr); }
   .kb-set .kb-prompts { grid-template-columns: minmax(0, 1fr); }
   .kb-set .kb-prompt-list { max-height: 180px; }
   .kb-set .kb-save { position: static; background: none; }

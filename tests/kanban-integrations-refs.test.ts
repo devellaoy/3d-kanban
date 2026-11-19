@@ -425,10 +425,9 @@ test('office-tasks: the commands that report how a turn ends', async () => {
   assert.equal(usage.code, 2);
   assert.match(usage.err.join('\n'), /approved or changes/);
 
-  // The MCP tool: one tool, listed to workers told about tasks, never read-only.
+  // The MCP tool: one tool, listed to workers told about tasks. It is hinted read-only (it changes nothing in the user's environment), so Claude's plan mode doesn't ask about it.
   const tool = TASK_TOOLS.find((t) => t.name === 'report_turn')!;
-  assert.deepEqual(tool.annotations, { destructiveHint: false, openWorldHint: false });
-  assert.equal('readOnlyHint' in tool.annotations, false);
+  assert.deepEqual(tool.annotations, { readOnlyHint: true, destructiveHint: false, openWorldHint: false });
   assert.deepEqual(tool.inputSchema.required, ['kind']);
   assert.match(tool.description, /only works for a task's own worker while its run is going/);
   const env = { ...ENV, AGENT_OFFICE_TASKS: '1' };

@@ -7,6 +7,7 @@ import type { DepartureIntent } from '../../shared/kanban/types.js';
 import { CARRY_ON_STAGGER_MS, carries, setCarryOn } from '../workers/carryon.js';
 import { waitingOnSomeone } from '../../shared/status.js';
 import { codexHookTrustArgs } from './codex-trust.js';
+import { removeWorkerSettings, splitOfficeDirs, writeWorkerSettings } from './launch.js';
 import type { Pty } from '../ptys.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
 import type { WorktreeCleanup } from '../worktrees.js';
@@ -277,6 +278,7 @@ export abstract class KanbanWorkers {
    */
   protected departing(w: Worker, intent: DepartureIntent | undefined, cleanup: WorktreeCleanup | undefined): WorktreeCleanup | undefined {
     if (intent) w.departure = intent;
+    removeWorkerSettings(w.info.id);
     return (this.keepGuards.size ? [...this.keepGuards].some((g) => g(w.info)) : w.extra?.reused) ? 'keep' : cleanup;
   }
 }
@@ -291,15 +293,25 @@ function kanbanExtra(extra: SpawnExtra | undefined): Worker['extra'] {
   return extra && { launchArgs: extra.launchArgs && [...extra.launchArgs], env: extra.env && { ...extra.env }, settingsFile: extra.settingsFile, reused: !!extra.reuse };
 }
 
-/** The setup a worker's provider launches with: for a kanban hire of Claude, the settings file that skips the bypass-mode confirmation. */
+/** The office's own folders in a kanban Claude worker's launch flags, with the flags left: the folders go in its settings file instead (see splitOfficeDirs). Undefined for anyone else. */
+function officeDirs(w: Worker, adapter: { id: string }, setup: unknown): { args: string[]; dirs: string[]; kanbanSettings: string } | undefined {
+  const kanbanSettings = (setup as { kanbanSettings?: string } | undefined)?.kanbanSettings;
+  if (adapter.id !== 'claude' || w.extra?.settingsFile !== 'kanban' || !kanbanSettings) return undefined;
+  return { ...splitOfficeDirs(w.extra.launchArgs ?? []), kanbanSettings };
+}
+
+/** The setup a worker's provider launches with: for a kanban hire of Claude, the settings file that skips the bypass-mode confirmation, with the office's task folders in it when it has any. */
 export function kanbanSetup(w: Worker, adapter: { id: string }, setup: unknown): unknown {
   const s = setup as { settings?: string; kanbanSettings?: string } | undefined;
-  return adapter.id === 'claude' && w.extra?.settingsFile === 'kanban' && s?.kanbanSettings ? { ...s, settings: s.kanbanSettings } : setup;
+  const o = officeDirs(w, adapter, setup);
+  return o && { ...s, settings: o.dirs.length ? writeWorkerSettings(o.kanbanSettings, w.info.id, o.dirs) : o.kanbanSettings } || setup;
 }
 
 /** The flags a worker's provider launches with: a kanban hire of Codex also gets the trusted hashes of the office's hooks (they name this floor's hook path, so they are made per launch). */
 export function kanbanExtraArgs(w: Worker, adapter: { id: string }, setup: unknown): string[] | undefined {
   const hook = (setup as { hook?: unknown } | undefined)?.hook;
+  const o = officeDirs(w, adapter, setup);
+  if (o) return o.args;
   return adapter.id === 'codex' && w.info.kanban && typeof hook === 'string' ? [...codexHookTrustArgs(hook), ...(w.extra?.launchArgs ?? [])] : w.extra?.launchArgs;
 }
 

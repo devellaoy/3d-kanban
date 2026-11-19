@@ -21,7 +21,7 @@ test('waitingOnSomeone: the plain rule for a worker without a task, the task\'s 
   assert.equal(waitingOnSomeone(w('done', false)), true);
   assert.equal(waitingOnSomeone(w('done', true)), false);
   assert.equal(waitingOnSomeone(w('working', false)), false);
-  assert.equal(waitingOnSomeone(w('needs_input', false, { status: 'in_progress', phase: 'plan', runState: 'running' })), false);
+  assert.equal(waitingOnSomeone(w('needs_input', false, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' })), false);
   assert.equal(waitingOnSomeone(w('done', false, { status: 'in_progress', phase: 'implement', runState: 'running' })), false);
   assert.equal(waitingOnSomeone(w('needs_input', false, { status: 'in_progress', runState: 'idle' })), true);
   assert.equal(waitingOnSomeone(w('done', false, { status: 'waiting', waitingReason: 'failed' })), true);
@@ -31,8 +31,15 @@ test('waitingOnSomeone: the plain rule for a worker without a task, the task\'s 
   assert.equal(waitingOnSomeone(w('done', false, {})), true);
 });
 
+test('a plan in auto mode has no exit prompt: a prompt at it is a real one', () => {
+  const auto = w('needs_input', false, { status: 'in_progress', phase: 'plan', runState: 'running' });
+  assert.equal(waitingOnSomeone(auto), true);
+  assert.equal(engineCarriesOn(auto), false);
+  assert.equal(waitingOnSomeone(w('needs_input', false, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' })), false);
+});
+
 test('shownStatus: a needs-input worker the engine carries on with shows as working', () => {
-  const plan = w('needs_input', false, { status: 'in_progress', phase: 'plan', runState: 'running' });
+  const plan = w('needs_input', false, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' });
   assert.equal(engineCarriesOn(plan), true);
   assert.equal(shownStatus(plan), 'working');
   const asking = w('needs_input', false, { status: 'waiting', waitingReason: 'agent_asking' });
@@ -45,7 +52,7 @@ test('shownStatus: a needs-input worker the engine carries on with shows as work
 
 test('the dog does not bark at a task worker the engine carries on with', () => {
   assert.equal(callsForDog(w('needs_input', false)), true);
-  assert.equal(callsForDog(w('needs_input', false, { status: 'in_progress', phase: 'plan', runState: 'running' })), false);
+  assert.equal(callsForDog(w('needs_input', false, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' })), false);
   assert.equal(callsForDog(w('needs_input', false, { status: 'waiting', waitingReason: 'agent_asking' })), true);
 });
 
@@ -97,8 +104,8 @@ function hook(t: import('node:test').TestContext) {
 test('the webhook stays quiet while the engine hands a task between steps', (t) => {
   const { h, alerts, tick } = hook(t);
   const steps = [
-    w('working', true, { status: 'in_progress', phase: 'plan', runState: 'running' }),
-    w('needs_input', false, { status: 'in_progress', phase: 'plan', runState: 'running' }),
+    w('working', true, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' }),
+    w('needs_input', false, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' }),
     w('working', true, { status: 'in_progress', phase: 'implement', runState: 'running' }),
     w('done', false, { status: 'in_progress', phase: 'implement', runState: 'running' }),
     w('done', false, { status: 'in_progress', phase: 'review', runState: 'running' }),
@@ -115,8 +122,8 @@ test('the webhook stays quiet while the engine hands a task between steps', (t) 
 
 test('the webhook skips a plan waiting for approval that the engine announced', (t) => {
   const { h, alerts, tick } = hook(t);
-  h.onWorker(w('working', true, { status: 'in_progress', phase: 'plan', runState: 'running' }));
-  h.onWorker(w('needs_input', false, { status: 'in_progress', phase: 'plan', runState: 'running' }));
+  h.onWorker(w('working', true, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' }));
+  h.onWorker(w('needs_input', false, { status: 'in_progress', phase: 'plan', planMode: true, runState: 'running' }));
   h.onWorker(w('needs_input', false, { status: 'waiting', phase: 'plan', waitingReason: 'plan_approval', runState: 'idle' }));
   h.announce('🗂️ #14 needs plan approval', undefined, 14);
   tick(6_000);
@@ -176,7 +183,7 @@ test('shouldAlert: only a step from not waiting to waiting, never on first sight
 });
 
 test('alerts: the engine\'s handovers stay quiet and the real wait alerts once', () => {
-  const run = (phase: string) => ({ status: 'in_progress', phase, runState: 'running' }) as Partial<KanbanWorkerSummary>;
+  const run = (phase: string) => ({ status: 'in_progress', phase, ...(phase === 'plan' ? { planMode: true } : {}), runState: 'running' }) as Partial<KanbanWorkerSummary>;
   const steps = [
     w('needs_input', false, run('plan')),
     w('working', true, run('implement')),

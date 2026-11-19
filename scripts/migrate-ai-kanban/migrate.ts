@@ -624,7 +624,7 @@ class Projects {
       st.set({ autoResume: { enabled: this.s.autoResumeEnabled, maxAttempts: Math.max(0, Math.min(50, this.s.autoResumeMaxAttempts ?? fresh.autoResume.maxAttempts)), maxWaitHours: Math.max(1, Math.min(168, this.s.autoResumeMaxWaitHours ?? fresh.autoResume.maxWaitHours)) } });
       applied.push('auto-resume');
     }
-    if (this.s.implementPermissionMode && this.s.implementPermissionMode !== 'bypassPermissions') reported.push(`the implement permission mode ${this.s.implementPermissionMode} has no match here: implement phases run ${st.get().defaults.implementPermission}`);
+    if (this.s.implementPermissionMode && this.s.implementPermissionMode !== 'bypassPermissions') reported.push(`the implement permission mode ${this.s.implementPermissionMode} has no match here: implement phases run as the office's setting says (${st.get().defaults.implementPermission} here; auto mode is the default)`);
     if (this.s.apiKeys?.length) reported.push(`${this.s.apiKeys.length} API keys aren't migrated (only their hashes were kept): set a new one in the kanban settings`);
   }
 

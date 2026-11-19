@@ -3,12 +3,13 @@
 // runs on the kanban settings file when asked, and a task worker's environment names its task.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Ledger } from '../src/server/usage.js';
 import { WorkerManager, type WorkerEvents } from '../src/server/workers.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
+import { registerOfficeFiles, splitOfficeDirs } from '../src/server/kanban/launch.js';
 
 const fakeAgent = `#!/usr/bin/env node
 const fs = require('node:fs');
@@ -128,4 +129,47 @@ test('an ordinary worker launches with none of it', async (t) => {
   assert.equal(run.args[run.args.indexOf('--settings') + 1], path.join(data, 'claude-hooks.json'));
   assert.equal(run.env.taskId, undefined);
   assert.ok(!run.args.includes('--permission-mode'));
+});
+
+test('splitOfficeDirs: the office folders leave the flags, other folders stay', () => {
+  const files = '/data/kanban';
+  const args = ['--permission-mode', 'auto', '--add-dir', '/data/kanban/grants/task-7', '--add-dir', '/repos/other', '--add-dir', '/data/kanban/refs/task-7', '--add-dir', '/data/kanbanx/refs', '--model', 'x', '--add-dir'];
+  assert.deepEqual(splitOfficeDirs(args, files), { args: ['--permission-mode', 'auto', '--add-dir', '/repos/other', '--add-dir', '/data/kanbanx/refs', '--model', 'x', '--add-dir'], dirs: ['/data/kanban/grants/task-7', '/data/kanban/refs/task-7'] });
+  assert.deepEqual(splitOfficeDirs(['--permission-mode', 'auto'], files), { args: ['--permission-mode', 'auto'], dirs: [] });
+  // No root named yet (a worker woken at the office's start, before the kanban opens): the folders are known by their shape.
+  assert.deepEqual(splitOfficeDirs(['--add-dir', '/home/o/.agent-office/kanban/grants/task-7', '--add-dir', '/home/o/.agent-office/kanban/uploads', '--add-dir', '/repos/kanban/grants/task-7']), {
+    args: ['--add-dir', '/home/o/.agent-office/kanban/uploads', '--add-dir', '/repos/kanban/grants/task-7'],
+    dirs: ['/home/o/.agent-office/kanban/grants/task-7'],
+  });
+});
+
+test('a Claude task worker with office folders: they are in its own settings file, not on the command line, and the file goes with the worker', async (t) => {
+  const { data, workers, launched } = setup(t);
+  // The kanban names its task folders' root when it opens (in an office it is not the floor's data folder, but any folder does here).
+  registerOfficeFiles(path.join(data, 'kanban'));
+  const stored = ['--permission-mode', 'auto', '--add-dir', path.join(data, 'kanban', 'grants', 'task-9'), '--add-dir', '/repos/other', '--add-dir', path.join(data, 'kanban', 'reports', 'task-9')];
+  const w = workers.spawn('desk-1', 'Ada', 'do the task', false, 'agent', 'claude', undefined, undefined, undefined, undefined, [], undefined, {
+    launchArgs: stored,
+    kanban: { taskId: 9, role: 'implementer' } as never,
+    settingsFile: 'kanban',
+  });
+  assert.equal(typeof w, 'object');
+  if (typeof w === 'string') return;
+  const run = await launched('claude');
+  const at = (a: string) => run.args.indexOf(a);
+  const own = path.join(data, `claude-hooks-kanban-${w.id}.json`);
+  assert.equal(run.args[at('--settings') + 1], own);
+  assert.deepEqual(run.args.slice(at('--permission-mode'), at('--permission-mode') + 4), ['--permission-mode', 'auto', '--add-dir', '/repos/other']);
+  assert.ok(!run.args.some((a) => a.includes(path.join(data, 'kanban'))), 'none of the office folders is a flag');
+  assert.equal(workers.launchArgsOf(w.id)?.length, stored.length, 'the stored flags are untouched');
+  const settings = JSON.parse(readFileSync(own, 'utf8'));
+  const kanban = JSON.parse(readFileSync(path.join(data, 'claude-hooks-kanban.json'), 'utf8'));
+  assert.deepEqual(settings.permissions.additionalDirectories, [path.join(data, 'kanban', 'grants', 'task-9'), path.join(data, 'kanban', 'reports', 'task-9')]);
+  assert.deepEqual(settings.permissions.allow, kanban.permissions.allow, 'its allowed tools are kept');
+  assert.equal(settings.skipDangerousModePermissionPrompt, true);
+  assert.deepEqual(settings.hooks, kanban.hooks, 'the Stop wrapper and the other hooks are the kanban settings');
+  assert.equal(kanban.permissions.additionalDirectories, undefined);
+  assert.equal(statSync(own).mode & 0o777, 0o600);
+  await workers.kill(w.id);
+  assert.equal(existsSync(own), false, 'the file goes when the worker leaves');
 });

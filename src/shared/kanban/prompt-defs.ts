@@ -21,7 +21,7 @@ const DEFS = {
   'kanban.plan': {
     group: 'kanban',
     label: 'Plan',
-    used: "The first turn of a task with planning on. The task's agent runs read-only (Claude in plan mode, Codex in a read-only sandbox); the office appends the fixed plan contract (PLAN READY / QUESTIONS:).",
+    used: "The first turn of a task with planning on. The task's agent is read-only by its contract (Claude in auto mode with the editing tools off, or in plan mode, by the setting; Codex in a read-only sandbox); the office appends the fixed plan contract (PLAN READY / QUESTIONS:).",
     vars: TASK_VARS,
     needs: ['description'],
     text: `You are planning kanban task #{{taskId}} in the project {{project}}: {{title}}
@@ -44,7 +44,7 @@ Your workspace:
 
 {{skills}}
 
-This turn is for planning only. Read whatever code, docs and referenced tasks you need, but don't change files, create branches or commit. Then write a plan another developer could follow without you: what changes in which repository and file, in which order, how it will be tested, and what could go wrong. Where something essential is unclear and neither the code nor the referenced tasks answer it, ask rather than guess.
+This turn is for planning only. Read whatever code, docs and referenced tasks you need, but don't change files (not through the shell either), create branches or commit. Then write a plan another developer could follow without you: what changes in which repository and file, in which order, how it will be tested, and what could go wrong. Where something essential is unclear and neither the code nor the referenced tasks answer it, ask rather than guess.
 
 {{language}}`,
   },

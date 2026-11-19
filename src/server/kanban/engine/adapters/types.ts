@@ -2,11 +2,13 @@
 // phase launches with, and the final text of a turn, read from the session's own log.
 
 import { closeSync, openSync, readSync, statSync } from 'node:fs';
-import type { ImplementPermission, KanbanEffort, KanbanTool, RunPhase } from '../../../../shared/kanban/types.js';
+import type { ImplementPermission, PlanPermission, KanbanEffort, KanbanTool, RunPhase } from '../../../../shared/kanban/types.js';
 
 export interface LaunchOptions {
   /** How implement-like phases run (see ImplementPermission). */
   permission: ImplementPermission;
+  /** How the plan phase runs: Claude's plan mode, or auto mode with the editing tools off (Codex: a read-only sandbox either way). */
+  planPermission: PlanPermission;
   /** The reviewer is kept off the web too. */
   sandbox: boolean;
   /** An investigation: read-only work that writes its report into `addDirs`. */

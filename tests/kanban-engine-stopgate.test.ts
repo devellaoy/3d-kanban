@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
 import { writeFileSync } from 'node:fs';
 import path from 'node:path';
-import { gateDirty, gateUnconfirmed } from '../src/shared/kanban/prompts.js';
+import { gateDirty, gatePlanDirty, gateUnconfirmed } from '../src/shared/kanban/prompts.js';
 import type { TurnResult } from '../src/server/kanban/engine/adapters/types.js';
 import { prLines, workDone } from '../src/server/kanban/engine/markers.js';
 import { acceptSignal, newTurn, StopGate, type GateRun, type StopGateDeps } from '../src/server/kanban/engine/signals.js';
@@ -21,7 +21,7 @@ const live = (extra: Partial<GateRun> = {}): GateRun => ({ taskId: 1, runId: 7, 
 const turn = (extra: Partial<TurnResult> = {}): TurnResult => ({ text: '', complete: true, ...extra });
 
 /** A gate over fake deps: what the log says, what is uncommitted and the notes made are the test's. */
-function gateOf(o: { log?: TurnResult | undefined | (() => TurnResult | undefined); dirty?: string[]; max?: number; type?: 'implement' | 'investigate'; deadlineMs?: number; throws?: boolean } = {}) {
+function gateOf(o: { log?: TurnResult | undefined | (() => TurnResult | undefined); dirty?: string[]; max?: number; type?: 'implement' | 'investigate'; deadlineMs?: number; throws?: boolean; args?: string[] } = {}) {
   const notes: string[] = [];
   const calls = { read: 0, uncommitted: 0 };
   const deps: StopGateDeps<GateRun> = {
@@ -33,6 +33,7 @@ function gateOf(o: { log?: TurnResult | undefined | (() => TurnResult | undefine
       return typeof o.log === 'function' ? o.log() : o.log;
     },
     uncommitted: async () => (calls.uncommitted++, o.dirty ?? []),
+    launchArgs: () => o.args,
     maxBlocks: () => o.max ?? 2,
     readPauseMs: () => 1,
     ...(o.deadlineMs ? { deadlineMs: o.deadlineMs } : {}),
@@ -111,6 +112,8 @@ test('the gate does not fire: it lets the Stop through whenever the Stop is not 
   await allowed('a reviewer', live({ role: 'reviewer', phase: 'fix' }), p);
   await allowed('a subagent or teammate', live(), stop('Still looking.', { agent_id: 'helper@1' }));
   for (const phase of ['plan', 'review', 'pr-review', 'compact'] as const) await allowed(phase, live({ phase }), p);
+  await allowed('a plan in plan mode, even with changes', live({ phase: 'plan' }), p, { log: turn({ text: 'A plan.' }), dirty: ['wt'], args: ['--permission-mode', 'plan'] });
+  for (const phase of ['review', 'pr-review', 'compact'] as const) await allowed(`${phase} in auto mode`, live({ phase }), p, { log: turn({ text: 'x' }), dirty: ['wt'], args: ['--permission-mode', 'auto'] });
   await allowed('stopping', live({ stopping: {} }), p);
   await allowed('restating', live({ restating: true }), p);
   await allowed('an announced question', live({ signal: { kind: 'ask' } }), p);
@@ -125,6 +128,26 @@ test('the gate does not fire: it lets the Stop through whenever the Stop is not 
   await allowed('a log that fails', live(), p, { throws: true });
   // Finished background tasks do not keep it out.
   assert.ok((await gateOf({ log: turn({ text: 'Still looking.' }) }).gate.decide(live(), stop('Still looking.', { background_tasks: [{ id: 'a', status: 'completed' }] }))).block);
+});
+
+test('a plan in auto mode is gated on uncommitted changes alone: no WORK DONE is asked for, and the cap and the note are the same', async () => {
+  const auto = ['--permission-mode', 'auto', '--disallowedTools', 'Edit'];
+  const reply = 'The plan.\n\nPLAN READY';
+  const clean = gateOf({ log: turn({ text: reply }), args: auto });
+  assert.deepEqual(await clean.gate.decide(live({ phase: 'plan' }), stop(reply)), {}, 'no done signal is required');
+  assert.deepEqual(await gateOf({ log: turn({ text: 'Thinking.' }), args: auto }).gate.decide(live({ phase: 'plan' }), stop('Thinking.')), {}, 'an unmarked reply with a clean tree goes through');
+  const { gate, notes } = gateOf({ log: turn({ text: reply }), dirty: ['wt/a'], args: auto });
+  const l = live({ phase: 'plan' });
+  const r = await gate.decide(l, stop(reply));
+  assert.deepEqual(r, { block: gatePlanDirty(['wt/a']) });
+  assert.match(r.block!, /must not change files/);
+  assert.match(r.block!, /PLAN READY or QUESTIONS:/);
+  assert.ok((await gate.decide(l, stop(reply, { stop_hook_active: true }))).block);
+  assert.deepEqual(await gate.decide(l, stop(reply, { stop_hook_active: true })), {}, 'after the cap the turn ends as before');
+  assert.equal(notes.length, 1);
+  assert.match(notes[0], /uncommitted changes in wt\/a/);
+  const inv = gateOf({ log: turn({ text: reply }), dirty: ['wt'], args: auto, type: 'investigate' });
+  assert.deepEqual(await inv.gate.decide(live({ phase: 'plan' }), stop(reply)), {}, 'an investigation writes its report elsewhere');
 });
 
 test('an investigation is never asked for a commit', async () => {
@@ -233,7 +256,11 @@ test('the engine gate: an investigation, a plan and a Codex agent are never gate
   const fx2 = await engineFixture();
   t.after(() => fx2.close());
   const plan = await working(fx2, { usePlan: true });
-  assert.deepEqual(await fx2.engine.stopGate(plan.w, { last_assistant_message: 'More to do.' }), {}, 'a plan');
+  assert.deepEqual(await fx2.engine.stopGate(plan.w, { last_assistant_message: 'More to do.' }), {}, 'a plan with nothing changed is not asked for WORK DONE');
+  // A plan in auto mode (the default) is read-only by the gate: changes in its worktree block the Stop.
+  writeFileSync(path.join(tree(fx2, plan.w), 'plan-notes.txt'), 'x\n');
+  const blocked = await fx2.engine.stopGate(plan.w, { last_assistant_message: 'The plan.\n\nPLAN READY' });
+  assert.match(blocked.block ?? '', /The plan phase must not change files/);
 
   const fx3 = await engineFixture();
   t.after(() => fx3.close());

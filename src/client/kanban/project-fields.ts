@@ -6,7 +6,6 @@ import { KANBAN_LIMITS } from '../../shared/kanban/protocol.js';
 import {
   KANBAN_EFFORTS,
   KANBAN_TOOLS,
-  type ImplementPermission,
   type KanbanEffort,
   type KanbanSettings,
   type KanbanTool,
@@ -14,13 +13,52 @@ import {
   type ProjectSettings,
   type ReviewSettings,
 } from '../../shared/kanban/types.js';
+import { IMPLEMENT_PERMISSIONS, IMPLEMENT_PERMISSION_INFO, PLAN_PERMISSIONS, PLAN_PERMISSION_INFO, type ImplementPermission, type PlanPermission } from '../../shared/kanban/permissions.js';
 import { projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { commentLanguageField, publicLanguageField } from './language-field';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
 import { kstore } from './store';
 import { checkbox, field, numberInput, numberValue, select, textInput } from './ui';
 
-export const PERMISSION_NAMES: Record<ImplementPermission, string> = { bypass: 'without permission prompts', 'workspace-write': 'in Codex’s workspace sandbox' };
+type PermissionInfo = { name: string; claude: string; codex: string };
+
+/** What a permission value means for each agent, as the line under its select. */
+export const permissionHint = (info: PermissionInfo) => `Claude: ${info.claude} · Codex: ${info.codex}`;
+
+/**
+ * A permission select with a hint under it that says what the chosen value means for each agent.
+ * With `inherited` (a project's select) the first option is "Default (…)", whose hint is the office's value's.
+ */
+function permissionField<T extends string>(label: string, values: readonly T[], info: Record<T, PermissionInfo>, value: T | '', inherited?: T): { el: HTMLElement; pick: HTMLSelectElement } {
+  const pick = select<T | ''>([...(inherited ? ([['', `Default (${info[inherited].name})`]] as const) : []), ...values.map((v) => [v, info[v].name] as const)], value);
+  const hint = h('small.kb-hint', {});
+  const paint = () => hint.replaceChildren(permissionHint(info[(pick.value as T) || inherited || values[0]]));
+  pick.addEventListener('change', paint);
+  paint();
+  const el = field(label, pick);
+  el.append(hint);
+  return { el, pick };
+}
+
+/**
+ * "Plan phase runs" and "Implementation runs" side by side, each with its per-agent hint, and a line on
+ * what they cover. The office's pane passes its values; a project passes its overrides and the office's
+ * values as `office`, and reads '' back for "Default".
+ */
+export function permissionFields(
+  now: { planPermission?: PlanPermission; implementPermission?: ImplementPermission },
+  office?: { planPermission: PlanPermission; implementPermission: ImplementPermission },
+): { el: HTMLElement; plan(): PlanPermission | ''; implement(): ImplementPermission | '' } {
+  const plan = permissionField('Plan phase runs', PLAN_PERMISSIONS, PLAN_PERMISSION_INFO, now.planPermission ?? '', office?.planPermission);
+  const impl = permissionField('Implementation runs', IMPLEMENT_PERMISSIONS, IMPLEMENT_PERMISSION_INFO, now.implementPermission ?? '', office?.implementPermission);
+  const el = h(
+    'div.kb-perms',
+    {},
+    h('div.kb-two', {}, plan.el, impl.el),
+    h('small.kb-hint', {}, 'Implementation covers the implement, fix, resume and PR phases. Reviews are not affected by these settings.'),
+  );
+  return { el, plan: () => plan.pick.value as PlanPermission | '', implement: () => impl.pick.value as ImplementPermission | '' };
+}
 
 export const optionalModel = (v: string) => v.trim() || null;
 
@@ -50,14 +88,7 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
     [['', `Default (${APPROVAL_NAMES[s.defaults.planApproval]})`], ['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]],
     ps.planApproval ?? '',
   );
-  const perm = select<ImplementPermission | ''>(
-    [
-      ['', `Default (${PERMISSION_NAMES[s.defaults.implementPermission]})`],
-      ['bypass', PERMISSION_NAMES.bypass],
-      ['workspace-write', PERMISSION_NAMES['workspace-write']],
-    ],
-    ps.implementPermission ?? '',
-  );
+  const perms = permissionFields(ps, s.defaults);
   const uiTesting = select<'on' | 'off' | ''>([['', `Default (${s.defaults.uiTesting ? 'On' : 'Off'})`], ['on', 'On'], ['off', 'Off']], ps.uiTesting === undefined ? '' : ps.uiTesting ? 'on' : 'off');
   const language = publicLanguageField(ps.publicLanguage);
   const comments = commentLanguageField(ps.commentLanguage);
@@ -70,7 +101,9 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
     'fieldset',
     {},
     h('legend', {}, 'This project'),
-    h('div.kb-three', {}, field('Tasks at once', maxConc), field('Plan approval', approval), field('Implementation runs', perm), field('UI testing', uiTesting, 'Before and after screenshots of UI changes')),
+    // Two short fields and a wide one: the plan approval's "Default (…)" needs the room.
+    h('div.kb-three.kb-last-wide', {}, field('Tasks at once', maxConc), field('UI testing', uiTesting, 'Before and after screenshots of UI changes'), field('Plan approval', approval)),
+    perms.el,
     language.el,
     comments.el,
     overrideReview.el,
@@ -90,7 +123,8 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
         maxConcurrent: numberValue(maxConc, 1, 20, projectDefaults().maxConcurrent),
         // null: back to the office's.
         planApproval: approval.value || null,
-        implementPermission: perm.value || null,
+        planPermission: perms.plan() || null,
+        implementPermission: perms.implement() || null,
         uiTesting: uiTesting.value ? uiTesting.value === 'on' : null,
         publicLanguage,
         commentLanguage,

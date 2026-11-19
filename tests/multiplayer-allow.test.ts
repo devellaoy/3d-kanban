@@ -117,8 +117,8 @@ const kprojects = floors.map(
   (f): KanbanProjectInfo => ({ id: f.id, name: f.name, repo: f.repo, dir: f.dir, repos: [{ id: f.id, name: f.name, kind: 'git', dir: f.dir, primary: true, instructions: 'be careful' }], open: true, settings: { maxConcurrent: 1, planApproval: 'auto', issueSources: 0, promptOverrides: 0, reviewRounds: 1 } }),
 );
 const ksettings = {
-  schemaVersion: 1,
-  defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'bypass', uiTesting: true },
+  schemaVersion: 2,
+  defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'auto', planPermission: 'auto', uiTesting: true },
   review: { tool: 'claude', rounds: 1, reReviewLastFix: false, sandbox: false },
   autoResume: { enabled: false, maxAttempts: 1, maxWaitHours: 1 },
   archiveAfterDays: 0,

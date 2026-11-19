@@ -7,6 +7,7 @@
 import type { KanbanSnapshotMsg } from './snapshot.js';
 import type {
   ImplementPermission,
+  PlanPermission,
   IssueSourceConfig,
   KanbanAttachment,
   KanbanComment,
@@ -31,7 +32,8 @@ import type {
 } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, TASK_STATUSES, TASK_TYPES } from './types.js';
 import { Bad, KANBAN_LIMITS, MODEL_RE, PROJECT_ID_RE, bad, bool, deskId, id, isObj, onceKey, list, model, nullableText, oneOf, optInt, optOneOf, optText, project, text, workerId, type Obj, type Req } from './validate.js';
-import { PERMISSIONS, PLAN_APPROVALS, REPO_ID_RE, attachmentIds, repoIds, review, tags, taskInput, url, type KanbanTaskInput } from './taskinput.js';
+import { IMPLEMENT_PERMISSIONS, PLAN_PERMISSIONS } from './permissions.js';
+import { PLAN_APPROVALS, REPO_ID_RE, attachmentIds, repoIds, review, tags, taskInput, url, type KanbanTaskInput } from './taskinput.js';
 import { moveExtras } from './hold.js';
 import { PR_MODES, type PrMode } from './prs.js';
 import type { LoungeServerMsg } from './lounge.js';
@@ -70,6 +72,7 @@ export interface KanbanTaskPatch {
   goal?: string | null;
   review?: Partial<ReviewSettings> | null;
   implementPermission?: ImplementPermission | null;
+  planPermission?: PlanPermission | null;
   /** null: back to the project's and the office's. */
   uiTesting?: boolean | null;
   tags?: string[];
@@ -226,7 +229,8 @@ function taskPatch(v: unknown): KanbanTaskPatch {
   const goal = nullableText(r.goal, 'The acceptance criteria', KANBAN_LIMITS.goal);
   assign('goal', goal === null ? null : goal === undefined ? undefined : goal.trim() || null);
   assign('review', r.review === null ? null : review(r.review));
-  assign('implementPermission', r.implementPermission === null ? null : optOneOf(r.implementPermission, 'implementPermission', PERMISSIONS));
+  assign('implementPermission', r.implementPermission === null ? null : optOneOf(r.implementPermission, 'implementPermission', IMPLEMENT_PERMISSIONS));
+  assign('planPermission', r.planPermission === null ? null : optOneOf(r.planPermission, 'planPermission', PLAN_PERMISSIONS));
   assign('uiTesting', r.uiTesting === null ? null : bool(r.uiTesting, 'uiTesting'));
   assign('tags', tags(r.tags));
   assign('attachmentIds', attachmentIds(r.attachmentIds));

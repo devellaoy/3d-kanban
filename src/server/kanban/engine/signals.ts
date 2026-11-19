@@ -2,12 +2,13 @@
 // its like (the MCP tool report_turn) reach the engine as a TurnSignal, which applySignal turns into the text marker the readers in markers.ts
 // look for; and the Stop hook gate (Claude only) that gives an agent that ended its turn unconfirmed, or with uncommitted work, a way to go on.
 
-import { gateDirty, gateUnconfirmed, PLAN_READY, QUESTIONS_HEADING } from '../../../shared/kanban/prompts.js';
+import { gateDirty, gatePlanDirty, gateUnconfirmed, PLAN_READY, QUESTIONS_HEADING } from '../../../shared/kanban/prompts.js';
 import type { TurnSignal } from '../../../shared/kanban/signals.js';
 import type { KanbanRole, KanbanTask, KanbanTool, RunPhase } from '../../../shared/kanban/types.js';
 import type { TurnResult } from './adapters/types.js';
 import { finalMarker, looksInterrupted, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers, stripWorkDone, workDone } from './markers.js';
 import type { HeldRun } from './turnhold.js';
+import { inAutoMode } from './automode.js';
 
 // --- Small helpers of the hook handling ---------------------------------------------------------------
 
@@ -135,6 +136,8 @@ export interface StopGateDeps<L extends GateRun> {
   read(live: L): Promise<TurnResult | undefined>;
   /** The worktree-relative folders of the run's workspace with uncommitted changes (none for a folder project). */
   uncommitted(live: L): Promise<string[]>;
+  /** The flags the run's worker was launched with (a plan in auto mode is gated on uncommitted changes). */
+  launchArgs(live: L): readonly string[] | undefined;
   /** How many Stops of a run may be blocked at most (0: the gate is off). */
   maxBlocks(): number;
   /** The pause between two reads of the log (ms). */
@@ -143,8 +146,8 @@ export interface StopGateDeps<L extends GateRun> {
   deadlineMs?: number;
 }
 
-/** The phases whose end is no WORK DONE: never gated. */
-const UNGATED = ['plan', 'review', 'pr-review', 'compact'];
+/** The phases whose end is no WORK DONE: never gated. A plan is gated on uncommitted changes alone, and only in auto mode (plan mode can't change files). */
+const UNGATED = ['review', 'pr-review', 'compact'];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
@@ -194,7 +197,8 @@ export class StopGate<L extends GateRun> {
   private async judge(live: L | undefined, payload: unknown, late: { is: boolean }, turn: number | undefined): Promise<{ block?: string }> {
     const max = this.deps.maxBlocks();
     if (!live || max <= 0 || live.ended || live.tool !== 'claude' || live.role !== 'implementer' || agentHook(payload)) return {};
-    if (UNGATED.includes(live.phase) || live.stopping || live.restating || live.signal?.kind === 'ask') return {};
+    const plan = live.phase === 'plan';
+    if (UNGATED.includes(live.phase) || (plan && !inAutoMode(this.deps.launchArgs(live))) || live.stopping || live.restating || live.signal?.kind === 'ask') return {};
     const p = (payload ?? {}) as { stop_hook_active?: unknown; background_tasks?: unknown };
     if (Array.isArray(p.background_tasks) && p.background_tasks.some((b) => (b as { status?: unknown } | null)?.status === 'running')) return {};
     const blocks = Math.max(live.gateBlocks ?? 0, p.stop_hook_active === true ? 1 : 0);
@@ -215,7 +219,8 @@ export class StopGate<L extends GateRun> {
     const task = this.deps.task(live.taskId);
     if (!task) return {};
     let folders: string[] = [];
-    if (done || finalMarker(live.phase, said)) {
+    // A plan has no WORK DONE to wait for: it only must not leave changes in the worktree.
+    if (plan || done || finalMarker(live.phase, said)) {
       if (task.type !== 'investigate') folders = await this.deps.uncommitted(live);
       if (!folders.length) return {};
     }
@@ -233,6 +238,6 @@ export class StopGate<L extends GateRun> {
     live.gated = true;
     live.signal = undefined;
     live.lastHookAt = Date.now();
-    return { block: folders.length ? gateDirty(folders) : gateUnconfirmed() };
+    return { block: folders.length ? (plan ? gatePlanDirty(folders) : gateDirty(folders)) : gateUnconfirmed() };
   }
 }
