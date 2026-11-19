@@ -10,16 +10,17 @@ import { parseGhKey } from '../../../../shared/kanban/issuecard.js';
 import { parseAbKey, workItemUrl } from '../../../../shared/hosting/workitems.js';
 import { clip, sendJson } from '../util.js';
 import { candidate, resolveTaskRef } from '../refs/resolve.js';
-import { JIRA_KEY_RE } from './browse/jql.js';
+import { JIRA_KEY_RE, jiraCovers } from './browse/jql.js';
 import { sameJiraSite } from '../../../../shared/kanban/jira-connections.js';
 import { jiraCall, jiraChildren, jiraComments } from './jira-ops.js';
 import { jiraIssue } from './jira.js';
-import { jiraReadSource, jiraSourcesOf, readCovers, urlSite, type JiraSource, type KnownIssue } from './agent-read-scope.js';
+import { TICKET_VERIFIED, hasBinding, jiraReadSource, jiraSourcesOf, readCovers, urlSite, type Bound, type JiraSource, type KnownIssue, type TicketBinding } from './agent-read-scope.js';
+import { TASK_EVENTS_CAP } from '../../db/repository.js';
 import { ISSUE_BODY_MAX, type IssueActIo, type IssueSourceIo } from './source.js';
 import type { NormalizedIssue } from '../../../../shared/kanban/types.js';
 
 /** How much of a ticket one read brings, so a ticket never floods an agent's context. */
-export const ISSUE_READ_LIMITS = { description: 20_000, comments: 30, comment: 2000, commentsTotal: 30_000, children: 50, labels: 30, title: 300, label: 100, field: 100, note: 300 } as const;
+export const ISSUE_READ_LIMITS = { description: 20_000, comments: 30, comment: 2000, commentsTotal: 30_000, children: 50, labels: 30, title: 300, label: 100, field: 100, note: 300, key: 64, time: 40 } as const;
 
 /** The framing that goes with every answer: what the ticket says is data, not orders. */
 export const ISSUE_READ_NOTICE =
@@ -71,6 +72,8 @@ function jiraFailure(err: unknown, site: string, key: string): { status: number;
 }
 
 const cut = (s: string, n: number) => s.slice(0, n);
+/** A key Jira returned that may be shown: a Jira key of sane length. */
+const sane = (k: string) => k.length <= ISSUE_READ_LIMITS.key && JIRA_KEY_RE.test(k);
 
 /** The ticket as an agent reads it, or why not. No HTTP: `who` is the asking worker, `ref` what it asked for (none: its own task's ticket). */
 export async function readIssueFor(ctx: KanbanContext, deps: AgentReadDeps, who: KanbanHookCaller, ref?: string): Promise<Answer> {
@@ -86,11 +89,21 @@ export async function readIssueFor(ctx: KanbanContext, deps: AgentReadDeps, who:
 
   /** The ticket to read (a Jira key, upper-cased) and the link that says its site, or the refusal. */
   let target: { key: string; url?: string } | Answer;
+  /** The task whose OWN ticket is read (no ref, or a task ref of this project): its server-verified bindings widen an open source. */
+  let ownTask: KanbanTask | undefined;
+  let events: { kind: string; data?: unknown }[] | undefined;
+  const bound: Bound = (s, k) => {
+    const t = ownTask;
+    if (!t?.ticket || t.ticket.toUpperCase() !== k.toUpperCase()) return false;
+    events ??= ctx.repo.listEvents(t.id, TASK_EVENTS_CAP);
+    return hasBinding(events, t.ticket, s.site);
+  };
   /** A task's own ticket is classified as it is, never read as a reference again. */
   const ticketOf = (t: KanbanTask): { key: string; url?: string } | Answer =>
     !t.ticket ? refuse(409, `Task #${t.id} has no ticket linked`) : JIRA_KEY_RE.test(t.ticket) ? { key: t.ticket.toUpperCase(), ...(t.ticketUrl ? { url: t.ticketUrl } : {}) } : refuse(422, otherKind(t.ticket, t.ticketUrl));
 
   if (!asked) {
+    ownTask = own;
     target = own ? ticketOf(own) : refuse(400, 'Give a ticket: your worker has no task, so there is no ticket of its own (office-tasks issue <KEY>)');
   } else if (JIRA_KEY_RE.test(asked)) {
     // The own task's link is only a hint for another key: it counts when a source that covers the key is on its site.
@@ -107,18 +120,27 @@ export async function readIssueFor(ctx: KanbanContext, deps: AgentReadDeps, who:
     } else if (found[0].project !== project) {
       target = refuse(403, `Task #${found[0].id} is in another project: you can only read tickets of your own project`);
     } else {
+      ownTask = found[0];
       target = ticketOf(found[0]);
     }
   }
   if ('status' in target) return target;
 
   const { key } = target;
-  const source = jiraReadSource(scoped, connections, key, target.url, known);
+  const source = jiraReadSource(scoped, connections, key, target.url, known, bound);
   if ('error' in source) return refuse(source.status, source.error);
-  return fetchIssue(deps, project, scoped, source, key, known);
+  // Jira had the task's own ticket through a source of the project: bound for good, so it stays readable once it leaves the office's cache.
+  const verified = () => {
+    const t = ownTask;
+    if (!t?.ticket || bound(source, key) || t.ticket.toUpperCase() !== key.toUpperCase()) return;
+    const data: TicketBinding = { ticket: key, site: source.site, source: source.id };
+    ctx.repo.appendEvent(t.id, TICKET_VERIFIED, data);
+    events = undefined;
+  };
+  return fetchIssue(deps, project, scoped, source, key, known, bound, verified);
 }
 
-async function fetchIssue(deps: AgentReadDeps, project: string, jiraSources: JiraSource[], source: JiraSource, key: string, known: KnownIssue): Promise<Answer> {
+async function fetchIssue(deps: AgentReadDeps, project: string, jiraSources: JiraSource[], source: JiraSource, key: string, known: KnownIssue, bound: Bound, verified: () => void): Promise<Answer> {
   // Shared: the office's own connection, whoever asks. Never a browse cache: one read is exactly three Jira calls.
   const io: IssueActIo = { ...deps.io(project), who: 'Agent Office', shared: true };
   const at = { site: source.site, ...(source.connection ? { connection: source.connection } : {}) };
@@ -131,8 +153,11 @@ async function fetchIssue(deps: AgentReadDeps, project: string, jiraSources: Jir
     return refuse(f.status, f.error);
   }
   if (!issue) return refuse(502, `Jira's answer for ${key} couldn't be read`);
+  if (!sane(issue.key)) return refuse(502, `Jira returned something that isn't ${key}`);
   // A moved issue answers under its new key, which this source may not cover.
-  if (!readCovers(source, issue.key, known)) return refuse(403, `${key} is now ${issue.key}, which isn't inside the project's Jira source: nothing more was asked of Jira`);
+  if (!readCovers(source, issue.key, known, bound)) return refuse(403, `${key} is now ${issue.key}, which isn't inside the project's Jira source: nothing more was asked of Jira`);
+
+  if (issue.key.toUpperCase() === key.toUpperCase()) verified();
 
   const [cs, ch] = await Promise.allSettled([jiraComments(io, at, issue.key), jiraChildren(io, at, issue.key)]);
   const notes: string[] = [];
@@ -158,22 +183,22 @@ async function fetchIssue(deps: AgentReadDeps, project: string, jiraSources: Jir
         break;
       }
       total += body.length;
-      comments.unshift({ author: cut(c.author, ISSUE_READ_LIMITS.field), createdAt: c.createdAt, body });
+      comments.unshift({ author: cut(c.author, ISSUE_READ_LIMITS.field), createdAt: cut(c.createdAt, ISSUE_READ_LIMITS.time), body });
     }
   }
 
-  // Only what a Jira source of the project on this site covers is shown: the rest is not the project's to read.
-  const shown = (k: string) => jiraSources.some((s) => sameJiraSite(s.site, source.site) && readCovers(s, k, known));
+  // Shown as `kanban.issue.children` shows it: what a Jira source of the project on this site covers (an open one covers all).
+  const shown = (k: string) => jiraSources.some((s) => sameJiraSite(s.site, source.site) && jiraCovers(s, k));
   let children: { key: string; title: string; status?: string; issueType?: string }[] = [];
   let childrenMore = false;
   if (ch.status === 'rejected') lost('children', ch);
   else {
-    const covered = ch.value.items.filter((c) => shown(c.key));
+    const covered = ch.value.items.filter((c) => sane(c.key) && shown(c.key));
     children = covered.slice(0, ISSUE_READ_LIMITS.children).map((c) => ({ key: c.key, title: cut(c.title, ISSUE_READ_LIMITS.title), ...(c.status ? { status: cut(c.status, ISSUE_READ_LIMITS.field) } : {}), ...(c.issueType ? { issueType: cut(c.issueType, ISSUE_READ_LIMITS.field) } : {}) }));
     childrenMore = covered.length > ISSUE_READ_LIMITS.children || ch.value.more;
   }
 
-  const parent = issue.parent ? (shown(issue.parent.key) ? { key: issue.parent.key, title: cut(issue.parent.title, ISSUE_READ_LIMITS.title), ...(issue.parent.status ? { status: cut(issue.parent.status, ISSUE_READ_LIMITS.field) } : {}) } : { key: issue.parent.key }) : undefined;
+  const parent = issue.parent && sane(issue.parent.key) ? (shown(issue.parent.key) ? { key: issue.parent.key, title: cut(issue.parent.title, ISSUE_READ_LIMITS.title), ...(issue.parent.status ? { status: cut(issue.parent.status, ISSUE_READ_LIMITS.field) } : {}) } : { key: issue.parent.key }) : undefined;
   return {
     status: 200,
     body: {
@@ -188,7 +213,7 @@ async function fetchIssue(deps: AgentReadDeps, project: string, jiraSources: Jir
         ...(issue.assignee ? { assignee: cut(issue.assignee, ISSUE_READ_LIMITS.field) } : {}),
         labels: issue.labels.slice(0, ISSUE_READ_LIMITS.labels).map((l) => cut(l, ISSUE_READ_LIMITS.label)),
         ...(parent ? { parent } : {}),
-        updatedAt: issue.updatedAt,
+        updatedAt: cut(issue.updatedAt, ISSUE_READ_LIMITS.time),
         body: issue.body.slice(0, ISSUE_READ_LIMITS.description),
         ...(issue.body.length >= ISSUE_BODY_MAX ? { bodyCut: true } : {}),
       },

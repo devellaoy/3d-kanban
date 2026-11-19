@@ -59,8 +59,19 @@ function setup(opts: Setup = {}) {
     if (r instanceof Error) throw r;
     return new Response(JSON.stringify(r.body ?? {}), { status: r.status ?? 200 });
   }) as unknown as typeof globalThis.fetch;
-  const issues = createIssues(ctx, { fetch });
-  const handler = issues.plugin.hook![PATH]!;
+  let issues = createIssues(ctx, { fetch });
+  let handler = issues.plugin.hook![PATH]!;
+  /** The office restarts: a new plugin instance with an empty cache (the tasks and their events stay). */
+  const restart = () => {
+    issues = createIssues(ctx, { fetch });
+    handler = issues.plugin.hook![PATH]!;
+  };
+  /** A person makes a task of a listed issue on the kanban (the plugin's createTask handler). */
+  const createTaskOf = async (issueKey: string) => {
+    const got: any[] = [];
+    await (issues.plugin.ws as any)['kanban.issues.createTask']({ name: 'Panu', accountId: 'acc1', send: (m: unknown) => got.push(m) }, { t: 'kanban.issues.createTask', project: 'app', rid: 'r1', issueKey });
+    return got.find((m) => m.taskId !== undefined) ?? got.at(-1);
+  };
   /** The office lists `opts.listed` from Jira (so `find` knows them); the calls made for that are forgotten. */
   const prime = async () => {
     listing_ = true;
@@ -82,7 +93,7 @@ function setup(opts: Setup = {}) {
     assert.ok(!/authorization|basic /i.test(text));
     return { status, body: JSON.parse(text), text };
   };
-  return { ctx, calls, call, task, worker, prime };
+  return { ctx, calls, call, task, worker, prime, restart, createTaskOf, issues: () => issues };
 }
 
 test('without a ref the caller’s own ticket is read: exactly three Jira calls, no field call, and the answer has its shape', async () => {
@@ -341,12 +352,18 @@ test('authentication: a wrong token is 401 on the hook route and Jira is not ask
 
 // --- the open source's scope, the site pin, error texts --------------------------------------------
 
-test('metadata is clipped too: the whole answer has an upper bound', async () => {
+test('metadata is clipped too: the whole answer has an upper bound, whatever Jira-sourced field is long', async () => {
   const long = 'L'.repeat(5000);
+  const key = (p: string, n: number) => `${p}${'X'.repeat(3000)}-${n}`;
+  const when = '2026-09-01T10:00:00.000+0000' + 'T'.repeat(5000);
   const { call } = setup({
-    comments: Array.from({ length: 30 }, (_, i) => ({ ...comment(i + 1, 'c'), author: { displayName: long } })),
-    children: Array.from({ length: 60 }, (_, i) => ({ key: `UYT-${100 + i}`, fields: { summary: long, status: { name: long }, issuetype: { name: long } } })),
-    issue: issueJson('UYT-7', { summary: long, labels: Array.from({ length: 50 }, () => long), assignee: { displayName: long }, status: { name: long }, issuetype: { name: long }, parent: { key: 'UYT-1', fields: { summary: long, status: { name: long } } } }),
+    comments: Array.from({ length: 30 }, (_, i) => ({ ...comment(i + 1, 'c'), author: { displayName: long }, created: when })),
+    children: [
+      ...Array.from({ length: 60 }, (_, i) => ({ key: `UYT-${100 + i}`, fields: { summary: long, status: { name: long }, issuetype: { name: long } } })),
+      // Keys that are too long are dropped, not cut.
+      ...Array.from({ length: 5 }, (_, i) => ({ key: key('UYT', i), fields: { summary: long } })),
+    ],
+    issue: issueJson('UYT-7', { summary: long, updated: when, labels: Array.from({ length: 50 }, () => long), assignee: { displayName: long }, status: { name: long }, issuetype: { name: long }, parent: { key: 'UYT-1', fields: { summary: long, status: { name: long } } } }),
   });
   const r = await call('UYT-7');
   const b = r.body;
@@ -356,8 +373,21 @@ test('metadata is clipped too: the whole answer has an upper bound', async () =>
   assert.ok(b.issue.labels.length === L.labels && b.issue.labels.every((l: string) => l.length === L.label));
   assert.ok([b.issue.status, b.issue.issueType, b.issue.assignee, b.issue.parent.status, b.children[0].status, b.children[0].issueType, b.comments[0].author].every((x: string) => x.length === L.field));
   assert.ok(b.issue.parent.title.length === L.title && b.children.every((c: Json) => c.title.length === L.title));
+  assert.equal(b.issue.updatedAt.length, L.time);
+  assert.ok(b.comments.every((c: Json) => c.createdAt.length === L.time));
+  assert.ok(b.children.every((c: Json) => c.key.length <= L.key));
   assert.ok(r.text.length < 100_000, `${r.text.length} bytes`);
-}); 
+
+  // A key Jira returns that is not a sane key: the issue's own is a 502, a parent or a child is dropped.
+  const own = setup({ issue: issueJson(key('UYT', 7)) });
+  const bad = await own.call('UYT-7');
+  assert.equal(bad.status, 502);
+  assert.equal(bad.body.error, "Jira returned something that isn't UYT-7");
+  const p = setup({ issue: issueJson('UYT-7', { parent: { key: key('UYT', 1), fields: { summary: 'P' } } }) });
+  const rp = await p.call('UYT-7');
+  assert.equal(rp.status, 200);
+  assert.equal(rp.body.issue.parent, undefined);
+});
 
 test('an open source covers only what the office already knows from Jira on its site; a task’s ticket field widens nothing', async () => {
   const hr = `https://${SITE}/browse/HR-1`;
@@ -370,24 +400,23 @@ test('an open source covers only what the office already knows from Jira on its 
     assert.match(r.body.error, /Settings → Projects → Issue sources/);
   }
   assert.equal(a.calls.length, 0);
-  // Known from the project's Jira list on the right site: readable (also as the task's own ticket); a sibling the office doesn't know is not.
+  // Known from the project's Jira list on the right site: readable (also as the task's own ticket); a sibling the office doesn't know is not readable by key, but a child Jira returns for it is listed.
   const b = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] }, children: [{ key: 'HR-5', fields: { summary: 'Unknown child' } }, { key: 'HR-1', fields: { summary: 'Known child' } }] });
   await b.prime();
   const tb = b.task({ ticket: 'HR-1', ticketUrl: hr });
   const ok = await b.call(undefined, b.worker({ taskId: tb.id }));
   assert.equal(ok.status, 200, ok.text);
   assert.equal(ok.body.issue.key, 'HR-1');
-  assert.deepEqual(ok.body.children.map((c: Json) => c.key), ['HR-1']);
+  assert.deepEqual(ok.body.children.map((c: Json) => c.key), ['HR-5', 'HR-1']);
   assert.equal(b.calls.length, 3);
   const before = b.calls.length;
   assert.equal((await b.call('HR-2')).status, 403);
   assert.equal(b.calls.length, before);
-  // A parent the office doesn't know is its key alone.
+  // A parent Jira returns for an allowed issue is shown whole, as the open source covers every project.
   const c = setup({ sources: [jira([])], listed: { [SITE]: ['HR-9'] }, issue: issueJson('HR-9', { parent: { key: 'HR-5', fields: { summary: 'Hidden' } } }) });
   await c.prime();
   const rc = await c.call('HR-9');
-  assert.deepEqual(rc.body.issue.parent, { key: 'HR-5' });
-  assert.ok(!rc.text.includes('Hidden'));
+  assert.deepEqual(rc.body.issue.parent, { key: 'HR-5', title: 'Hidden' });
   // Known on the source's site, but the task's own link is on another site: refused, nothing asked.
   const d = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] } });
   await d.prime();
@@ -496,4 +525,85 @@ test('jiraReadAdvertised: only a source that names the ticket’s project, on th
   assert.equal(adv([jira(['ABC'])], CONNS, 'UYT-1'), false);
   assert.equal(adv([named], [], 'UYT-1'), false);
   assert.equal(adv([{ id: 'g', kind: 'github-repo', repos: [], filters: {} }], CONNS, 'UYT-1'), false);
+});
+
+// --- children as `kanban.issue.children` shows them; the persistent binding of a task to its ticket -----------
+
+test('children and parent of an allowed issue: an open source covers all of them, a named-keys source only its projects', async () => {
+  const kids = [{ key: 'ZZ-5', fields: { summary: 'Not cached child' } }, { key: 'YY-6', fields: { summary: 'Other project child' } }];
+  const parent = { key: 'ZZ-1', fields: { summary: 'Epic title', status: { name: 'Open' } } };
+  const a = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] }, children: kids, issue: issueJson('HR-1', { parent }) });
+  await a.prime();
+  const r = (await a.call('HR-1')).body;
+  assert.deepEqual(r.children.map((c: Json) => c.key), ['ZZ-5', 'YY-6']);
+  assert.deepEqual(r.issue.parent, { key: 'ZZ-1', title: 'Epic title', status: 'Open' });
+  // A key asked for by ref stays strict: not cached, refused.
+  assert.equal((await a.call('ZZ-5')).status, 403);
+  const b = setup({ sources: [jira(['UYT'])], children: [{ key: 'UYT-8', fields: { summary: 'Mine' } }, { key: 'OTH-1', fields: { summary: 'Other project' } }], issue: issueJson('UYT-7', { parent }) });
+  const rb = (await b.call('UYT-7')).body;
+  assert.deepEqual(rb.children.map((c: Json) => c.key), ['UYT-8']);
+  assert.deepEqual(rb.issue.parent, { key: 'ZZ-1' });
+});
+
+const bindings = (ctx: ReturnType<typeof setup>['ctx'], id: number) => ctx.repo.listEvents(id).filter((e) => e.kind === 'ticket.verified').map((e) => e.data);
+
+test('a task made from a Jira issue stays readable on an open source after the issue leaves the cache, and shows the new status', async () => {
+  let status = 'To Do';
+  const a = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] }, jira: (c) => (c.url.includes('/rest/api/3/issue/HR-1?') ? { body: issueJson('HR-1', { status: { name: status } }) } : undefined) });
+  await a.prime();
+  const made = await a.createTaskOf('HR-1');
+  assert.ok(made.taskId, JSON.stringify(made));
+  assert.deepEqual(bindings(a.ctx, made.taskId), [{ ticket: 'HR-1', site: SITE, source: 's1' }]);
+  // The office restarts and the issue is Done now (off the list): the cache knows nothing.
+  a.restart();
+  a.calls.length = 0;
+  status = 'Done';
+  const r = await a.call(undefined, a.worker({ taskId: made.taskId }));
+  assert.equal(r.status, 200, r.text);
+  assert.equal(r.body.issue.status, 'Done');
+  assert.equal(a.calls.length, 3);
+  // The same through a task ref.
+  assert.equal((await a.call(`#${made.taskId}`)).status, 200);
+});
+
+test('a task whose ticket was only typed has no binding: refused, Jira not asked; a binding is for that ticket and that site only', async () => {
+  const a = setup({ sources: [jira([])] });
+  const typed = a.task({ ticket: 'HR-1', ticketUrl: `https://${SITE}/browse/HR-1` });
+  assert.equal((await a.call(undefined, a.worker({ taskId: typed.id }))).status, 403);
+  assert.equal(a.calls.length, 0);
+  assert.deepEqual(bindings(a.ctx, typed.id), []);
+  // A binding for the old ticket does not cover a changed ticket.
+  const t = a.task({ ticket: 'HR-1' });
+  a.ctx.repo.appendEvent(t.id, 'ticket.verified', { ticket: 'HR-1', site: SITE, source: 's1' });
+  assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
+  a.ctx.repo.updateTask(t.id, { ticket: 'HR-2' });
+  a.calls.length = 0;
+  assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 403);
+  assert.equal(a.calls.length, 0);
+  // A binding on another site does not cover this source's site.
+  const o = a.task({ ticket: 'HR-3' });
+  a.ctx.repo.appendEvent(o.id, 'ticket.verified', { ticket: 'HR-3', site: OTHER, source: 'x' });
+  assert.equal((await a.call(undefined, a.worker({ taskId: o.id }))).status, 403);
+  assert.equal(a.calls.length, 0);
+  // A bare key given as ref never uses a binding: another task's bound ticket is not readable by key.
+  const b = a.task({ ticket: 'HR-9' });
+  a.ctx.repo.appendEvent(b.id, 'ticket.verified', { ticket: 'HR-9', site: SITE, source: 's1' });
+  assert.equal((await a.call('HR-9', a.worker({ taskId: b.id }))).status, 403);
+  assert.equal((await a.call('HR-9')).status, 403);
+  assert.equal(a.calls.length, 0);
+});
+
+test('the first successful own-ticket read through the cache binds it, and a later read works with an empty cache', async () => {
+  const a = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] } });
+  await a.prime();
+  // Linked afterwards through the Issue tab: only typed, but the office knows the issue from Jira.
+  const t = a.task({ ticket: 'HR-1', ticketUrl: `https://${SITE}/browse/HR-1` });
+  assert.deepEqual(bindings(a.ctx, t.id), []);
+  assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
+  assert.deepEqual(bindings(a.ctx, t.id), [{ ticket: 'HR-1', site: SITE, source: 's1' }]);
+  // Read again: no second binding. Then the cache is gone and it still reads.
+  assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
+  assert.equal(bindings(a.ctx, t.id).length, 1);
+  a.restart();
+  assert.equal((await a.call(undefined, a.worker({ taskId: t.id }))).status, 200);
 });

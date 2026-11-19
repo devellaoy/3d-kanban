@@ -21,6 +21,7 @@ import { takeIssueForTask } from './autoassign.js';
 import { takeIssue } from './take.js';
 import { agentCreateHook } from './agent-create.js';
 import { agentIssueHook } from './agent-read.js';
+import { TICKET_VERIFIED, urlSite, type TicketBinding } from './agent-read-scope.js';
 import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
 import type { runOneShot } from '../../oneshot.js';
 import { draftHandlers } from './draft.js';
@@ -301,6 +302,14 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     return seen && now() - seen.at < BROWSED_TTL_MS ? seen.issue : undefined;
   };
 
+  /** A task made from a Jira issue the office itself had from Jira is bound to it (agent-read.ts: an open source then still lets its worker read it). */
+  const bind = (taskId: number, issue: NormalizedIssue) => {
+    const site = issue.source === 'jira' ? urlSite(issue.url) : undefined;
+    if (!site) return;
+    const data: TicketBinding = { ticket: issue.key, site, ...(issue.sourceId ? { source: issue.sourceId } : {}) };
+    ctx.repo.appendEvent(taskId, TICKET_VERIFIED, data);
+  };
+
   /**
    * The task for an issue, once per ticket: made, or the one it has already (started if it is still
    * in To do and `start` is asked). The caller answers with `result` first and then awaits `claim`,
@@ -343,6 +352,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         { start: opts.start, deskId: opts.deskId, event: { ticket: issue.key } },
       );
       if (typeof made === 'string') return made;
+      bind(made.task.id, issue);
       ctx.broadcast(message(project), project);
       wallChanged(project);
       const r: IssueTaskResult = { taskId: made.task.id, existed: false, ...(made.startError ? { startError: made.startError } : opts.start ? { started: true } : {}) };
@@ -358,6 +368,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       opts.start,
       startOpts,
     );
+    if (!made.existed) bind(made.task.id, issue);
     ctx.broadcast(message(project), project);
     wallChanged(project);
     const r: IssueTaskResult = { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) };
