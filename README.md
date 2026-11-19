@@ -126,8 +126,8 @@ What the office does for you:
 - **Editable prompts and skills**, office-wide or per project ([prompts](docs/kanban.md#prompts),
   [skills](docs/kanban.md#skills)).
 - **Agents that manage agents and tasks**: `office-workers`, `office-tasks` and the MCP tools (`hire_worker`,
-  `create_task`, `get_task`, `report_turn` and more) ([docs/kanban.md](docs/kanban.md#agents-reading-other-tasks),
-  [creating tasks](docs/kanban.md#agents-creating-tasks)).
+  `create_task`, `get_task`, `get_issue` (the task's Jira ticket, read fresh), `report_turn` and more) ([docs/kanban.md](docs/kanban.md#agents-reading-other-tasks),
+  [the Jira ticket](docs/kanban.md#agents-reading-the-tasks-jira-ticket), [creating tasks](docs/kanban.md#agents-creating-tasks)).
 - **Restarts carry on**: stop the office mid-turn and the workers pick up their own sessions when it starts
   again ([features](docs/features.md)); an agent left idle in Review, Waiting or Done is closed after 2 hours
   by default and reopens where it was ([docs/kanban.md](docs/kanban.md#idle-agents-close)).

@@ -20,6 +20,7 @@ import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js'
 import { takeIssueForTask } from './autoassign.js';
 import { takeIssue } from './take.js';
 import { agentCreateHook } from './agent-create.js';
+import { agentIssueHook } from './agent-read.js';
 import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
 import type { runOneShot } from '../../oneshot.js';
 import { draftHandlers } from './draft.js';
@@ -380,7 +381,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   const plugin: KanbanPlugin = {
     name: 'issues',
     // An agent's POST /office/tasks/create (this plugin owns it: it alone can look an issue up).
-    hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue) },
+    hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue), '/office/tasks/issue': agentIssueHook(ctx, { io }) },
     ws: {
       ...browsing.ws,
       ...drafting.ws,

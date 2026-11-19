@@ -883,7 +883,7 @@ Every prompt the kanban sends is editable: plan, replan, branch naming, checkout
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
 criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
-since, the ticket line, attached files, the project's instructions and their parts, the referenced
+since, the ticket line and its note on reading a Jira ticket, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
 its `{{placeholders}}`. The text that hands a finished meeting's output on is editable too, in the office's
 prompts (group Meetings): *Handing the output on* and its pieces for a review posted on a PR, a stopped meeting and the meeting's branch.
@@ -960,7 +960,7 @@ read the real task instead of guessing:
 
 - **`office-tasks`** is on every worker's PATH: `office-tasks get 14` (a number, `#14`, a ticket id or
   part of a title; `--tail` adds the end of its worker's terminal, `--json` the raw answer) and
-  `office-tasks search <words>`. It calls the hook server's `/office/tasks/reference` and
+  `office-tasks search <words>` (the task's Jira ticket: see the next section). It calls the hook server's `/office/tasks/reference` and
   `/office/tasks/search` with the worker's own `AGENT_OFFICE_WORKER_ID` and `AGENT_OFFICE_HOOK_TOKEN`.
 - **`office-tasks done|ask|plan-ready|review|pr`** are for a task's own worker: they tell the office how its turn
   ends (the MCP tool `report_turn` does the same, pre-approved with the two below for a kanban task's Claude worker; see
@@ -999,6 +999,26 @@ the last start's port when it's free. To pin it, start the office with `--hook-p
 `AGENT_OFFICE_HOOK_PORT=<n>`): then `AIKANBAN_API_BASE=http://127.0.0.1:<n>` can be set once in the
 script's environment. When the pinned port is taken, the office says so and listens elsewhere, and the
 file has the port it got.
+
+## Agents reading the task's Jira ticket
+
+A task's prompt carries the ticket's id and link, and a copy of its description when the task was made from it. The rest of
+the ticket (comments, child issues, its status in Jira now, later edits) a worker reads itself, through the office:
+
+- **`office-tasks issue`** prints the Jira ticket linked to the worker's own task as it is in Jira now: title, status, type,
+  assignee, labels, parent, description, comments (oldest first) and child issues. `office-tasks issue UYT-1416` reads another
+  Jira key inside the project's Jira sources, `office-tasks issue 14` the ticket of another task of the same project, and
+  `--json` prints the raw answer. The MCP tool **`get_issue`** (optional `ref`) does the same and is pre-approved for a kanban
+  task's Claude worker, also in the plan phase. Codex's sandboxes block the CLI, so Codex uses the MCP tool.
+- It is read-only and runs through the office's own Jira connection; the token never reaches the agent. Every call reads Jira
+  afresh. The answer is cut to the description's first 20 000 characters, the newest 30 comments (2 000 characters each, 30 000
+  in all) and 50 child issues, and says so when it cut something.
+- What it returns is framed as data written by other people in Jira, not instructions, at its start and its end.
+- **Refused**: a Jira key outside the Jira sources of the worker's project (a source with project keys covers those; a source with none only the Jira projects the project's tasks already have tickets in), a ticket whose link is on a Jira site the project has no source for, a task of another project, a task with no ticket,
+  and a project with no Jira connection for the site. GitHub issues are not read here (use `gh issue view <n> -R <owner/repo> --comments`),
+  and Azure Boards work items are not read at all. A parent or child outside the project's sources shows without a title (or not at all).
+- The task prompt says all this after the ticket line (the prompt *Ticket line · reading a Jira ticket*) only when the ticket is a Jira
+  key that one of the project's Jira sources names (or, for a source with no project keys, whose link is on the source's site) and the office has a connection for that site.
 
 ## Agents creating tasks
 
