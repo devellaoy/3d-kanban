@@ -143,13 +143,13 @@ test('a hosted repository: the review comes from the board, no GraphQL', async (
 });
 
 test('migration 9: a version 8 database keeps its links with unknown marks; setPrLinkMarks round-trips', () => {
-  assert.equal(SCHEMA_VERSION, 9);
+  assert.ok(SCHEMA_VERSION >= 9);
   const db = openKanbanDb(':memory:');
   const repo = new KanbanRepository(db);
   const t = repo.createTask({ project: 'web', title: 'A', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 't' });
   repo.upsertPrLink(t.id, { repoId: 'web', repo: 'o/web', number: 1, url: 'https://github.com/o/web/pull/1', state: 'OPEN', at: 1000 });
   db.exec('ALTER TABLE pr_links DROP COLUMN review; ALTER TABLE pr_links DROP COLUMN unresolved; PRAGMA user_version = 8;');
-  assert.deepEqual(migrate(db, MIGRATIONS), [9]);
+  assert.deepEqual(migrate(db, MIGRATIONS.filter((m) => m.version <= 9)), [9]);
   const [l] = repo.listPrLinks(t.id);
   assert.equal(l.review, undefined);
   assert.equal(l.unresolved, undefined);

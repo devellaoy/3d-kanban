@@ -179,7 +179,7 @@ export const MCP_READ_ONLY = [`mcp__${MCP_NAME}__list_workers`];
  * with AIKANBAN_API_BASE set; report_turn only tells the office how the worker's own turn ends). Kanban task workers are launched allowing them
  * (see integrations/refs), since MCP_READ_ONLY's list is upstream's.
  */
-export const MCP_TASK_TOOLS = [`mcp__${MCP_NAME}__get_task`, `mcp__${MCP_NAME}__search_tasks`, `mcp__${MCP_NAME}__report_turn`];
+export const MCP_TASK_TOOLS = [`mcp__${MCP_NAME}__get_task`, `mcp__${MCP_NAME}__search_tasks`, `mcp__${MCP_NAME}__get_issue`, `mcp__${MCP_NAME}__report_turn`];
 
 /**
  * Writes Claude Code's --mcp-config file for the MCP server (bin/office-workers.js `mcp`, run by the

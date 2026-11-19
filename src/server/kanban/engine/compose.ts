@@ -24,6 +24,7 @@ import type { PromptKind } from './machine.js';
 import { resolveLanguages, type LanguageSettings } from '../../../shared/language.js';
 import { placeholders, type PromptId } from '../../../shared/prompts.js';
 import { languageRules } from '../../language.js';
+import { jiraReadAdvertised } from '../integrations/issues/agent-read-scope.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
 import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, type UiBlockKind } from './uitesting.js';
@@ -334,6 +335,13 @@ export class Composer {
     return block && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('uiTesting') ? `${text}\n\n${block}` : text;
   }
 
+  /** The ticket line, and for a Jira ticket the office can read for the worker, the line that says how. */
+  private ticketText(task: KanbanTask): string {
+    const line = this.text('kanban.ticket', task.project, { ticket: task.ticket!, url: task.ticketUrl ? ` (${task.ticketUrl})` : '' });
+    const connections = this.ctx.secrets?.jiraConnections() ?? [];
+    return jiraReadAdvertised(this.ctx.settings.project(task.project).issueSources, connections, task.ticket, task.ticketUrl) ? `${line}\n${this.text('kanban.ticket.read', task.project, {})}` : line;
+  }
+
   /** Every placeholder the task prompts share. */
   taskVars(def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): Vars {
     const accepted = this.ctx.repo.acceptedPlan(task.id);
@@ -344,7 +352,7 @@ export class Composer {
       title: task.title,
       description: this.inline(task.id, task.description.trim()) || task.title,
       project: def.name,
-      ticket: task.ticket ? this.text('kanban.ticket', task.project, { ticket: task.ticket, url: task.ticketUrl ? ` (${task.ticketUrl})` : '' }) : '',
+      ticket: task.ticket ? this.ticketText(task) : '',
       attachments: this.attachments(task),
       repos: reposText(def, task, floorDir) + this.hostingNote(task.project, taskRepos(def, task)),
       instructions: this.instructions(def, task),

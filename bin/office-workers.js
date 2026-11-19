@@ -10,7 +10,7 @@
 import { realpathSync } from 'node:fs';
 import { createInterface } from 'node:readline';
 import { fileURLToPath } from 'node:url';
-// get_task, search_tasks and create_task, for the workers the office tells about tasks (see office-tasks.js).
+// get_task, search_tasks, get_issue and create_task, for the workers the office tells about tasks (see office-tasks.js).
 import { TASK_TOOLS, runTaskTool, tasksVisible } from './office-tasks.js';
 
 const USAGE = `Usage:
@@ -27,7 +27,7 @@ const USAGE = `Usage:
   office-workers home --merged                  send home everyone whose pull request merged
   office-workers tell <name|id> <<'EOF'         type a prompt to a worker (or --prompt "…")
   office-workers mcp                            serve these as MCP tools on stdio
-                                                (with get_task, search_tasks and create_task where
+                                                (with get_task, search_tasks, get_issue and create_task where
                                                 the office tells workers about tasks; office-tasks
                                                 create puts work on the kanban from a shell)`;
 
@@ -329,7 +329,7 @@ const BASE_INSTRUCTIONS =
 /** The one place the kanban guidance is said, so "get an agent to do this" lands on the board. */
 const KANBAN_NOTE =
   'This office runs a kanban: when you are asked to create a task, or to get an agent or worker to do some piece of work, use create_task (the task goes on the board and through plan, runs and review); ' +
-  'use hire_worker only when explicitly asked for a plain one-off worker outside the kanban. get_task and search_tasks read tasks.';
+  'use hire_worker only when explicitly asked for a plain one-off worker outside the kanban. get_task and search_tasks read tasks, and get_issue reads the Jira ticket linked to one.';
 
 /** The server's instructions; the kanban sentence only for the workers the office tells about tasks. */
 export function instructions(env) {

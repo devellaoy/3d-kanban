@@ -262,7 +262,7 @@ test('office-tasks: the CLI and the MCP tools, shown to workers told about tasks
   const kanbanEnv = { ...ENV, AIKANBAN_API_BASE: 'http://127.0.0.1:4455' };
   assert.equal(tasksVisible(kanbanEnv), true);
   const listed = await handleMcp({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { env: kanbanEnv, fetch: fetchOk });
-  assert.deepEqual(listed.result.tools.map((x: { name: string }) => x.name).slice(-2), ['search_tasks', 'report_turn']);
+  assert.deepEqual(listed.result.tools.map((x: { name: string }) => x.name).slice(-2), ['get_issue', 'report_turn']);
   assert.ok(listed.result.tools.some((x: { name: string }) => x.name === 'get_task'));
   for (const t of TASK_TOOLS) assert.equal(t.inputSchema.type, 'object');
   const called = await handleMcp({ jsonrpc: '2.0', id: 3, method: 'tools/call', params: { name: 'get_task', arguments: { ref: '14' } } }, { env: kanbanEnv, fetch: fetchOk });
@@ -363,7 +363,7 @@ test('office-tasks create: flags, the POST, the answer on stdout and stderr, and
   assert.match(tool.description, /Any agent may create tasks/);
   assert.deepEqual(EFFORTS, ['minimal', 'low', 'medium', 'high', 'xhigh', 'max']);
   assert.deepEqual((tool.inputSchema.properties.effort as { enum: string[] }).enum, EFFORTS);
-  assert.equal(TASK_TOOLS.length, 4);
+  assert.equal(TASK_TOOLS.length, 5);
   assert.doesNotMatch(instructions(ENV), /create_task/);
   assert.match(instructions(env), /create_task[\s\S]*hire_worker only when explicitly asked/);
   const mcp = (e: Record<string, string>, args: object) =>
@@ -381,7 +381,7 @@ test("a terminal's saved scrollback, as plain text", () => {
 test('the refs plugin allows its MCP tools for claude, and tells codex’s MCP server tasks are there', () => {
   const ctx = seeded();
   const p = createRefsPlugin(ctx);
-  assert.deepEqual(p.workerArgs!(1, 'claude', 'plan'), ['--allowedTools', 'mcp__agent-office__get_task,mcp__agent-office__search_tasks,mcp__agent-office__report_turn']);
+  assert.deepEqual(p.workerArgs!(1, 'claude', 'plan'), ['--allowedTools', 'mcp__agent-office__get_task,mcp__agent-office__search_tasks,mcp__agent-office__get_issue,mcp__agent-office__report_turn']);
   assert.deepEqual(p.workerArgs!(1, 'codex', 'plan'), ['-c', 'mcp_servers.agent-office.env.AIKANBAN_API_BASE="http://127.0.0.1:4555"']);
 });
 

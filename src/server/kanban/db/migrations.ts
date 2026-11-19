@@ -237,6 +237,18 @@ ALTER TABLE tasks ADD COLUMN queued_run TEXT;`),
     up: (db) => db.exec(`ALTER TABLE pr_links ADD COLUMN review TEXT;
 ALTER TABLE pr_links ADD COLUMN unresolved INTEGER;`),
   },
+  {
+    version: 10,
+    name: 'ticket bindings',
+    // A task's server-verified binding to its Jira ticket (db/ticketbindings.ts), kept apart from the capped event history: one row per task.
+    up: (db) => db.exec(`CREATE TABLE ticket_bindings (
+  task_id INTEGER PRIMARY KEY REFERENCES tasks(id) ON DELETE CASCADE,
+  ticket TEXT NOT NULL,
+  site TEXT NOT NULL,
+  source TEXT,
+  verified_at INTEGER NOT NULL
+);`),
+  },
 ];
 
 /** The schema version this build expects. */
