@@ -91,3 +91,33 @@ test('get_issue over MCP', async () => {
   assert.equal(failed.result.isError, true);
   assert.match(failed.result.content[0].text, /Not in the project/);
 });
+
+test('a partial read: the text stands, but stderr says it is incomplete and the exit code is 1; --json too', async () => {
+  const partial = { ...ANSWER, comments: [], children: [], partial: true, failed: ['comments', 'children'], notes: ["Comments couldn't be read: Jira said 500", "Child issues couldn't be read: Jira said 500"] };
+  const s = stub(200, partial);
+  const out: string[] = [];
+  const err: string[] = [];
+  assert.equal(await officeTasks(['issue'], { env: ENV, fetch: s.fetchImpl, out: (x) => out.push(x), err: (x) => err.push(x) }), 1);
+  assert.match(out[0], /# UYT-12: Fix login/);
+  assert.match(out[0], /INCOMPLETE: the comments and the child issues could not be read/);
+  assert.match(out[0], /## Comments \(oldest first\)\n\n\(the comments could not be read: this does NOT mean there are none\)/);
+  assert.match(out[0], /## Child issues\n\n\(the child issues could not be read/);
+  assert.doesNotMatch(out[0], /\(none\)\n\n## Child/);
+  assert.match(err.join('\n'), /the ticket was read, but the comments and the child issues could not be read/);
+  const j: string[] = [];
+  assert.equal(await officeTasks(['issue', '--json'], { env: ENV, fetch: s.fetchImpl, out: (x) => j.push(x), err: () => {} }), 1);
+  assert.equal(JSON.parse(j[0]).partial, true);
+  // Only the children failed: the comments are shown as they are.
+  const c = formatIssue({ ...ANSWER, partial: true, failed: ['children'], children: [] });
+  assert.match(c, /INCOMPLETE: the child issues could not be read/);
+  assert.match(c, /\*\*Bob\*\*/);
+  // Both fine: no marker, exit 0.
+  const fine = formatIssue(ANSWER);
+  assert.doesNotMatch(fine, /INCOMPLETE|could not be read/);
+  assert.equal(await officeTasks(['issue'], { env: ENV, fetch: stub(200, ANSWER).fetchImpl, out: () => {}, err: (x) => err.push(`E:${x}`) }), 0);
+  // MCP: the text with the same lines, not an error.
+  const env = { ...ENV, AGENT_OFFICE_TASKS: '1' };
+  const res = await handleMcp({ jsonrpc: '2.0', id: 9, method: 'tools/call', params: { name: 'get_issue', arguments: {} } }, { env, fetch: s.fetchImpl });
+  assert.ok(!res.result.isError);
+  assert.match(res.result.content[0].text, /INCOMPLETE: the comments and the child issues could not be read/);
+});

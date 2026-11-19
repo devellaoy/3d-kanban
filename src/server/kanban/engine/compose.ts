@@ -339,7 +339,7 @@ export class Composer {
   private ticketText(task: KanbanTask): string {
     const line = this.text('kanban.ticket', task.project, { ticket: task.ticket!, url: task.ticketUrl ? ` (${task.ticketUrl})` : '' });
     const connections = this.ctx.secrets?.jiraConnections() ?? [];
-    return jiraReadAdvertised(this.ctx.settings.project(task.project).issueSources, connections, task.ticket, task.ticketUrl, this.ctx.repo.listTasks(task.project, { includeArchived: true }).map((t) => t.ticket)) ? `${line}\n${this.text('kanban.ticket.read', task.project, {})}` : line;
+    return jiraReadAdvertised(this.ctx.settings.project(task.project).issueSources, connections, task.ticket, task.ticketUrl) ? `${line}\n${this.text('kanban.ticket.read', task.project, {})}` : line;
   }
 
   /** Every placeholder the task prompts share. */

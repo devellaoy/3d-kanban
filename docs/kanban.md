@@ -1012,13 +1012,15 @@ the ticket (comments, child issues, its status in Jira now, later edits) a worke
   task's Claude worker, also in the plan phase. Codex's sandboxes block the CLI, so Codex uses the MCP tool.
 - It is read-only and runs through the office's own Jira connection; the token never reaches the agent. Every call reads Jira
   afresh. The answer is cut to the description's first 20 000 characters, the newest 30 comments (2 000 characters each, 30 000
-  in all) and 50 child issues, and says so when it cut something.
+  in all) and 50 child issues, with titles, labels, names and notes cut short too, and says so when it cut something.
+  If the ticket was read but its comments or child issues could not be, the text says so at the top and in that section (so it
+  is not mistaken for "none"), the CLI prints the reason on stderr and exits 1 (with `--json` too), and the MCP tool says the same in its text.
 - What it returns is framed as data written by other people in Jira, not instructions, at its start and its end.
-- **Refused**: a Jira key outside the Jira sources of the worker's project (a source with project keys covers those; a source with none only the Jira projects the project's tasks already have tickets in), a ticket whose link is on a Jira site the project has no source for, a task of another project, a task with no ticket,
+- **Refused**: a Jira key outside the Jira sources of the worker's project (a source with project keys covers those; a source with none only an issue the office already knows from Jira on the source's site, such as one on the project's issue list or one someone just opened; a task's own `ticket` field widens nothing, so an admin names the Jira project keys on the source in Settings → Projects → Issue sources to let agents read a project's tickets), a ticket whose link is on a Jira site the project has no source for, a task of another project, a task with no ticket,
   and a project with no Jira connection for the site. GitHub issues are not read here (use `gh issue view <n> -R <owner/repo> --comments`),
-  and Azure Boards work items are not read at all. A parent or child outside the project's sources shows without a title (or not at all).
+  and Azure Boards work items are not read (the refusal gives their link). A parent or child the same rule doesn't cover shows without a title (or not at all).
 - The task prompt says all this after the ticket line (the prompt *Ticket line · reading a Jira ticket*) only when the ticket is a Jira
-  key that one of the project's Jira sources names (or, for a source with no project keys, whose link is on the source's site) and the office has a connection for that site.
+  key that one of the project's Jira sources names and the office has a connection for that site (a source with no project keys is never advertised).
 
 ## Agents creating tasks
 

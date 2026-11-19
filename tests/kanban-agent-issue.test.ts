@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
 import { ISSUE_READ_LIMITS, ISSUE_READ_NOTICE } from '../src/server/kanban/integrations/issues/agent-read.js';
-import { jiraReadAdvertised, jiraReadScope, jiraReadSource } from '../src/server/kanban/integrations/issues/agent-read-scope.js';
+import { jiraReadAdvertised, jiraReadSource } from '../src/server/kanban/integrations/issues/agent-read-scope.js';
 import { officeTasks } from '../src/server/kanban/http/hooks.js';
 import type { KanbanHookCaller } from '../src/server/kanban/registry.js';
 import type { IssueSourceConfig } from '../src/shared/kanban/types.js';
@@ -38,6 +38,8 @@ interface Setup {
   children?: unknown[];
   childrenNext?: string;
   issue?: Json;
+  /** Keys per site the office lists from Jira (see prime). */
+  listed?: Record<string, string[]>;
 }
 
 function setup(opts: Setup = {}) {
@@ -45,16 +47,27 @@ function setup(opts: Setup = {}) {
   ctx.settings.setProject('app', { issueSources: opts.sources ?? [jira(['UYT'])] });
   (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => opts.connections ?? CONNS };
   const calls: HttpCall[] = [];
+  let listing_ = false;
   const fetch = (async (url: string, init: RequestInit) => {
     const call = { url, method: String(init.method), auth: String((init.headers as Record<string, string>).authorization) };
     calls.push(call);
+    const listing = listing_ && url.includes('/search/jql') && opts.listed?.[new URL(url).host];
     const r: Reply =
+      (listing ? { body: { issues: listing.map((k) => issueJson(k)) } } : undefined) ??
       opts.jira?.(call) ??
       (url.includes('/comment?') ? { body: { comments: [...(opts.comments ?? [comment(1), comment(2)])].reverse() } } : url.includes('/search/jql') ? { body: { issues: opts.children ?? [], ...(opts.childrenNext ? { nextPageToken: opts.childrenNext } : {}) } } : url.includes('/rest/api/3/issue/') ? { body: opts.issue ?? issueJson(decodeURIComponent(url.split('/issue/')[1].split(/[?/]/)[0])) } : { status: 404, body: {} });
     if (r instanceof Error) throw r;
     return new Response(JSON.stringify(r.body ?? {}), { status: r.status ?? 200 });
   }) as unknown as typeof globalThis.fetch;
-  const handler = createIssues(ctx, { fetch }).plugin.hook![PATH]!;
+  const issues = createIssues(ctx, { fetch });
+  const handler = issues.plugin.hook![PATH]!;
+  /** The office lists `opts.listed` from Jira (so `find` knows them); the calls made for that are forgotten. */
+  const prime = async () => {
+    listing_ = true;
+    await issues.refresh('app');
+    listing_ = false;
+    calls.length = 0;
+  };
   const task = (over: Partial<Parameters<typeof ctx.repo.createTask>[0]> = {}) =>
     ctx.repo.createTask({ project: 'app', title: 'T', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'x', ...over });
   const worker = (over: Partial<KanbanHookCaller> = {}): KanbanHookCaller => ({ workerId: 'w1', floorId: 'app', name: 'Ada', kind: 'agent', ...over });
@@ -69,7 +82,7 @@ function setup(opts: Setup = {}) {
     assert.ok(!/authorization|basic /i.test(text));
     return { status, body: JSON.parse(text), text };
   };
-  return { ctx, calls, call, task, worker };
+  return { ctx, calls, call, task, worker, prime };
 }
 
 test('without a ref the caller’s own ticket is read: exactly three Jira calls, no field call, and the answer has its shape', async () => {
@@ -185,8 +198,9 @@ test('refusals send nothing to Jira: no ticket, free text, uncovered key, anothe
   assert.equal(r.status, 400);
   r = await call(undefined, as(free));
   assert.equal(r.status, 422);
-  assert.match(r.body.error, /doesn't read that kind of ticket for agents/);
-  assert.match(r.body.error, /description holds its copy/);
+  assert.match(r.body.error, /can't read that kind of ticket for agents/);
+  assert.match(r.body.error, /description may hold a copy if the task was created from it/);
+  assert.doesNotMatch(r.body.error, /holds its copy/);
   r = await call(undefined, as(gh));
   assert.equal(r.status, 422);
   assert.match(r.body.error, /gh issue view 12 -R o\/app --comments/);
@@ -194,12 +208,19 @@ test('refusals send nothing to Jira: no ticket, free text, uncovered key, anothe
   assert.equal(r.status, 422);
   r = await call(undefined, as(ab));
   assert.equal(r.status, 422);
-  assert.match(r.body.error, /description holds its copy/);
+  assert.match(r.body.error, /doesn't read Azure Boards work items for agents, open it in Azure Boards: https:\/\/dev\.azure\.com\/org\/proj\/_workitems\/edit\/7/);
+  assert.doesNotMatch(r.body.error, /copy/);
+  const abLinked = task({ title: 'Linked', ticket: 'ab:org/proj#8', ticketUrl: 'https://dev.azure.com/org/proj/_workitems/edit/8?x=1' });
+  assert.match((await call(undefined, as(abLinked))).body.error, /open it in Azure Boards: https:\/\/dev\.azure\.com\/org\/proj\/_workitems\/edit\/8\?x=1/);
+  const draftLinked = task({ title: 'DraftL', ticket: 'ghp:o/1#PVTI_y', ticketUrl: 'https://github.com/orgs/o/projects/1' });
+  assert.match((await call(undefined, as(draftLinked))).body.error, /\(https:\/\/github\.com\/orgs\/o\/projects\/1\)/);
   r = await call('gh:o/app#3', as(none));
   assert.equal(r.status, 422);
   assert.match(r.body.error, /gh issue view 3 -R o\/app --comments/);
   assert.equal((await call('ghp:o/1#x', as(none))).status, 422);
-  assert.equal((await call('ab:org/proj#7', as(none))).status, 422);
+  r = await call('ab:org/proj#9', as(none));
+  assert.equal(r.status, 422);
+  assert.match(r.body.error, /_workitems\/edit\/9/);
   r = await call('OTHER-1', as(none));
   assert.equal(r.status, 403);
   assert.match(r.body.error, /isn't inside one of the project's Jira sources/);
@@ -255,7 +276,10 @@ test('Jira 401, 500, 429 and a timeout are said with a status and a message, no 
   let s = fail({ status: 401, body: { errorMessages: ['no'] } });
   let r = await s.call('UYT-1');
   assert.equal(r.status, 502);
-  assert.match(r.body.error, /turned the e-mail and API token down \(401\)/);
+  assert.deepEqual([r.status, r.body.error], [502, "Jira turned the office's sign-in down (401)"]);
+  s = fail({ status: 404, body: { errorMessages: ['gone'] } });
+  r = await s.call('UYT-1');
+  assert.equal(r.body.error, "Jira has no UYT-1, or the office's Jira account can't see it");
   s = fail({ status: 500, body: {} });
   r = await s.call('UYT-1');
   assert.deepEqual([r.status, r.body.error], [502, 'Jira said 500']);
@@ -276,8 +300,16 @@ test('a failing comment or child read does not fail the read: it is a note', asy
   assert.deepEqual(r.body.comments, []);
   assert.deepEqual(r.body.children, []);
   assert.deepEqual(r.body.notes, ["Comments couldn't be read: Jira is rate-limiting the office: try again in a minute", "Child issues couldn't be read: Jira said 500"]);
+  assert.equal(r.body.partial, true);
+  assert.deepEqual(r.body.failed, ['comments', 'children']);
   const t = setup({ jira: (c) => (c.url.includes('/comment?') ? Object.assign(new Error('x'), { name: 'TimeoutError' }) : undefined) });
-  assert.deepEqual((await t.call('UYT-1')).body.notes, ["Comments couldn't be read: Jira didn't answer within 30 s"]);
+  const tr = (await t.call('UYT-1')).body;
+  assert.deepEqual(tr.notes, ["Comments couldn't be read: Jira didn't answer within 30 s"]);
+  assert.deepEqual([tr.partial, tr.failed], [true, ['comments']]);
+  const refused = (await setup({ jira: (c) => (c.url.includes('/search/jql') ? { status: 403, body: {} } : undefined) }).call('UYT-1')).body;
+  assert.deepEqual([refused.partial, refused.failed, refused.notes], [true, ['children'], ["Child issues couldn't be read: Jira turned the office's sign-in down (403)"]]);
+  const fine = (await setup().call('UYT-1')).body;
+  assert.ok(!('partial' in fine) && !('failed' in fine));
 });
 
 test('only GET, only exactly /office/tasks/issue', async () => {
@@ -309,30 +341,59 @@ test('authentication: a wrong token is 401 on the hook route and Jira is not ask
 
 // --- the open source's scope, the site pin, error texts --------------------------------------------
 
-test('an open source covers only the Jira projects the project’s tasks have tickets in', async () => {
-  // A task-less worker, no ticket anywhere: HR-1 is refused and Jira is not asked.
+test('metadata is clipped too: the whole answer has an upper bound', async () => {
+  const long = 'L'.repeat(5000);
+  const { call } = setup({
+    comments: Array.from({ length: 30 }, (_, i) => ({ ...comment(i + 1, 'c'), author: { displayName: long } })),
+    children: Array.from({ length: 60 }, (_, i) => ({ key: `UYT-${100 + i}`, fields: { summary: long, status: { name: long }, issuetype: { name: long } } })),
+    issue: issueJson('UYT-7', { summary: long, labels: Array.from({ length: 50 }, () => long), assignee: { displayName: long }, status: { name: long }, issuetype: { name: long }, parent: { key: 'UYT-1', fields: { summary: long, status: { name: long } } } }),
+  });
+  const r = await call('UYT-7');
+  const b = r.body;
+  assert.equal(r.status, 200);
+  const L = ISSUE_READ_LIMITS;
+  assert.equal(b.issue.title.length, L.title);
+  assert.ok(b.issue.labels.length === L.labels && b.issue.labels.every((l: string) => l.length === L.label));
+  assert.ok([b.issue.status, b.issue.issueType, b.issue.assignee, b.issue.parent.status, b.children[0].status, b.children[0].issueType, b.comments[0].author].every((x: string) => x.length === L.field));
+  assert.ok(b.issue.parent.title.length === L.title && b.children.every((c: Json) => c.title.length === L.title));
+  assert.ok(r.text.length < 100_000, `${r.text.length} bytes`);
+}); 
+
+test('an open source covers only what the office already knows from Jira on its site; a task’s ticket field widens nothing', async () => {
+  const hr = `https://${SITE}/browse/HR-1`;
+  // A worker-made task with ticket HR-1 (and a link): neither HR-1 nor HR-2 is readable, for its own worker or another, and Jira is not asked.
   const a = setup({ sources: [jira([])] });
-  const r = await a.call('HR-1');
-  assert.equal(r.status, 403);
+  const t = a.task({ ticket: 'HR-1', ticketUrl: hr });
+  for (const [ref, who] of [[undefined, a.worker({ taskId: t.id })], ['HR-1', a.worker()], ['HR-2', a.worker({ taskId: t.id })], ['HR-2', a.worker()], [`#${t.id}`, a.worker()]] as const) {
+    const r = await a.call(ref, who);
+    assert.equal(r.status, 403, `${ref}`);
+    assert.match(r.body.error, /Settings → Projects → Issue sources/);
+  }
   assert.equal(a.calls.length, 0);
-  // Tasks with tickets elsewhere in the project make their Jira projects known; HR still is not.
-  const b = setup({ sources: [jira([])], children: [{ key: 'UYT-8', fields: { summary: 'Same project' } }, { key: 'HR-9', fields: { summary: 'Other project' } }] });
-  const t = b.task({ ticket: 'UYT-7', ticketUrl: `https://${SITE}/browse/UYT-7` });
-  b.task({ title: 'Archived', ticket: 'ABC-1' });
-  const own = await b.call(undefined, b.worker({ taskId: t.id }));
-  assert.equal(own.status, 200);
-  assert.deepEqual(own.body.children.map((c: Json) => c.key), ['UYT-8']);
-  const calls = b.calls.length;
-  assert.equal((await b.call('HR-1')).status, 403);
-  assert.equal(b.calls.length, calls);
-  // A sibling in the same Jira project, and one in another project the tasks use.
-  assert.equal((await b.call('UYT-99')).status, 200);
-  assert.equal((await b.call('abc-5')).status, 200);
-  // The parent in another Jira project is its key alone.
-  const c = setup({ sources: [jira([])], issue: issueJson('UYT-7', { parent: { key: 'HR-5', fields: { summary: 'Hidden' } } }) });
-  c.task({ ticket: 'UYT-7' });
-  const r3 = (await c.call('UYT-7')).body;
-  assert.deepEqual(r3.issue.parent, { key: 'HR-5' });
+  // Known from the project's Jira list on the right site: readable (also as the task's own ticket); a sibling the office doesn't know is not.
+  const b = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] }, children: [{ key: 'HR-5', fields: { summary: 'Unknown child' } }, { key: 'HR-1', fields: { summary: 'Known child' } }] });
+  await b.prime();
+  const tb = b.task({ ticket: 'HR-1', ticketUrl: hr });
+  const ok = await b.call(undefined, b.worker({ taskId: tb.id }));
+  assert.equal(ok.status, 200, ok.text);
+  assert.equal(ok.body.issue.key, 'HR-1');
+  assert.deepEqual(ok.body.children.map((c: Json) => c.key), ['HR-1']);
+  assert.equal(b.calls.length, 3);
+  const before = b.calls.length;
+  assert.equal((await b.call('HR-2')).status, 403);
+  assert.equal(b.calls.length, before);
+  // A parent the office doesn't know is its key alone.
+  const c = setup({ sources: [jira([])], listed: { [SITE]: ['HR-9'] }, issue: issueJson('HR-9', { parent: { key: 'HR-5', fields: { summary: 'Hidden' } } }) });
+  await c.prime();
+  const rc = await c.call('HR-9');
+  assert.deepEqual(rc.body.issue.parent, { key: 'HR-5' });
+  assert.ok(!rc.text.includes('Hidden'));
+  // Known on the source's site, but the task's own link is on another site: refused, nothing asked.
+  const d = setup({ sources: [jira([])], listed: { [SITE]: ['HR-1'] } });
+  await d.prime();
+  const td = d.task({ ticket: 'HR-1', ticketUrl: `https://${OTHER}/browse/HR-1` });
+  assert.equal((await d.call(undefined, d.worker({ taskId: td.id }))).status, 403);
+  assert.equal(d.calls.length, 0);
 });
 
 test('a ticket link on a site with no source is refused, not read from another site', async () => {
@@ -344,8 +405,8 @@ test('a ticket link on a site with no source is refused, not read from another s
   assert.equal(r.status, 403);
   assert.match(r.body.error, /UYT-12's link is on other\.atlassian\.net, where the project has no Jira source that covers it/);
   assert.equal(s.calls.length, 0);
-  assert.equal(jiraReadAdvertised(sources, CONNS, 'UYT-12', url, ['UYT-12']), false);
-  assert.equal(jiraReadAdvertised(sources, CONNS, 'UYT-12', `https://${SITE}/browse/UYT-12`, ['UYT-12']), true);
+  assert.equal(jiraReadAdvertised(sources, CONNS, 'UYT-12', url), false);
+  assert.equal(jiraReadAdvertised(sources, CONNS, 'UYT-12', `https://${SITE}/browse/UYT-12`), true);
   // The same through a task ref.
   const u = s.task({ title: 'Ref' });
   assert.equal((await s.call(`#${t.id}`, s.worker({ taskId: u.id }))).status, 403);
@@ -368,51 +429,67 @@ test('a network failure says where; a long Jira error is clipped', async () => {
   const b = setup({ jira: (c) => (c.url.includes('/issue/UYT-1?') ? { status: 400, body: { errorMessages: ['E'.repeat(5000)] } } : undefined) });
   const r2 = await b.call('UYT-1');
   assert.equal(r2.status, 502);
-  assert.ok(r2.body.error.length <= 500 && r2.body.error.startsWith('Jira said 400: EEE'));
-  // A secret in Jira's own words doesn't pass either.
-  const c = setup({ jira: (x) => (x.url.includes('/issue/UYT-1?') ? { status: 400, body: { errorMessages: ['bad tok-secret-1'] } } : undefined) });
-  assert.equal((await c.call('UYT-1')).status, 502);
+  assert.equal(r2.body.error, 'Jira said 400');
+  // Nothing of Jira's own words passes: not even the full Authorization value it echoes, the token or the e-mail.
+  const basic = `Basic ${Buffer.from('me@x.fi:tok-secret-1').toString('base64')}`;
+  for (const status of [400, 401, 403, 404, 500]) {
+    const c = setup({ jira: (x) => (x.url.includes('/issue/UYT-1?') || x.url.includes('/comment?') || x.url.includes('/search/jql') ? { status, body: { errorMessages: [`bad ${basic} tok-secret-1 me@x.fi`], errors: { f: basic } } } : undefined) });
+    const r3 = await c.call('UYT-1');
+    assert.equal(r3.status, 502);
+    assert.ok(!/Basic|tok-secret|me@x\.fi/.test(r3.text), r3.text);
+  }
+  // The same for a failing comments / children read, which is a note.
+  const d = setup({ jira: (x) => (x.url.includes('/comment?') || x.url.includes('/search/jql') ? { status: 500, body: { errorMessages: [`echo ${basic} tok-secret-1 me@x.fi`] } } : undefined) });
+  const r4 = await d.call('UYT-1');
+  assert.equal(r4.status, 200);
+  assert.ok(!/Basic|tok-secret|me@x\.fi/.test(r4.text));
+  assert.deepEqual(r4.body.notes, ["Comments couldn't be read: Jira said 500", "Child issues couldn't be read: Jira said 500"]);
 });
 
 // --- jiraReadScope / jiraReadSource / jiraReadAdvertised ------------------------------------------------
 
 test('jiraReadSource: covered, named before open, the link’s site, and the connection', () => {
   const named = jira(['UYT'], SITE, 'named');
-  const scoped = (...s: IssueSourceConfig[]) => jiraReadScope(s, ['XYZ-1']);
+  const nothing = () => undefined;
+  const knownAt = (site: string, source: 'jira' | 'github' = 'jira') => (k: string) => (k === 'XYZ-1' ? ({ source, key: k, title: 't', url: `https://${site}/browse/${k}`, body: '', labels: [], updatedAt: '' } as never) : undefined);
   const src = (r: unknown) => r as { id?: string; status?: number; error?: string };
-  assert.match(src(jiraReadSource([], CONNS, 'UYT-1')).error!, /isn't inside one of the project's Jira sources: nothing was asked of Jira/);
-  assert.match(src(jiraReadSource(scoped(named), CONNS, 'nope')).error!, /isn't a Jira issue key/);
-  assert.match(src(jiraReadSource(scoped(jira(['ABC'])), CONNS, 'UYT-1')).error!, /isn't inside/);
-  // An open source is only for the known Jira projects; the named one wins for its own.
+  assert.match(src(jiraReadSource([], CONNS, 'UYT-1', undefined, nothing)).error!, /isn't inside one of the project's Jira sources: nothing was asked of Jira/);
+  assert.match(src(jiraReadSource([named], CONNS, 'nope', undefined, nothing)).error!, /isn't a Jira issue key/);
+  assert.match(src(jiraReadSource([jira(['ABC'])], CONNS, 'UYT-1', undefined, nothing)).error!, /isn't inside/);
+  // An open source needs the key known from Jira on its own site; the named one wins for its own.
   const open = jira([], SITE, 'open');
-  assert.equal(src(jiraReadSource(scoped(open, named), CONNS, 'uyt-1')).id, 'named');
-  assert.equal(src(jiraReadSource(scoped(open, named), CONNS, 'XYZ-1')).id, 'open');
-  assert.equal(src(jiraReadSource(scoped(open, named), CONNS, 'HR-1')).status, 403);
-  assert.deepEqual(jiraReadScope([open], []), []);
+  assert.equal(src(jiraReadSource([open, named], CONNS, 'uyt-1', undefined, nothing)).id, 'named');
+  assert.equal(src(jiraReadSource([open, named], CONNS, 'XYZ-1', undefined, knownAt(SITE))).id, 'open');
+  assert.equal(src(jiraReadSource([open, named], CONNS, 'XYZ-1', undefined, knownAt(SITE.toUpperCase()))).id, 'open');
+  for (const known of [nothing, knownAt(OTHER), knownAt(SITE, 'github')]) {
+    const r = src(jiraReadSource([open, named], CONNS, 'XYZ-1', undefined, known));
+    assert.equal(r.status, 403);
+    assert.match(r.error!, /an admin can name the Jira project keys/i);
+  }
   // The same key through a source on each site: the link's site decides, a link elsewhere is refused.
   const a = jira(['UYT'], SITE, 'a');
   const b = jira(['UYT'], OTHER, 'b');
-  assert.equal(src(jiraReadSource([a, b] as never, CONNS, 'UYT-1')).id, 'a');
-  assert.equal(src(jiraReadSource([a, b] as never, CONNS, 'UYT-1', `https://${OTHER.toUpperCase()}/browse/UYT-1`)).id, 'b');
-  assert.equal(src(jiraReadSource([a, b] as never, CONNS, 'UYT-1', 'not a url')).id, 'a');
-  const away = src(jiraReadSource([a, b] as never, CONNS, 'UYT-1', 'https://elsewhere.example/x'));
+  assert.equal(src(jiraReadSource([a, b] as never, CONNS, 'UYT-1', undefined, nothing)).id, 'a');
+  assert.equal(src(jiraReadSource([a, b] as never, CONNS, 'UYT-1', `https://${OTHER.toUpperCase()}/browse/UYT-1`, nothing)).id, 'b');
+  assert.equal(src(jiraReadSource([a, b] as never, CONNS, 'UYT-1', 'not a url', nothing)).id, 'a');
+  const away = src(jiraReadSource([a, b] as never, CONNS, 'UYT-1', 'https://elsewhere.example/x', nothing));
   assert.equal(away.status, 403);
   assert.match(away.error!, /link is on elsewhere\.example/);
   // No connection, a removed one, one for another site: the reason, never a throw.
-  assert.match(src(jiraReadSource([a] as never, [], 'UYT-1')).error!, /No Jira connection for team\.atlassian\.net/);
-  assert.match(src(jiraReadSource([{ ...a, connection: 'gone' }] as never, CONNS, 'UYT-1')).error!, /was removed/);
-  assert.match(src(jiraReadSource([{ ...a, connection: 'c2' }] as never, CONNS, 'UYT-1')).error!, /is for other\.atlassian\.net/);
-  assert.equal(src(jiraReadSource([{ ...a, connection: 'c1' }] as never, CONNS, 'UYT-1')).id, 'a');
+  assert.match(src(jiraReadSource([a] as never, [], 'UYT-1', undefined, nothing)).error!, /No Jira connection for team\.atlassian\.net/);
+  assert.match(src(jiraReadSource([{ ...a, connection: 'gone' }] as never, CONNS, 'UYT-1', undefined, nothing)).error!, /was removed/);
+  assert.match(src(jiraReadSource([{ ...a, connection: 'c2' }] as never, CONNS, 'UYT-1', undefined, nothing)).error!, /is for other\.atlassian\.net/);
+  assert.equal(src(jiraReadSource([{ ...a, connection: 'c1' }] as never, CONNS, 'UYT-1', undefined, nothing)).id, 'a');
 });
 
-test('jiraReadAdvertised: a named project, or an open source on the ticket’s own site', () => {
+test('jiraReadAdvertised: only a source that names the ticket’s project, on the link’s site, with a connection', () => {
   const open = jira([]);
   const named = jira(['UYT']);
-  const adv = (s: IssueSourceConfig[], conns: typeof CONNS, ticket: string | undefined, url?: string) => jiraReadAdvertised(s, conns, ticket, url, [ticket]);
+  const adv = (s: IssueSourceConfig[], conns: typeof CONNS, ticket: string | undefined, url?: string) => jiraReadAdvertised(s, conns, ticket, url);
   assert.equal(adv([named], CONNS, 'UYT-1'), true);
+  assert.equal(adv([named], CONNS, 'UYT-1', `https://${SITE}/browse/UYT-1`), true);
   assert.equal(adv([open], CONNS, 'UYT-1'), false);
-  assert.equal(adv([open], CONNS, 'UYT-1', `https://${SITE}/browse/UYT-1`), true);
-  assert.equal(adv([open], CONNS, 'UYT-1', `https://${OTHER}/browse/UYT-1`), false);
+  assert.equal(adv([open], CONNS, 'UYT-1', `https://${SITE}/browse/UYT-1`), false);
   assert.equal(adv([named], CONNS, 'UYT-1', `https://${OTHER}/browse/UYT-1`), false);
   assert.equal(adv([named], CONNS, '1234'), false);
   assert.equal(adv([named], CONNS, undefined), false);

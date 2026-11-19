@@ -381,7 +381,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
   const plugin: KanbanPlugin = {
     name: 'issues',
     // An agent's POST /office/tasks/create (this plugin owns it: it alone can look an issue up).
-    hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue), '/office/tasks/issue': agentIssueHook(ctx, { io }) },
+    hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue), '/office/tasks/issue': agentIssueHook(ctx, { io, find }) },
     ws: {
       ...browsing.ws,
       ...drafting.ws,

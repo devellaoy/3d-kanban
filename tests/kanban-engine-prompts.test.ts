@@ -378,8 +378,10 @@ test('the ticket line says the Jira ticket can be read only for a key a source n
   assert.doesNotMatch(prompt('gh:acme/proj#3'), /get_issue/);
   assert.doesNotMatch(prompt('ZZ-1'), /get_issue/, 'a key no source covers');
   setup2([open], conn);
-  assert.doesNotMatch(prompt('UYT-12'), /get_issue/, 'a source with no project keys is not enough alone');
-  assert.match(prompt('UYT-12', `https://${SITE}/browse/UYT-12`), READ, 'unless the ticket link is on its site');
+  assert.doesNotMatch(prompt('UYT-12'), /get_issue/, 'an open source is never advertised');
+  assert.doesNotMatch(prompt('UYT-12', `https://${SITE}/browse/UYT-12`), /get_issue/, 'not even for a link on its site');
+  setup2([keyed], conn);
+  assert.doesNotMatch(prompt('UYT-12', 'https://other.atlassian.net/browse/UYT-12'), /get_issue/, 'a link on another site');
   setup2([keyed], []);
   assert.doesNotMatch(prompt('UYT-12'), /get_issue/, 'no connection');
 });

@@ -1,10 +1,10 @@
 // Which Jira source an agent's read of a ticket goes through (agent-read.ts), and whether the task prompt
-// may tell the worker it can read one. Pure: nothing is asked of Jira here.
+// may tell the worker it can read one. Pure: nothing is asked of Jira here, and what the office knows of an issue comes in as `known`.
 
 import { cleanJiraSite, sameJiraSite } from '../../../../shared/kanban/jira-connections.js';
-import type { IssueSourceConfig } from '../../../../shared/kanban/types.js';
+import type { IssueSourceConfig, NormalizedIssue } from '../../../../shared/kanban/types.js';
 import type { JiraConnection } from '../../secrets.js';
-import { JIRA_KEY_RE, jiraCovers, keyProject } from './browse/jql.js';
+import { JIRA_KEY_RE, keyProject } from './browse/jql.js';
 import { pickJiraConnection } from './jira-auth.js';
 
 export type JiraSource = Extract<IssueSourceConfig, { kind: 'jira' }>;
@@ -24,27 +24,31 @@ const names = (s: JiraSource, key: string) => s.projectKeys.some((k) => k.toUppe
 /** A refusal: 403 when the scope says no, 409 when only the connection is missing. */
 export interface ReadRefusal { status: 403 | 409; error: string }
 
+/** The issue the office already knows from Jira under a key (the issues plugin's `find`), if any. */
+export type KnownIssue = (key: string) => NormalizedIssue | undefined;
+
+const OPEN_HINT = ' An admin can name the Jira project keys on the source in Settings → Projects → Issue sources to let agents read its tickets.';
+
 /**
- * The project's Jira sources as a read may use them: named ones as they are, an open one (no project keys) only for the Jira
- * projects the project's tasks already have tickets in (`tickets`), and dropped when there are none.
+ * Whether a read of `key` may go through the source. A source that names project keys covers those projects' keys. An open
+ * one (no keys) covers a key only when the office already knows that issue from Jira, on this source's site: what a task's
+ * free `ticket` field says never widens the scope.
  */
-export function jiraReadScope(sources: readonly IssueSourceConfig[], tickets: Iterable<string | undefined>): JiraSource[] {
-  const known = new Set<string>();
-  for (const t of tickets) if (t && JIRA_KEY_RE.test(t)) known.add(keyProject(t));
-  const out: JiraSource[] = [];
-  for (const s of sources) {
-    if (s.kind !== 'jira') continue;
-    if (s.projectKeys.length) out.push(s);
-    else if (known.size) out.push({ ...s, projectKeys: [...known] });
-  }
-  return out;
+export function readCovers(s: JiraSource, key: string, known: KnownIssue): boolean {
+  if (s.projectKeys.length) return names(s, key);
+  const i = known(key.toUpperCase());
+  const site = i && i.source === 'jira' ? urlSite(i.url) : undefined;
+  return !!site && sameJiraSite(s.site, site);
 }
 
-/** The scoped Jira source `key` is read through (see jiraReadScope), or why it can't be. */
-export function jiraReadSource(scoped: readonly JiraSource[], connections: readonly JiraConnection[], key: string, ticketUrl?: string): JiraSource | ReadRefusal {
+/** The project's Jira sources. */
+export const jiraSourcesOf = (sources: readonly IssueSourceConfig[]): JiraSource[] => sources.filter((s): s is JiraSource => s.kind === 'jira');
+
+/** The Jira source `key` is read through (see readCovers), or why it can't be. */
+export function jiraReadSource(sources: readonly JiraSource[], connections: readonly JiraConnection[], key: string, ticketUrl: string | undefined, known: KnownIssue): JiraSource | ReadRefusal {
   if (!JIRA_KEY_RE.test(key)) return { status: 403, error: `${key} isn't a Jira issue key` };
-  let candidates = scoped.filter((s) => jiraCovers(s, key));
-  if (!candidates.length) return { status: 403, error: `${key} isn't inside one of the project's Jira sources: nothing was asked of Jira` };
+  let candidates = sources.filter((s) => readCovers(s, key, known));
+  if (!candidates.length) return { status: 403, error: `${key} isn't inside one of the project's Jira sources: nothing was asked of Jira.${sources.some((s) => !s.projectKeys.length) ? OPEN_HINT : ''}` };
   // The ticket's own link pins the site, so the same key on two sites can't be read from the wrong one.
   const site = urlSite(ticketUrl);
   if (site) {
@@ -61,15 +65,11 @@ export function jiraReadSource(scoped: readonly JiraSource[], connections: reado
 }
 
 /**
- * Whether the task prompt should tell the worker it can read its own ticket: the read would be served, through a source that
- * names the key's project or, for an open one, sits on the ticket link's site. `tickets` are the project's tasks' tickets.
+ * Whether the task prompt should tell the worker it can read its own ticket: a source that NAMES the ticket's Jira project
+ * covers it, the ticket link's site (if any) agrees and a connection exists. Open sources are never advertised.
  */
-export function jiraReadAdvertised(sources: readonly IssueSourceConfig[], connections: readonly JiraConnection[], ticket: string | undefined, ticketUrl: string | undefined, tickets: Iterable<string | undefined>): boolean {
+export function jiraReadAdvertised(sources: readonly IssueSourceConfig[], connections: readonly JiraConnection[], ticket: string | undefined, ticketUrl: string | undefined): boolean {
   if (!ticket || !JIRA_KEY_RE.test(ticket)) return false;
-  // The ticket is the project's own, so its Jira project is known whatever the tasks say.
-  const source = jiraReadSource(jiraReadScope(sources, [...tickets, ticket]), connections, ticket, ticketUrl);
-  if ('error' in source) return false;
-  const was = sources.find((s) => s.id === source.id);
-  const site = urlSite(ticketUrl);
-  return (!!was && was.kind === 'jira' && names(was, ticket)) || (!!site && sameJiraSite(site, source.site));
+  const named = jiraSourcesOf(sources).filter((s) => s.projectKeys.length);
+  return !('error' in jiraReadSource(named, connections, ticket, ticketUrl, () => undefined));
 }
