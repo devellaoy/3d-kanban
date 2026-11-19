@@ -43,7 +43,7 @@ import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable } from './turnhold.js';
 import { agentHook, newTurn, acceptSignal, QUESTION_TOOL, StopGate, stopMessage } from './signals.js';
 import type { Live, Via } from './live.js';
-import { lostText, TurnEnd, unfinishedText } from './turnend.js';
+import { lostText, stopFallback, TurnEnd, typedSettled, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
 import { RestWaits } from './restwait.js';
 import { sessionLogged } from './sessions.js'; import { observeLeadHook, planFromHook, planModeOf } from './automode.js';
@@ -1376,8 +1376,8 @@ export class Orchestrator {
   /**
    * The turn's result from the session log, read again while the log is still catching up: the Stop
    * hook can come before Claude has logged its final answer (the log then ends at a tool's result).
-   * A log that never catches up falls back on the answer the Stop hook carried (its text only, as a
-   * final answer of its own), but never while the log's last tool call is still running: a Stop then
+   * A typed turn is settled only once its own answer is in the log too. A log that never catches up falls back on the answer the Stop hook
+   * carried (see stopFallback), but never while the log's last tool call is still running: a Stop then
    * didn't come from Claude (anything run in the agent's shell has the hook token, and could carry
    * a verdict of its own choosing): what the log has goes on, as it does without a Stop answer.
    */
@@ -1385,12 +1385,12 @@ export class Orchestrator {
     let result: TurnResult | undefined;
     for (let i = 0; i < this.opts.readTries; i++) {
       result = this.readNow(live);
-      // A typed prompt froze the answer at the office's turn: reading again can't complete it.
-      if (result?.complete || result?.typed) return result;
+      // A typed prompt froze the answer at the office's turn: only the typed turn's own answer can still arrive (whether or not the office's is complete).
+      if (result && (result.typed ? typedSettled(result) : result.complete)) return result;
       await sleep(this.opts.readPauseMs);
     }
-    if (live.tool !== 'claude' || result?.complete) return result;
-    if (result && !result.toolRunning && !result.typed && live.stopText) return { text: live.stopText, complete: true, ...(result.background ? { background: result.background } : {}), ...(result.resuming ? { resuming: true } : {}), ...(result.unheard ? { unheard: true as const } : {}), ...(result.lost ? { lost: result.lost } : {}) };
+    if (live.tool !== 'claude' || (result?.complete && !result.typed)) return result;
+    const fell = result && !result.toolRunning ? stopFallback(result, live.stopText) : undefined; if (fell) return fell;
     const why = !result ? 'no session log' : result.toolRunning ? 'a Stop while a tool was still running' : 'no last_assistant_message in its Stop hook';
     console.warn(`agent-office: kanban task #${live.taskId}: the ${live.phase} run's final answer never reached its session log (${why}): going on with the last text the log has`);
     return result;

@@ -132,3 +132,69 @@ test('a review reply without a verdict line is an interim update too: nudged for
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review column after the verdict', 30_000);
   assert.deepEqual(fx.repo.listRuns(task.id).filter((r) => r.phase === 'review').map((r) => r.verdict), ['approved']);
 });
+
+// #464: a person's prompt typed while the office's turn works is absorbed into it; the Stop can come before the final answer is logged.
+const typedWhileWorking = { when: 'Implement kanban task', earlier: 'Working on it.', queuedMidTurn: 'How is it going?', commit: 'Work' };
+
+test('#464: a typed prompt absorbed into the turn, the Stop before the log has the final answer: the Stop hook\'s WORK DONE ends the run', async (t) => {
+  const fx = await engineFixture({ engine: { nudgeIdleMs: 60_000, readTries: 3 } });
+  t.after(() => fx.close());
+  fx.setRules([{ ...typedWhileWorking, reply: 'Changed the redirect.', lateLogMs: -1 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 20_000);
+  assert.deepEqual(results(fx, task.id), ['Changed the redirect.']);
+  assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'succeeded');
+  assert.equal(nudges(fx), 0);
+});
+
+test('#464: the same, the final answer reaching the log during the read retries: the run ends on the log\'s own answer', async (t) => {
+  const fx = await engineFixture({ engine: { nudgeIdleMs: 60_000 } });
+  t.after(() => fx.close());
+  fx.setRules([{ ...typedWhileWorking, reply: 'From the Stop.', lateLogReply: 'From the log.\nWORK DONE', lateLogMs: 300 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 20_000);
+  assert.deepEqual(results(fx, task.id), ['From the log.']);
+});
+
+test('#464: an interim answer of the office\'s (complete, no marker), then a typed turn that ends WORK DONE with its Stop before its log line: the run ends', async (t) => {
+  const fx = await engineFixture({ engine: { nudgeIdleMs: 60_000 } });
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'Implement kanban task', reply: 'I have a draft, tell me if I should finish.', noMarker: true, commit: 'Work', typedAfterStop: 'yes finish it', typedReply: 'Finished it.\nWORK DONE', typedLagMs: 300 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 20_000);
+  assert.deepEqual(results(fx, task.id), ['Finished it.']);
+  assert.equal(nudges(fx), 0);
+});
+
+test('#464: a hold for a typed turn\'s Stop that never comes is looked at again after the nudge interval: the log then decides', async (t) => {
+  const fx = await engineFixture({ engine: { nudgeIdleMs: 1000, readTries: 2 } });
+  t.after(() => fx.close());
+  // The Stop carries no text and no other Stop follows; the log has the final answer 400 ms after it.
+  fx.setRules([{ ...typedWhileWorking, reply: '', noMarker: true, lateLogReply: 'Changed the redirect.\nWORK DONE', lateLogMs: 400 }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  await sleep(700);
+  assert.equal(fx.task(task.id).status, 'in_progress', 'held before the look');
+  await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column after the look', 20_000);
+  assert.deepEqual(results(fx, task.id), ['Changed the redirect.']);
+  assert.equal(nudges(fx), 0);
+});
+
+test('#464: a typed turn that really is still running (no answer in the log, no Stop text; or a tool still running) stays held', async (t) => {
+  for (const open of [false, true]) {
+    const fx = await engineFixture({ engine: { nudgeIdleMs: 60_000, readTries: 2 } });
+    t.after(() => fx.close());
+    fx.setRules([open ? { ...typedWhileWorking, queuedToolOpen: true, reply: 'Stopped mid tool.', lateLogMs: -1 } : { ...typedWhileWorking, reply: '', noMarker: true, lateLogMs: -1 }]);
+    const task = fx.newTask({ usePlan: false, useReview: false });
+    await fx.engine.start(task.id, ADA);
+    await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+    await sleep(1500);
+    assert.equal(fx.task(task.id).status, 'in_progress', `open tool: ${open}`);
+    assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
+    assert.equal(nudges(fx), 0);
+  }
+});

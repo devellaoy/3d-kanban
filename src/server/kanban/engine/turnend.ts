@@ -17,6 +17,24 @@ export interface EndLive extends HeldRun {
   tool: KanbanTool;
 }
 
+/** Whether a typed turn's own answer is settled in the log: it is over there (`lastText`, or not `typedOpen`), so reading again adds nothing. */
+export const typedSettled = (r: TurnResult) => !!r.typed && (r.lastText !== undefined || !r.typedOpen);
+
+/**
+ * What a log that never caught up takes from the lead's Stop hook (`stopText`, its last_assistant_message: the answer of the turn that Stop ended).
+ * A plain turn: that text as the final answer. A typed turn the log still has open (its own answer not logged yet): the Stop proves it is over, so
+ * the text is its `lastText` (adopt then takes its marker as with a complete log). Undefined: nothing to take.
+ */
+export function stopFallback(r: TurnResult, stopText: string | undefined): TurnResult | undefined {
+  if (!stopText) return undefined;
+  if (r.typed) {
+    if (!r.typedOpen || r.lastText !== undefined) return undefined;
+    const { typedOpen: _open, ...over } = r;
+    return { ...over, lastText: stopText };
+  }
+  return { text: stopText, complete: true, ...(r.background ? { background: r.background } : {}), ...(r.resuming ? { resuming: true } : {}), ...(r.unheard ? { unheard: true as const } : {}), ...(r.lost ? { lost: r.lost } : {}) };
+}
+
 /** How long a nudge's look at the worker waits again at most when it only has to see the worker rest (ms). */
 const POLL_MAX_MS = 15_000;
 
@@ -108,7 +126,11 @@ export class TurnEnd<L extends EndLive> {
     if (running && !o.force) return this.wait(live);
     if (looksInterrupted(r.text, r.apiError)) return { end: true, result: r };
     // A prompt typed into the terminal took the turn the work ended in, or came before the office's answer reached the log: the agent is asked to give its answer again.
-    if (!o.force && live.tool === 'claude' && r.typed && (r.interim || !r.complete) && this.deps.holds.restate(live, r.typedOpen)) return { end: false };
+    if (!o.force && live.tool === 'claude' && r.typed && (r.interim || !r.complete) && this.deps.holds.restate(live, r.typedOpen)) {
+      // Held for the typed turn's Stop (not retyped): that Stop may be heard already or missed, so the nudge's look decides from the log after the idle interval, not after the hold's 3 h.
+      if (!live.restating) this.schedule(live, this.interval(live));
+      return { end: false };
+    }
     if (!r.complete && !r.text.trim()) return { end: true, result: r };
     if ((live.nudges ?? 0) >= this.deps.maxNudges()) return this.exhausted(live, r);
     return o.force ? this.nudge(live, r) : this.wait(live);
