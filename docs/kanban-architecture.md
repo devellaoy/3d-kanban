@@ -107,15 +107,34 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   writes runs/comments/plans, emits WS deltas.
 - `adapters/{claude,codex}.ts` implement `TaskAgentAdapter`:
   - `launchArgs(phase, opts)` — per-phase CLI flags:
-    - claude plan: `--permission-mode plan`; implement/fix/resume/pr: `--permission-mode bypassPermissions`
-      (the kanban worker's `--settings` file also sets `skipDangerousModePermissionPrompt: true`),
+    - claude plan, by `planPermission` (`shared/kanban/permissions.ts`; task > project > office, default `auto`): `plan` →
+      `--permission-mode plan`; `auto` → `--permission-mode auto --disallowedTools Edit Write NotebookEdit EnterPlanMode ExitPlanMode`.
+      implement/fix/resume/pr by `implementPermission` (default `auto`): `auto` → `--permission-mode auto`;
+      `bypass` and `workspace-write` → `--permission-mode bypassPermissions`
+      (the kanban worker's `--settings` file always sets `skipDangerousModePermissionPrompt: true`: reviews still use bypass mode),
       review and pr-review: `--permission-mode bypassPermissions --disallowedTools Edit Write NotebookEdit`
       (+ `WebFetch WebSearch` when the review sandbox is on; Bash keeps the network, which `gh` needs).
-    - codex plan/review: `-s read-only -a never`; implement/fix/resume/pr: `--dangerously-bypass-approvals-and-sandbox`
-      (project setting may choose `-s workspace-write -a never` instead); pr-review:
+    - codex plan/review: `-s read-only -a never` (either `planPermission`); implement/fix/resume/pr: `--dangerously-bypass-approvals-and-sandbox`
+      for `auto` too (Codex has no verified unattended auto mode) and `bypass` (`workspace-write` chooses `-s workspace-write -a never` instead); pr-review:
       `-s workspace-write -a never -c sandbox_workspace_write.network_access=true` (read-only has no network for `gh`;
       it writes nowhere but its own throwaway worktree, and the contract forbids even that).
-    - An investigation keeps `bypassPermissions` (Codex: the workspace sandbox with the report folder added),
+    - A plan in auto mode has no plan mode: it ends on `PLAN READY` or `QUESTIONS:` in its final message (or `report_turn`), never on
+      ExitPlanMode (disallowed), and `StopGate` blocks a Stop of it only for uncommitted changes in its worktree (`gatePlanDirty`, the same
+      cap and note; no WORK DONE is asked for). Plan → implement always differ in their flags, so the session is relaunched, never typed into.
+      `KanbanWorkerSummary.planMode` is set for a plan not in auto mode, and only then is a plan worker at `needs_input` exempt from
+      "waiting on someone" (the ExitPlanMode prompt is the engine's to answer; in auto mode a prompt is a real one).
+    - A plan in plan mode ends on ExitPlanMode. Claude Code (2.1.327) runs that call's hooks, and shows its approval dialog, before the call is in
+      the session log, so the plan is also taken from the hook's `tool_input.plan` (`Live.hookPlan`, `planFromHook` in `engine/automode.ts`):
+      without it such a run failed with "The turn ended without a reply the office could read".
+    - Auto mode unavailable: Claude puts `permission_mode` in every hook payload; a lead hook (no `agent_id`) of a run launched with
+      `--permission-mode auto` that says `default` means Claude started in Manual mode (`engine/automode.ts`): one note per run, no switch to bypass.
+    - Claude kanban workers get the task's own office folders (`<filesDir>/grants|refs|reports/task-<id>`) not as `--add-dir` (that asks
+      "Is this a directory you created or one you trust?") but in `permissions.additionalDirectories` of a per-worker settings file
+      `claude-hooks-kanban-<workerId>.json` (the kanban settings plus that list, mode 600, written at every launch by `kanbanSetup`;
+      `splitOfficeDirs` in `kanban/launch.ts`, which knows the folders' root from `registerOfficeFiles`, called when the kanban opens (the settings
+      files are each floor's, the task folders the office's), and by their shape `.agent-office/kanban/{grants,refs,reports}/task-<id>` for a worker
+      the floor wakes before that; removed when the worker leaves). `w.extra.launchArgs` keeps them, so the orchestrator's `sameArgs` compare still holds. Other `--add-dir`s stay.
+    - An investigation runs as `implementPermission` says, as an implement phase does (Codex: the workspace sandbox with the report folder added),
       because it must write its report files; its contract keeps it off the repositories.
     - Models: upstream's spawn only takes a Claude alias, so a full id (`claude-opus-5-5[1m]`) is spawned as its
       alias (`opus`) and passed again as `--model <full id>` after it, which the CLI takes.
@@ -419,7 +438,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - `<officeData>/.agent-office/kanban.sqlite` (`better-sqlite3`, WAL, foreign keys, migrations numbered by
   `PRAGMA user_version` in `server/kanban/db/migrations.ts`). `<officeData>` is the office data dir upstream
   uses (`~/agent-office` by default).
-- `<officeData>/.agent-office/kanban-settings.json` (`schemaVersion`), `kanban-secrets.json` (chmod 600).
+- `<officeData>/.agent-office/kanban-settings.json` (`schemaVersion` 2), `kanban-secrets.json` (chmod 600). Version 2 added `defaults.planPermission` (and `planPermission` per project and task) and made `auto` the default `implementPermission`: loading a file of an older or missing version turns a stored `implementPermission: bypass` into `auto` once and writes the file back at version 2 (`workspace-write`, project values and a version 2 file's `bypass` are kept).
 - **Jira connections** (`shared/kanban/jira-connections.ts`): `kanban-secrets.json` holds `jiraConnections: {id, name, site,
   email, token}[]` (oldest first, at most 20). A file with only the older single `jira: {site, email, token}` is read as one
   connection with id `jira`; every write has `jiraConnections` (even empty) and never `jira`, so a removed connection
@@ -443,7 +462,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   at most `UI_IMAGE_MAX_BYTES` each and `UI_IMAGES_MAX` a task; by subject, the before first) and `pairImages` pairs them
   by folder and subject. One level of subfolders is read too, every one whose name fits `UI_IMAGE_FOLDER_RE` (`[a-z0-9-]{1,40}`, as the project's repository ids do; real directories only, and only when `ui/` itself is a real directory); the cap keeps the images of the folders the caller names (the project's repository ids) first, then the ones straight in `ui/`, then any other folder's:
   an image in `ui/<repoId>/` has `name` `<repoId>/<file>` and `repo` `<repoId>`, one straight in `ui/` has no `repo`. The
-  folder is inside the task's grant folder, so every run already has it as an `--add-dir` and it goes with the task (`removeGrant`).
+  folder is inside the task's grant folder, so every run already has it (as `permissions.additionalDirectories` of the worker's settings file, see §4) and it goes with the task (`removeGrant`).
 - Migration 6 adds `runs.held_at` (ms: when the run was held for background work, NULL otherwise; `KanbanRepository.runHeldAt` / `setRunHeld`, not on `KanbanRun`); a build that knows only 5 refuses the database.
 - Migration 5 adds `runs.prompted_at` (ms: when the office last gave the run its prompt, see §4's restate); a build that knows only 4 refuses the database.
 - Migration 4 adds `tasks.hold` (JSON, see `TaskHold`; parsed defensively like the other JSON columns). It raises
@@ -494,7 +513,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     Defaults come from the settings (the default model only when the tool is the default tool). `start: true`
     then runs `engine.start` (at `deskId`, when given); its refusal comes back as `kanban.ok {taskId, startError}`.
     `deskId` (on `task.create` and `task.start`) must be a desk or bean bag of the layout (one the floor has put down), not a kiosk or a meeting chair.
-  - `task.update`: `type, repoIds, usePlan, planApproval, useReview, goal, implementPermission` only while the
+  - `task.update`: `type, repoIds, usePlan, planApproval, useReview, goal, implementPermission, planPermission` only while the
     task is in `todo`; `tool, model, effort, review` whenever no run is live (`isRunning` false): the next
     phase hires the new tool, whose fresh session gets the handoff. `repoIds` only before the first start. The
     description is locked from the first start (sending the unchanged text is fine). No edits while archived.
@@ -772,7 +791,7 @@ commits are pushed.
 On the loopback hook server (worker bearer token, like `/office/workers`):
 `GET /office/tasks/reference?ref=[&tail=1]`, `GET /office/tasks/search?q=`, CLI `office-tasks` (on every
 worker's PATH), MCP tools `get_task`, `search_tasks` (listed to every agent worker via `AGENT_OFFICE_TASKS` or `AIKANBAN_API_BASE`; pre-approved (`--allowedTools`) only for Claude kanban task workers, other Claude agents are asked). A plan phase gets the tasks its text refers to
-written to `kanban/refs/task-<id>/referenced-tasks.md` (a Claude plan phase runs in plan mode and a Codex one in a `read-only` sandbox, so it is handed them rather than left to ask).
+written to `kanban/refs/task-<id>/referenced-tasks.md` (a Claude plan phase runs in plan mode, or in auto mode with the editing tools off, and a Codex one in a `read-only` sandbox, so it is handed them rather than left to ask).
 
 `POST /office/tasks/signal?worker=` (the same bearer token; JSON body `{kind: 'plan-ready' | 'ask' | 'done'}`, `{kind: 'review', verdict: 'approved' | 'changes'}` or `{kind: 'pr', url}`) tells the office how the worker's own turn ends: CLI `office-tasks plan-ready | ask | done | review approved|changes | pr <url>` (prints `Reported: …`; exit 1 with the office's reason on stderr when refused, 2 for a usage error), MCP tool `report_turn {kind, verdict?, url?}` (listed with the task tools, pre-approved with them for Claude task workers; it tells the office about the worker's own turn and works only while its run is going). 400 for a body that isn't one of these, 409 with the engine's reason when the run can't take it (§4 "The end of a turn"). `POST /office/tasks/stop?worker=` is not for agents: it is where a kanban Claude worker's Stop hook posts its payload (the hook's wrapper, `kanbanStopCommand` in `kanban/launch.ts`, curl `-m 25` with the hook's own `timeout: 40`), and answers `{"decision":"block","reason":…}` to block it or `{}` after passing the Stop on to the worker's floor as `/hooks/claude?event=Stop` would (a Stop that a new prompt overtook while the gate judged it is answered `{}` without being passed on); any failure of the call (no curl, the office down, 4xx/5xx) makes the wrapper feed the payload to the original command, so the Stop is never lost. Both routes belong to `kanban/signals.ts` and answer 404 for any other path and 405 for a non-POST.
 Codex: its `read-only` and plain `workspace-write` sandboxes block loopback TCP (verified on macOS with codex-cli 0.167.1), so `office-tasks` can't report from there and its text markers decide; the sandbox is not loosened. Its Stop hook could block per its docs, but the gate is Claude-only: the office's Codex hook helper always prints `{}`, the trusted hash (`codex-trust.ts`) pins its command, and a block reason would enter the rollout as a user message the reader would take for a prompt.
@@ -842,7 +861,7 @@ For a signed-in browser (the session is checked by the route table in `src/serve
 - `GET /kanban`, `/kanban.html`: the board page. Signed out, it redirects to `/login?next=/kanban`.
 - `POST /api/kanban/upload?name=<file name>[&task=<id>]`: the body is the file's raw bytes and `Content-Type`
   is its type (sniffed from the extension when missing). At most 20 MB. It returns `200 {attachment}`, or
-  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600. Agents never get that shared folder: each task has `<filesDir>/grants/task-<id>/` (mode 700, `uploads.grantFiles`, cloned/copied from the uploads when a launch or a prompt needs them), and every launch of the task gets that one as an `--add-dir`, so files sent later are readable. It goes with the task (`task.delete`). The uploads folder is chmod 700 at start-up.
+  `400/404/405/413 {error}`. The file is stored as `<filesDir>/uploads/<id>-<ascii name>` with mode 600. Agents never get that shared folder: each task has `<filesDir>/grants/task-<id>/` (mode 700, `uploads.grantFiles`, cloned/copied from the uploads when a launch or a prompt needs them), and every launch of the task gets that one (in `permissions.additionalDirectories` of the worker's own settings file, not as an `--add-dir`, which Claude asks to trust), so files sent later are readable. It goes with the task (`task.delete`). The uploads folder is chmod 700 at start-up.
   Without `task` it stays unattached until `task.create` / `task.update` (`patch.attachmentIds`) / `comment.add` / `task.continue` / `plan.requestChanges` names its id. The browser never passes `task`: the text boxes (description, comment, answer, request-changes) upload unattached, and only the ids whose links the sent text still has are linked, so a file whose link was taken out stays nobody's (swept after a day) and is never listed in a later prompt as a task-level file. The text of a Continue answer, an answer typed to a question and a plan change request is composed with the ids of the uploads it carries accepted (`inlineFiles(..., accepted)`), so their links already become grant paths before the files are linked to the task. A `task.update` that changes the description also lets go (a picture a comment also links goes to that comment instead: the oldest one of all the task's comments, `firstLinkingComments`) of the task-level files the old description linked and the new description and goal do not (`unlinkAttachments`; files never inline-linked, i.e. listed apart from the text, stay). Task-level files without a comment (`commentId` unset) are listed in the prompts only when the description or goal does not link them (older tasks).
 - `GET /api/kanban/attachments/<id>`: serves the file with its type, `nosniff` and a sandboxing CSP.
   PNG, JPEG, GIF, WebP, AVIF and BMP are served inline; anything else (SVG and HTML included) as a download.

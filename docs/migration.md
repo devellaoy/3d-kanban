@@ -123,7 +123,7 @@ Runtime state (`runStatus`, pids, worktree slots, retries, pending resumes) is r
 | `reviewTool`, `reviewModel`, `reviewEffort`, `reviewIterations` | The office's review settings (tool, model, effort, rounds) |
 | `agentTool`, `defaultModel`, `defaultEffort` | The office's task defaults |
 | `autoResume*` | The office's auto-resume settings |
-| `implementPermissionMode` | Listed: implement phases run in the office's own mode (bypass by default) |
+| `implementPermissionMode` | Listed: implement phases run as the office's own setting says (auto mode by default; Settings → Kanban → New tasks can choose bypass mode) |
 | API keys | Not migrated (ai-kanban only kept their hashes): set a new key in ⚙️ Settings → Kanban |
 
 ## Using ai-kanban's skills and scripts afterwards
