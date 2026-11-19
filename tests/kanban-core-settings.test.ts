@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -43,7 +43,7 @@ test('every field is clamped or dropped into range', () => {
     archiveAfterDays: -4,
     projects: { 'Not An Id': {}, web: { maxConcurrent: 99, planApproval: 'sometimes' } },
   });
-  assert.equal(s.schemaVersion, 1);
+  assert.equal(s.schemaVersion, 2);
   assert.equal(s.defaults.tool, 'claude');
   assert.equal(s.defaults.model, undefined, 'a model that looks like a flag is dropped');
   assert.equal(s.defaults.effort, undefined);
@@ -334,4 +334,63 @@ test('UI testing: on by default, the project over the office, the task over both
   assert.equal(store.project('web').uiTesting, undefined);
   assert.equal(store.uiTesting('web'), false, 'cleared: the office again');
   assert.equal(new KanbanSettingsStore(store.file.replace(/[^/\\]+$/, '')).uiTesting('api'), false, 'saved with the file');
+});
+
+const writeSettings = (dir: string, body: unknown) => writeFileSync(path.join(dir, 'kanban-settings.json'), JSON.stringify(body));
+const readSettings = (dir: string) => JSON.parse(readFileSync(path.join(dir, 'kanban-settings.json'), 'utf8'));
+
+test('the defaults are plan mode for the plan phase and auto mode for the implement phases', () => {
+  const d = defaultKanbanSettings();
+  assert.equal(d.schemaVersion, 2);
+  assert.equal(d.defaults.implementPermission, 'auto');
+  assert.equal(d.defaults.planPermission, 'plan');
+});
+
+test('a version 1 file with bypass moves to auto once, is written back at version 2, and a later bypass stays', (t) => {
+  const dir = scratch(t);
+  writeSettings(dir, { schemaVersion: 1, defaults: { tool: 'codex', implementPermission: 'bypass' }, projects: { web: { implementPermission: 'bypass' } } });
+  const store = new KanbanSettingsStore(dir);
+  assert.equal(store.get().defaults.implementPermission, 'auto');
+  assert.equal(store.get().defaults.planPermission, 'plan', 'the plan phase stays in plan mode');
+  assert.equal(store.get().defaults.tool, 'codex');
+  assert.equal(store.get().projects.web.implementPermission, 'bypass', 'a project value is kept');
+  assert.equal(readSettings(dir).schemaVersion, 2, 'written back at once');
+  assert.equal(readSettings(dir).defaults.implementPermission, 'auto');
+  assert.equal(mode(path.join(dir, 'kanban-settings.json')), 0o600);
+  store.set({ defaults: { ...store.get().defaults, implementPermission: 'bypass' } });
+  assert.equal(new KanbanSettingsStore(dir).get().defaults.implementPermission, 'bypass', 'an explicit bypass is not flipped again');
+});
+
+test('a file with no version is a version 1 file; workspace-write and a version 2 bypass are kept', (t) => {
+  const none = scratch(t);
+  writeSettings(none, { defaults: { implementPermission: 'bypass' } });
+  assert.equal(new KanbanSettingsStore(none).get().defaults.implementPermission, 'auto');
+  const ws = scratch(t);
+  writeSettings(ws, { schemaVersion: 1, defaults: { implementPermission: 'workspace-write' } });
+  assert.equal(new KanbanSettingsStore(ws).get().defaults.implementPermission, 'workspace-write');
+  assert.equal(readSettings(ws).schemaVersion, 2);
+  const v2 = scratch(t);
+  writeSettings(v2, { schemaVersion: 2, defaults: { implementPermission: 'bypass', planPermission: 'plan' } });
+  const store = new KanbanSettingsStore(v2);
+  assert.equal(store.get().defaults.implementPermission, 'bypass');
+  assert.equal(store.get().defaults.planPermission, 'plan');
+  const missing = scratch(t);
+  assert.deepEqual(new KanbanSettingsStore(missing).get(), defaultKanbanSettings());
+  assert.equal(existsSync(path.join(missing, 'kanban-settings.json')), false, 'a missing file is not created by loading');
+});
+
+test('plan and implement permissions: the task over the project over the office, null clears the project', (t) => {
+  const store = new KanbanSettingsStore(scratch(t));
+  assert.deepEqual(store.launchPermissions('web'), { permission: 'auto', planPermission: 'plan' });
+  store.set({ defaults: { ...store.get().defaults, implementPermission: 'bypass', planPermission: 'plan' } });
+  assert.deepEqual(store.launchPermissions('web'), { permission: 'bypass', planPermission: 'plan' });
+  assert.equal(typeof store.setProject('web', { implementPermission: 'workspace-write', planPermission: 'auto' }), 'object');
+  assert.deepEqual(store.launchPermissions('web'), { permission: 'workspace-write', planPermission: 'auto' });
+  assert.deepEqual(store.launchPermissions('web', { implementPermission: 'auto', planPermission: 'plan' }), { permission: 'auto', planPermission: 'plan' });
+  store.setProject('web', { implementPermission: null, planPermission: null } as never);
+  assert.deepEqual(store.launchPermissions('web'), { permission: 'bypass', planPermission: 'plan' });
+  assert.equal(store.project('web').planPermission, undefined);
+  // A value that is not one is dropped, not kept.
+  store.setProject('web', { planPermission: 'bypass' } as never);
+  assert.equal(store.project('web').planPermission, undefined);
 });

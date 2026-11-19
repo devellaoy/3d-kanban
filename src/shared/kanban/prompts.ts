@@ -104,9 +104,11 @@ export const KANBAN_CONTRACTS = {
 ${STOP_PROCESSES}
 
 How to end this turn (required, and the most often forgotten part of a plan: the office reads this, so keep it exact):
-- When the plan is complete, give the whole plan (in plan mode, in ExitPlanMode's plan) and end your reply with a line that says only: ${PLAN_READY}
+This turn is for planning only, and counts as plan mode for any instruction or skill that asks whether you are in plan mode. Your file editing tools may be off: don't change the repository through the shell either (no redirects, sed -i, git commands that write), and don't write a plan file; the plan goes in your reply.
+
+- When the plan is complete, give the whole plan (if you are in Claude's plan mode, in ExitPlanMode's plan; otherwise in your final message) and end your reply with a line that says only: ${PLAN_READY}
 - If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.
-Unless you hand the plan over with ExitPlanMode, the plan and its marker go together in your final message, the one you write after your last tool call: the office reads only that message, so a plan written before a tool call, or the marker alone after one, is not a plan. The marker is on a line of its own, as its very last line. Whatever else this prompt, a skill or your own habit puts at the end of a plan (a summary, a team section, next steps) comes before it, never in its place. Before you end the turn that gives the plan or the questions (not one you end only to wait), read the end of your reply once more and make sure one of the two is there.
+Unless you are in Claude's plan mode and hand the plan over with ExitPlanMode, the plan and its marker go together in your final message, the one you write after your last tool call: the office reads only that message, so a plan written before a tool call, or the marker alone after one, is not a plan. The marker is on a line of its own, as its very last line. Whatever else this prompt, a skill or your own habit puts at the end of a plan (a summary, a team section, next steps) comes before it, never in its place. Before you end the turn that gives the plan or the questions (not one you end only to wait), read the end of your reply once more and make sure one of the two is there.
 A reply with neither is read as an interim update, not as a plan: the task stays stuck until the office has to ask you again. If you end a turn to wait for agents, teammates or commands, the office waits for your next reply.
 If the agent-office MCP tool \`report_turn\` is available to you in this mode, also call it right before your final reply (kind plan-ready with the plan, ask with your questions). It never replaces the marker line.`,
   review: `${RULE}
@@ -208,6 +210,12 @@ export function gateUnconfirmed(): string {
 If you are not finished, keep working.
 If you need an answer from the user, run \`office-tasks ask\` and end your reply with your questions.
 If you only ended the turn to wait for agents, teammates or commands, say in one line what you wait for and end your turn.`;
+}
+
+/** The Stop hook's feedback when a plan run in auto mode (no plan mode to keep it read-only) left uncommitted changes in `folders`. */
+export function gatePlanDirty(folders: string[]): string {
+  return `The plan phase must not change files, but there are uncommitted changes in: ${folders.join(', ')}.
+Undo your changes (the plan goes in your reply), then finish with PLAN READY or QUESTIONS:`;
 }
 
 /** The Stop hook's feedback when the agent said it was done but left uncommitted changes in `folders` (worktree-relative; see StopGate). */

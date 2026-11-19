@@ -33,9 +33,35 @@ function sessionStarts(fx: Awaited<ReturnType<typeof engineFixture>>, workerId: 
 }
 const after = (inv: Invocation, flag: string) => inv.args[inv.args.indexOf(flag) + 1];
 
+test('claude, the plan phase set to auto mode: the plan ends on PLAN READY (no ExitPlanMode), implement relaunches in auto mode, the reviewer keeps bypass mode', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'You are planning kanban task', reply: '1. Change the redirect\n2. Test it\n\nPLAN READY' },
+    { when: 'Implement kanban task', reply: 'Changed the redirect; tests pass.', commit: 'Fix the redirect' },
+    { when: 'This is review round 1 of', reply: 'Fine.\n\nREVIEW: APPROVED' },
+  ]);
+  fx.settings.setProject('proj', { planPermission: 'auto' });
+  const task = fx.newTask();
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  const done = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 30_000);
+  const agents = fx.invocations().filter((i) => i.kind === 'claude' && !i.prompt && !i.args.includes('--output-format'));
+  const [plan, implement, reviewer] = agents;
+  assert.equal(after(plan, '--permission-mode'), 'auto');
+  assert.ok(hasArgs(plan, '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'EnterPlanMode', 'ExitPlanMode'));
+  assert.equal(fx.repo.listPlans(task.id)[0].text.startsWith('1. Change the redirect'), true);
+  assert.equal(after(implement, '--permission-mode'), 'auto', 'relaunched, not typed into: the flags differ');
+  assert.equal(after(implement, '--resume'), done.sessionId);
+  assert.ok(!implement.args.includes('--disallowedTools'));
+  assert.equal(after(reviewer, '--permission-mode'), 'bypassPermissions');
+  assert.ok(hasArgs(reviewer, '--disallowedTools', 'Edit', 'Write', 'NotebookEdit'));
+});
+
 test('claude: plan → implement → review CHANGES_REQUESTED → fix → review APPROVED → review column, then a comment and a PR', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
+  // Plan mode and bypass mode, as an office can choose.
+  fx.settings.set({ defaults: { planPermission: 'plan', implementPermission: 'bypass' } } as never);
   fx.setRules([
     { when: 'You are planning kanban task', reply: 'I read the code.\n\nPLAN READY', exitPlan: '1. Change the redirect\n2. Test it' },
     { when: 'Implement kanban task', reply: 'Changed the redirect; tests pass.', commit: 'Fix the redirect' },

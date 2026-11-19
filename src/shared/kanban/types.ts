@@ -7,6 +7,7 @@ import type { IssueSourceConfig, IssueSourceKind } from './issue-sources.js';
 import type { JiraConnectionStatus } from './jira-connections.js';
 import type { StatusCategory } from './browse.js';
 import type { PrReview } from './prs.js';
+import type { ImplementPermission, PlanPermission } from './permissions.js'; export type { ImplementPermission, PlanPermission };
 
 // --- Columns, phases and runs ---------------------------------------------------------------------
 
@@ -77,8 +78,6 @@ export type KanbanEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'ma
 export const KANBAN_EFFORTS: readonly KanbanEffort[] = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
 
 export type PlanApproval = 'auto' | 'manual';
-/** How implement/fix/resume/pr phases run: fully bypassed, or codex's workspace-write sandbox. */
-export type ImplementPermission = 'bypass' | 'workspace-write';
 /** A task worker's part (WorkerInfo.kanban.role). */
 export type KanbanRole = 'implementer' | 'reviewer';
 
@@ -123,6 +122,7 @@ export type TaskFlag = 'descriptionLocked' | 'planAccepted' | 'prRequested';
 export interface TaskOverrides {
   review?: Partial<ReviewSettings>;
   implementPermission?: ImplementPermission;
+  planPermission?: PlanPermission;
   /** Before/after UI images for this task (see uitesting.ts); unset, the project's, then the office's. */
   uiTesting?: boolean;
   skills?: SkillSelection;
@@ -416,6 +416,7 @@ export interface ProjectSettings {
   commentLanguage?: string;
   planApproval?: PlanApproval;
   implementPermission?: ImplementPermission;
+  planPermission?: PlanPermission;
   uiTesting?: boolean;
   review?: Partial<ReviewSettings>;
   issueSources: IssueSourceConfig[];
@@ -432,6 +433,7 @@ export interface KanbanSettings {
     usePlan: boolean; planApproval: PlanApproval;
     useReview: boolean;
     implementPermission: ImplementPermission;
+    planPermission: PlanPermission;
     uiTesting: boolean;
   };
   review: ReviewSettings;
@@ -572,13 +574,13 @@ export interface KanbanWorkerSummary {
   title?: string; ticket?: string; // ticket: the task's issue key (UYT-12, gh:owner/repo#5), for the card over its head
   status?: TaskStatus;
   phase?: RunPhase;
+  /** A plan phase that does not run in Claude's auto mode (Claude's plan mode, or Codex): its exit prompt is the engine's to answer, so the worker is not waiting on anyone at it. */
+  planMode?: true;
   /** The engine's state of it: anything but idle means a run is under way (or queued, or stopping). */
   runState?: RunState;
   /** The review round in progress or last finished, and how many the task has. */
-  round?: number;
-  rounds?: number;
-  waitingReason?: WaitingReason;
-  retryAt?: number;
+  round?: number; rounds?: number;
+  waitingReason?: WaitingReason; retryAt?: number;
 }
 
 /** Why a worker leaves its desk: which of the office's paths sent it home. */

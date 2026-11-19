@@ -7,6 +7,7 @@ import { chmodSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type {
   ImplementPermission,
+  PlanPermission,
   IssueSourceConfig,
   KanbanEffort,
   KanbanSettings,
@@ -18,6 +19,7 @@ import type {
   TaskOverrides,
 } from '../../shared/kanban/types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, SKILL_PHASES } from '../../shared/kanban/types.js';
+import { IMPLEMENT_PERMISSIONS, PLAN_PERMISSIONS } from '../../shared/kanban/permissions.js';
 import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '../../shared/kanban/protocol.js';
 import { SOURCE_ID_RE } from '../../shared/kanban/validate.js';
 import { isKanbanPromptId } from '../../shared/kanban/prompts.js';
@@ -26,7 +28,7 @@ import { cleanProjectLanguage } from '../../shared/language.js';
 import { JIRA_CONNECTION_ID_RE, cleanJiraSite, jiraSourcesProblem } from '../../shared/kanban/jira-connections.js';
 import { AZURE_ORG_RE, AZURE_PROJECT_RE, WIQL_EXTRA_MAX, wiqlExtraProblem } from '../../shared/kanban/azure-boards.js';
 
-export const SETTINGS_SCHEMA_VERSION = 1;
+export const SETTINGS_SCHEMA_VERSION = 2;
 export const INSTRUCTIONS_MAX = 20_000;
 export const MAX_ISSUE_SOURCES = 10;
 
@@ -39,7 +41,7 @@ export function defaultProjectSettings(): ProjectSettings {
 export function defaultKanbanSettings(): KanbanSettings {
   return {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
-    defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'bypass', uiTesting: true },
+    defaults: { tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, implementPermission: 'auto', planPermission: 'plan', uiTesting: true },
     review: { ...DEFAULT_REVIEW },
     autoResume: { enabled: true, maxAttempts: 5, maxWaitHours: 6 },
     archiveAfterDays: 30,
@@ -62,7 +64,6 @@ const model = (v: unknown) => (typeof v === 'string' && MODEL_RE.test(v) ? v : u
 const strings = (v: unknown, maxItems: number, maxLen: number, re?: RegExp) =>
   Array.isArray(v) ? [...new Set(v.filter((x): x is string => typeof x === 'string').map((x) => x.trim()).filter((x) => x && x.length <= maxLen && (!re || re.test(x))))].slice(0, maxItems) : [];
 const PLAN_APPROVALS: readonly PlanApproval[] = ['auto', 'manual'];
-const PERMISSIONS: readonly ImplementPermission[] = ['bypass', 'workspace-write'];
 
 /** A complete review setting, from whatever came in, over `base`. */
 export function sanitizeReview(raw: unknown, base: ReviewSettings = DEFAULT_REVIEW): ReviewSettings {
@@ -185,8 +186,10 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
   };
   const approval = 'planApproval' in r ? optOneOf(r.planApproval, PLAN_APPROVALS) : base.planApproval;
   if (approval) out.planApproval = approval;
-  const permission = 'implementPermission' in r ? optOneOf(r.implementPermission, PERMISSIONS) : base.implementPermission;
+  const permission = 'implementPermission' in r ? optOneOf(r.implementPermission, IMPLEMENT_PERMISSIONS) : base.implementPermission;
   if (permission) out.implementPermission = permission;
+  const planPermission = 'planPermission' in r ? optOneOf(r.planPermission, PLAN_PERMISSIONS) : base.planPermission;
+  if (planPermission) out.planPermission = planPermission;
   const ui = 'uiTesting' in r && typeof r.uiTesting === 'boolean' ? r.uiTesting : base.uiTesting;
   if (ui !== undefined) out.uiTesting = ui;
   // An invalid value keeps the earlier choice when a file is loaded; checking a request, and clearing (null), are setProject's.
@@ -215,7 +218,8 @@ export function sanitizeKanbanSettings(raw: unknown, base: KanbanSettings = defa
     usePlan: bool(d.usePlan, base.defaults.usePlan),
     planApproval: oneOf(d.planApproval, PLAN_APPROVALS, base.defaults.planApproval),
     useReview: bool(d.useReview, base.defaults.useReview),
-    implementPermission: oneOf(d.implementPermission, PERMISSIONS, base.defaults.implementPermission),
+    implementPermission: oneOf(d.implementPermission, IMPLEMENT_PERMISSIONS, base.defaults.implementPermission),
+    planPermission: oneOf(d.planPermission, PLAN_PERMISSIONS, base.defaults.planPermission),
     uiTesting: bool(d.uiTesting, base.defaults.uiTesting),
   };
   const m = 'model' in d ? model(d.model) : base.defaults.model;
@@ -266,6 +270,20 @@ export class KanbanSettingsStore {
       raw = undefined; // never saved, or unreadable: the defaults
     }
     this.settings = sanitizeKanbanSettings(raw);
+    // Version 1 offices ran implement phases in bypass mode by default; the default is auto mode now. A file saved
+    // before that (or with no version) moves to it once, and is written back at version 2, so a later explicit bypass stays.
+    const stored = obj(raw).schemaVersion;
+    if (raw && typeof raw === 'object' && !(typeof stored === 'number' && stored >= 2)) {
+      if (this.settings.defaults.implementPermission === 'bypass') {
+        this.settings.defaults.implementPermission = 'auto';
+        console.log("agent-office: kanban settings moved to version 2: implement phases now run in Claude's auto mode by default, not bypass mode (Settings → Kanban → New tasks chooses it back)");
+      }
+      try {
+        writeAtomic(this.file, `${JSON.stringify(this.settings, null, 2)}\n`, 0o600);
+      } catch (err) {
+        console.error(`agent-office: couldn't save the migrated kanban settings: ${(err as Error).message}`);
+      }
+    }
     // A file edited by hand (or from before the rule) may hold sources that can't sit together: it loads as it is, and says so.
     for (const [id, p] of Object.entries(this.settings.projects)) {
       const problem = jiraSourcesProblem(p.issueSources);
@@ -317,6 +335,7 @@ export class KanbanSettingsStore {
     for (const k of ['publicLanguage', 'commentLanguage'] as const) if (cleared.has(k)) delete next[k];
     if (cleared.has('planApproval')) delete next.planApproval;
     if (cleared.has('implementPermission')) delete next.implementPermission;
+    if (cleared.has('planPermission')) delete next.planPermission;
     if (cleared.has('uiTesting')) delete next.uiTesting;
     // Only a change of the sources is held to it: a project that loaded with a problem can still save its other settings.
     const clash = 'issueSources' in p ? jiraSourcesProblem(next.issueSources) : undefined;
@@ -360,6 +379,13 @@ export class KanbanSettingsStore {
   /** How implement-like phases run for a task: the task's choice, the project's, else the office's. */
   implementPermission(project: string, overrides?: TaskOverrides): ImplementPermission {
     return overrides?.implementPermission ?? this.settings.projects[project]?.implementPermission ?? this.settings.defaults.implementPermission;
+  }
+
+  /** How the plan and the implement-like phases run for a task: the task's choice, the project's, else the office's. */
+  launchPermissions(project: string, overrides?: TaskOverrides): { permission: ImplementPermission; planPermission: PlanPermission } {
+    const p = this.settings.projects[project];
+    const d = this.settings.defaults;
+    return { permission: overrides?.implementPermission ?? p?.implementPermission ?? d.implementPermission, planPermission: overrides?.planPermission ?? p?.planPermission ?? d.planPermission };
   }
 
   /** Whether a task takes before/after UI images: the task's choice, the project's, else the office's. */

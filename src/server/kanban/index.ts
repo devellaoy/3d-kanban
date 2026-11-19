@@ -28,6 +28,7 @@ import { KanbanSecrets } from './secrets.js';
 import { KanbanSettingsStore } from './settings.js';
 import { primaryRepo, projectRepos, validateProjectRepos } from './projects.js';
 import { attachmentPath } from './uploads.js';
+import { registerOfficeFiles } from './launch.js';
 import { taskOf } from './handoff.js';
 import { hireFiles } from './hirefiles.js';
 import { createCorePlugin, projectInfos } from './ws.js';
@@ -149,6 +150,7 @@ async function route<A extends unknown[]>(table: [string, (...args: A) => boolea
 export function installKanban(opts: KanbanInstallOptions): Kanban {
   const dataDir = opts.dataDir;
   const filesDir = path.join(dataDir, 'kanban');
+  registerOfficeFiles(filesDir);
   const db = openKanbanDb(opts.dbFile ?? kanbanDbPath(dataDir));
   const repo = new KanbanRepository(db);
   const subscribers = new Map<string, Subscriber>();

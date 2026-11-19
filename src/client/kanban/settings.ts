@@ -16,7 +16,6 @@ import { normalizeRemote } from '../../shared/hosting/remote.js';
 import {
   KANBAN_EFFORTS,
   KANBAN_TOOLS,
-  type ImplementPermission,
   type KanbanEffort,
   type KanbanSettings,
   type KanbanTool,
@@ -31,7 +30,7 @@ import { orderedProjects, repoIdFrom } from './model';
 import { kstore } from './store';
 import { loadSkills, skillsOverview, skillsPane } from './skills';
 import { newProjectButton } from './newproject';
-import { PERMISSION_NAMES, optionalModel, reviewFields, saveButton, thisProjectFields } from './project-fields';
+import { optionalModel, permissionFields, reviewFields, saveButton, thisProjectFields } from './project-fields';
 import type { KanbanSettingsPane } from './settingsslot';
 import { Cleanups, settingsRedraw } from './settingsflow';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
@@ -203,7 +202,8 @@ export function kanbanSettingsPanes(net: Net): { panes: Record<KanbanSettingsPan
 
 // --- General ---------------------------------------------------------------------------------------
 
-function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLElement {
+/** 🗂️ Kanban's General: the office's defaults for new tasks, reviews, resuming, idle agents and the archive. */
+export function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLElement {
   const dft = s.defaults;
   const tool = select<KanbanTool>(KANBAN_TOOLS.map((x) => [x, toolName(x)] as const), dft.tool);
   const model = textInput(dft.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: 'Default' });
@@ -212,7 +212,7 @@ function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLE
   const approval = select<PlanApproval>([['auto', APPROVAL_NAMES.auto], ['manual', APPROVAL_NAMES.manual]], dft.planApproval);
   const useReview = checkbox('Review rounds', dft.useReview);
   const uiTesting = checkbox('UI testing: before and after screenshots of UI changes', dft.uiTesting, { title: 'Implementers save before and after screenshots when a task changes the UI. A project, and a task, can choose otherwise.' });
-  const perm = select<ImplementPermission>([['bypass', PERMISSION_NAMES.bypass], ['workspace-write', PERMISSION_NAMES['workspace-write']]], dft.implementPermission);
+  const perms = permissionFields(dft);
   const review = reviewFields(s.review, s.review);
   const auto = checkbox('Resume after a usage limit or a network break', s.autoResume.enabled);
   const attempts = numberInput(s.autoResume.maxAttempts, 0, 50);
@@ -222,7 +222,7 @@ function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLE
   const save = saveButton();
   save.addEventListener('click', () => {
     const settings = {
-      defaults: { tool: tool.value as KanbanTool, model: optionalModel(model.value), effort: (effort.value as KanbanEffort) || null, usePlan: usePlan.box.checked, planApproval: approval.value as PlanApproval, useReview: useReview.box.checked, implementPermission: perm.value as ImplementPermission, uiTesting: uiTesting.box.checked },
+      defaults: { tool: tool.value as KanbanTool, model: optionalModel(model.value), effort: (effort.value as KanbanEffort) || null, usePlan: usePlan.box.checked, planApproval: approval.value as PlanApproval, useReview: useReview.box.checked, planPermission: perms.plan(), implementPermission: perms.implement(), uiTesting: uiTesting.box.checked },
       review: review.value(),
       autoResume: { enabled: auto.box.checked, maxAttempts: numberValue(attempts, 0, 50, KANBAN_DEFAULTS.autoResume.maxAttempts), maxWaitHours: numberValue(waitHours, 1, 168, KANBAN_DEFAULTS.autoResume.maxWaitHours) },
       archiveAfterDays: numberValue(archive, 0, 3650, KANBAN_DEFAULTS.archiveAfterDays),
@@ -237,7 +237,7 @@ function generalPane(api: KanbanApi, s: KanbanSettings, refetch: boolean): HTMLE
   return h(
     'div.kb-pane',
     {},
-    h('fieldset', {}, h('legend', {}, 'New tasks'), h('div.kb-three', {}, field('Agent', tool), field('Model', model), field('Effort', effort)), h('div.kb-two', {}, usePlan.el, field('Plan approval', approval)), useReview.el, uiTesting.el, field('Implementation runs', perm, 'How implement, fix and PR phases run. Plans and reviews are always read-only.')),
+    h('fieldset', {}, h('legend', {}, 'New tasks'), h('div.kb-three', {}, field('Agent', tool), field('Model', model), field('Effort', effort)), h('div.kb-two', {}, usePlan.el, field('Plan approval', approval)), useReview.el, uiTesting.el, perms.el),
     h('fieldset', {}, h('legend', {}, 'Reviews'), review.el),
     h('fieldset', {}, h('legend', {}, 'Resume after a usage limit or a network break'), auto.el, h('div.kb-two', {}, field('Tries at most', attempts), field('Waits at most (hours)', waitHours)), h('small.kb-hint', {}, 'A task that stopped on a usage limit is tried again when the limit resets.')),
     h('fieldset', {}, h('legend', {}, 'Idle agents'), field('Close idle agents after (hours)', idleClose, '0 never closes them. Opening the task or its terminal starts the agent again where it left off.')),

@@ -256,3 +256,78 @@ test('⚙️ Project saves its code comment language: English by default, the pr
   assert.equal(saved(), null, 'another language with an empty box is back to the default');
   cleanups.run();
 });
+
+/** The select under a field's label, and the hint under that select. */
+function permissionField(all: FakeEl[], label: string) {
+  const fieldEl = all.find((el) => el.className === 'kb-field' && el.children.some((c) => typeof c !== 'string' && c.tagName === 'label' && c.textContent === label))!;
+  assert.ok(fieldEl, `a ${label} field`);
+  const kids = fieldEl.children.filter((c): c is FakeEl => typeof c !== 'string');
+  const pick = kids.find((c) => c.tagName === 'select')!;
+  const hint = kids.find((c) => c.className === 'kb-hint')!;
+  const options = pick.children.filter((c): c is FakeEl => typeof c !== 'string').map((o) => [o.getAttribute('value'), o.textContent]);
+  const choose = (v: string) => {
+    pick.value = v;
+    pick.fire('change');
+  };
+  return { pick, hint, options, choose };
+}
+
+test('🗂️ Kanban offers every way the plan and implementation phases run, says what each means per agent, and saves both', async () => {
+  const { kstore } = await projectPaneFixture(true);
+  const { generalPane } = await import('../src/client/kanban/settings.js');
+  const { KANBAN_DEFAULTS } = await import('../src/client/kanban/defaults.js');
+  const { PLAN_PERMISSIONS, PLAN_PERMISSION_INFO, IMPLEMENT_PERMISSIONS, IMPLEMENT_PERMISSION_INFO } = await import('../src/shared/kanban/permissions.js');
+  kstore.me = { admin: true, name: 'me' };
+  const sent: { settings: { defaults: Record<string, unknown> } }[] = [];
+  const api = { request: async (msg: never) => void sent.push(msg) };
+  const pane = generalPane(api as never, { ...KANBAN_DEFAULTS, projects: {} } as never, false) as unknown as FakeEl;
+  const all = [...pane.all()];
+  const plan = permissionField(all, 'Plan phase runs');
+  const impl = permissionField(all, 'Implementation runs');
+  assert.deepEqual(plan.options, PLAN_PERMISSIONS.map((v) => [v, PLAN_PERMISSION_INFO[v].name]));
+  assert.deepEqual(impl.options, IMPLEMENT_PERMISSIONS.map((v) => [v, IMPLEMENT_PERMISSION_INFO[v].name]));
+  assert.equal(plan.pick.value, 'plan');
+  assert.equal(impl.pick.value, 'auto');
+  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.plan.claude} · Codex: ${PLAN_PERMISSION_INFO.plan.codex}`);
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex}`);
+  plan.choose('auto');
+  impl.choose('workspace-write');
+  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.auto.claude} · Codex: ${PLAN_PERMISSION_INFO.auto.codex}`, 'the hint follows the choice');
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].claude} · Codex: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].codex}`);
+  assert.ok(all.some((el) => el.className === 'kb-hint' && /implement, fix, resume and PR phases\. Reviews are not affected/.test(el.textContent)), 'says what implementation covers');
+  assert.ok(!all.some((el) => /always read-only/.test(el.className === 'kb-hint' ? el.textContent : '')), 'plans are no longer called read-only');
+  const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  save.fire('click');
+  await new Promise((r) => setTimeout(r, 0));
+  const { defaults } = sent.pop()!.settings;
+  assert.equal(defaults.planPermission, 'auto');
+  assert.equal(defaults.implementPermission, 'workspace-write');
+});
+
+test('⚙️ Project overrides how the phases run, or leaves them to the office: Default saves null and explains the office’s value', async () => {
+  const { all, sent, cleanups } = await projectPaneFixture(true);
+  const { PLAN_PERMISSION_INFO, IMPLEMENT_PERMISSION_INFO } = await import('../src/shared/kanban/permissions.js');
+  const plan = permissionField(all, 'Plan phase runs');
+  const impl = permissionField(all, 'Implementation runs');
+  assert.deepEqual(plan.options[0], ['', `Default (${PLAN_PERMISSION_INFO.plan.name})`]);
+  assert.deepEqual(impl.options[0], ['', `Default (${IMPLEMENT_PERMISSION_INFO.auto.name})`]);
+  assert.deepEqual(plan.options.slice(1).map((o) => o[0]), ['plan', 'auto']);
+  assert.deepEqual(impl.options.slice(1).map((o) => o[0]), ['auto', 'bypass', 'workspace-write']);
+  assert.equal(plan.pick.value, '');
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex}`, 'Default: what the office’s value means');
+  const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
+  const saved = () => (sent.pop() as { settings: Record<string, unknown> }).settings;
+  await click();
+  let settings = saved();
+  assert.equal(settings.planPermission, null);
+  assert.equal(settings.implementPermission, null);
+  plan.choose('auto');
+  impl.choose('bypass');
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.bypass.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.bypass.codex}`);
+  await click();
+  settings = saved();
+  assert.equal(settings.planPermission, 'auto');
+  assert.equal(settings.implementPermission, 'bypass');
+  cleanups.run();
+});

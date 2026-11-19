@@ -8,10 +8,10 @@ description: Enforces that non-trivial implementation work is carried out by an 
 ## Contents
 
 - **Core principle — design the team for the task** — smallest team, always one devil's advocate
-- **Rule 1 — When you are in plan mode** — plan with a team, add the team line
+- **Rule 1 — When you are in plan mode, or on a turn you were told is for planning only** — plan with a team, add the team line
   - **1a. Make the plan itself with an agent team** — DA challenges the plan
   - **1b. Commit the execution to an agent team too** — the canonical closing line
-- **Rule 2 — When you are NOT in plan mode** — team for medium-or-larger tasks
+- **Rule 2 — When you are NOT in plan mode and the turn is not for planning only** — team for medium-or-larger tasks
   - **Sizing a task** — medium vs. trivial
   - **Running the agent team** — separate subagents or simulated hats
   - **What the devil's advocate does** — assumptions, failure modes, alternatives
@@ -31,7 +31,7 @@ Optimise for effectiveness and efficiency: the right roles, the right number of 
  
 There are two situations to handle. Check which one you are in, then follow the matching rule.
  
-## Rule 1 — When you are in plan mode
+## Rule 1 — When you are in plan mode, or on a turn you were told is for planning only
  
 In plan mode there are **two** things to get right: how the plan is *made*, and what the plan *commits to*.
  
@@ -55,9 +55,9 @@ English equivalent, if the plan is written in English:
  
 Add it as the final line of the plan (or as a dedicated short section), so whoever reads or approves the plan sees the commitment clearly. This applies to **every** plan you produce while this skill is active, regardless of task size — in plan mode the note is always added.
  
-## Rule 2 — When you are NOT in plan mode
+## Rule 2 — When you are NOT in plan mode and the turn is not for planning only
  
-If you are not in plan mode and you are about to do a task that is **medium-sized or larger**, carry it out with an agent team that includes a devil's advocate. Small / trivial tasks are exempt — handle those directly without the ceremony.
+If you are not in plan mode (and were not told the turn is for planning only) and you are about to do a task that is **medium-sized or larger**, carry it out with an agent team that includes a devil's advocate. Small / trivial tasks are exempt — handle those directly without the ceremony.
  
 ### Sizing a task
  
@@ -86,9 +86,9 @@ After the devil's advocate has spoken, reconcile the critique: either address th
  
 ## Quick decision summary
  
-- **In plan mode?** → Make the plan itself with an agent team that includes a devil's advocate, **and** add the line committing execution to the same kind of team. Don't execute.
-- **Not in plan mode, task is medium or bigger?** → Execute it with an agent team that includes a devil's advocate.
-- **Not in plan mode, task is small/trivial?** → Just do it directly.
+- **In plan mode, or told this turn is for planning only?** → Make the plan itself with an agent team that includes a devil's advocate, **and** add the line committing execution to the same kind of team. Don't execute.
+- **Not planning, task is medium or bigger?** → Execute it with an agent team that includes a devil's advocate.
+- **Not planning, task is small/trivial?** → Just do it directly.
 
 ## Seeing the UI
 

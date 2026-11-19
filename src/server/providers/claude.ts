@@ -19,7 +19,7 @@ import type { ProviderAdapter } from './types.js';
 const HOOK_TRIES = 6;
 
 /** First-run screens Claude shows before it can take a prompt. */
-const SETUP_PROMPT = /trust this folder|Do you trust the files|Select login method|Choose the text style|Press Enter to continue|Bypass Permissions mode/i;
+const SETUP_PROMPT = /trust this folder|Do you trust the files|Select login method|Choose the text style|Press Enter to continue|Bypass Permissions mode|directory you created or one you trust/i;
 const NOT_LOGGED_IN = /Not logged in\s*·\s*Run \/login|Invalid API key|Please run \/login/i;
 
 interface ClaudeSetup {

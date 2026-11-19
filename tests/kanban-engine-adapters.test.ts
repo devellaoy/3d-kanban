@@ -25,9 +25,24 @@ const text = (t: string) => ({ type: 'text', text: t });
 const messageTextOf = (l: { message: { content: unknown } }) => String(l.message.content);
 
 test('claude launch flags per phase, with the review sandbox, extra dirs, models and plugin extras', () => {
-  const base = { permission: 'bypass' as const, sandbox: false };
+  const base = { permission: 'bypass' as const, planPermission: 'plan' as const, sandbox: false };
   assert.deepEqual(claudeAdapter.launchArgs('plan', { ...base, addDirs: ['/refs', '/refs'] }), ['--permission-mode', 'plan', '--add-dir', '/refs']);
-  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts'] as const) assert.deepEqual(claudeAdapter.launchArgs(phase, base), ['--permission-mode', 'bypassPermissions'], phase);
+  // A plan in auto mode: no editing tools and no plan mode to enter or leave.
+  assert.deepEqual(claudeAdapter.launchArgs('plan', { ...base, planPermission: 'auto', addDirs: ['/refs'] }), ['--permission-mode', 'auto', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'EnterPlanMode', 'ExitPlanMode', '--add-dir', '/refs']);
+  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts'] as const) {
+    assert.deepEqual(claudeAdapter.launchArgs(phase, base), ['--permission-mode', 'bypassPermissions'], phase);
+    assert.deepEqual(claudeAdapter.launchArgs(phase, { ...base, permission: 'workspace-write' }), ['--permission-mode', 'bypassPermissions'], phase);
+    assert.deepEqual(claudeAdapter.launchArgs(phase, { ...base, permission: 'auto' }), ['--permission-mode', 'auto'], phase);
+  }
+  // The review phases keep their flags whatever the settings say.
+  for (const permission of ['auto', 'bypass', 'workspace-write'] as const) for (const planPermission of ['auto', 'plan'] as const) {
+    assert.deepEqual(claudeAdapter.launchArgs('review', { ...base, permission, planPermission }), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit']);
+    assert.deepEqual(claudeAdapter.launchArgs('pr-review', { ...base, permission, planPermission }), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit']);
+  }
+  // Plan and implement never launch alike, so the session is relaunched, not typed into.
+  for (const planPermission of ['auto', 'plan'] as const) for (const permission of ['auto', 'bypass', 'workspace-write'] as const) {
+    assert.notDeepEqual(claudeAdapter.launchArgs('plan', { ...base, planPermission }), claudeAdapter.launchArgs('implement', { ...base, permission }));
+  }
   assert.deepEqual(claudeAdapter.launchArgs('review', base), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit']);
   assert.deepEqual(claudeAdapter.launchArgs('review', { ...base, sandbox: true }), ['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch']);
   // A pull-request review has the review's flags (Bash keeps the network, for gh).
@@ -60,8 +75,12 @@ test('claude model ids: a full id passes upstream as its alias and runs as itsel
 });
 
 test('codex launch flags per phase, the workspace-write setting, models and efforts', () => {
-  const base = { permission: 'bypass' as const, sandbox: true };
+  const base = { permission: 'bypass' as const, planPermission: 'plan' as const, sandbox: true };
   assert.deepEqual(codexAdapter.launchArgs('plan', base), ['-s', 'read-only', '-a', 'never']);
+  // Codex has no auto mode: `auto` launches as bypass does; the plan is read-only either way.
+  assert.deepEqual(codexAdapter.launchArgs('plan', { ...base, planPermission: 'auto' }), ['-s', 'read-only', '-a', 'never']);
+  assert.deepEqual(codexAdapter.launchArgs('implement', { ...base, permission: 'auto' }), codexAdapter.launchArgs('implement', base));
+  for (const permission of ['auto', 'bypass', 'workspace-write'] as const) assert.deepEqual(codexAdapter.launchArgs('review', { ...base, permission }), ['-s', 'read-only', '-a', 'never']);
   assert.deepEqual(codexAdapter.launchArgs('review', base), ['-s', 'read-only', '-a', 'never']);
   // Reading pull requests takes gh and so the network: the workspace sandbox with the network on.
   assert.deepEqual(codexAdapter.launchArgs('pr-review', base), ['-s', 'workspace-write', '-a', 'never', '-c', 'sandbox_workspace_write.network_access=true']);

@@ -12,6 +12,10 @@ export interface Live extends HeldRun {
   tool: KanbanTool;
   /** Claude asked to leave plan mode (ExitPlanMode): its needs_input is the finished plan. */
   exitPlan: boolean;
+  /** The plan of that ExitPlanMode, as its hook gave it: Claude writes the call to its session log later than the hook comes (see planFromHook). */
+  hookPlan?: string;
+  /** The run was told that Claude's auto mode is not available (see autoModeUnavailable): once per run. */
+  autoModeNoted?: boolean;
   /** What its agent's needs_input waits on, as its hooks last said (heardAsk); unknown when unset. */
   asks?: AskingKind;
   /** Its agent was started on a stored session (--resume) and has not been heard from yet: if it exits now, the session is gone (see exited). */

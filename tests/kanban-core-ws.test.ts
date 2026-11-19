@@ -264,6 +264,12 @@ test('edits: structural fields only in To do, the description locked once starte
   assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, { implementPermission: 'workspace-write', uiTesting: true });
   okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { uiTesting: null, implementPermission: null } }));
   assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, {});
+  // The plan's permission is a task override too, with the same null-clear.
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { planPermission: 'plan', implementPermission: 'auto' } }));
+  assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, { planPermission: 'plan', implementPermission: 'auto' });
+  okOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { planPermission: null, implementPermission: null } }));
+  assert.deepEqual(kanban.ctx.repo.getTask(1)!.overrides, {});
+  errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { planPermission: 'bypass' as never } }), /planPermission/);
   errorOf(await ada.ask({ t: 'kanban.task.update', id: 1, patch: { repoIds: ['api'] } }), /isn't one of/);
   errorOf(await ada.ask({ t: 'kanban.task.update', id: 9, patch: { title: 'y' } }), /no task #9/);
 

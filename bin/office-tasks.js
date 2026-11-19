@@ -478,7 +478,8 @@ export const TASK_TOOLS = [
       required: ['kind'],
       additionalProperties: false,
     },
-    annotations: { destructiveHint: false, openWorldHint: false },
+    // readOnlyHint: it changes nothing in the user's environment, and without the hint Claude's plan mode asks about it even when it is allowed.
+    annotations: { readOnlyHint: true, destructiveHint: false, openWorldHint: false },
   },
 ];
 

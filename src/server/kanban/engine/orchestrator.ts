@@ -46,7 +46,7 @@ import type { Live, Via } from './live.js';
 import { lostText, TurnEnd, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
 import { RestWaits } from './restwait.js';
-import { sessionLogged } from './sessions.js';
+import { sessionLogged } from './sessions.js'; import { observeLeadHook, planFromHook, planModeOf } from './automode.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -217,6 +217,7 @@ export class Orchestrator {
         const ws = info?.worktree ? { worktree: info.worktree, ...(info.repos?.length ? { repos: info.repos } : {}) } : task?.workspace;
         return task && floor && ws && !this.folder(task.project) ? uncommitted(floor.dir, ws) : [];
       },
+      launchArgs: (live) => this.ctx.floor(live.floorId)?.workers.launchArgsOf(live.workerId),
       maxBlocks: () => this.opts.maxGateBlocks,
       readPauseMs: () => this.opts.readPauseMs,
     });
@@ -444,7 +445,7 @@ export class Orchestrator {
         role: w.kanban!.role,
         title: task.title, ...(task.ticket ? { ticket: task.ticket } : {}),
         status: task.status,
-        ...(task.phase ? { phase: task.phase } : {}),
+        ...(task.phase ? { phase: task.phase, ...planModeOf(task.phase, workers.launchArgsOf(w.id)) } : {}),
         runState: task.runState,
         ...(task.reviewRound ? { round: task.reviewRound } : {}),
         ...(card ? { rounds: card.reviewRounds } : {}),
@@ -892,7 +893,7 @@ export class Orchestrator {
     for (const r of taskRepos(def, task)) if (!r.primary && (r.kind === 'folder' || folder)) addDirs.push(r.dir);
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase(eff.phase));
     const launchArgs = adapter.launchArgs(eff.phase, {
-      permission: this.ctx.settings.implementPermission(task.project, task.overrides),
+      ...this.ctx.settings.launchPermissions(task.project, task.overrides),
       sandbox: review.sandbox,
       investigate,
       addDirs,
@@ -1096,7 +1097,7 @@ export class Orchestrator {
     };
     const prompt = typeable(this.compose.build('pr.review', def, task, tool, floor.dir, x));
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase('pr-review'));
-    const launchArgs = adapter.launchArgs('pr-review', { permission: this.ctx.settings.implementPermission(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args });
+    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args });
 
     const owner = hireOwner(task, via.who);
     const signIn = owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner) ? this.signInMissing(task, owner, via.who) : undefined;
@@ -1189,8 +1190,7 @@ export class Orchestrator {
         if (ask) this.heardAsk(live, o);
         return;
       }
-      if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') live.exitPlan = true;
-      else if (o.hookEvent === 'PreToolUse' && o.tool) live.exitPlan = false;
+      observeLeadHook(live, o, () => this.ctx.floor(floorId)?.workers.launchArgsOf(live.workerId), (text) => { const t = this.ctx.repo.getTask(live.taskId); if (t) this.note(t, text, live.runId); });
       if (o.hookEvent === 'UserPromptSubmit') (Object.assign(live, { stopText: undefined, restating: false }), newTurn(live));
       else if (o.hookEvent === 'Stop') Object.assign(live, { gated: false, ...(live.tool === 'claude' ? { stopText: stopMessage(o.payload) } : {}) });
       // The resumed turn has started (these hooks also set the worker `working`): its end is a normal `done` again.
@@ -1451,7 +1451,7 @@ export class Orchestrator {
     // The agent's final marker ends the run; a turn without it is an interim update the run waits through (see TurnEnd).
     const ending = await this.turnEnd.decide(live, read, { planExit, force, turn });
     if (!ending.end) return;
-    const result = ending.result;
+    const result = planFromHook(live, ending.result, planExit);
     const unfinished = ending.unfinished;
     const asked = ending.asked;
     live.background = false;
@@ -1467,7 +1467,7 @@ export class Orchestrator {
     task = this.ctx.repo.getTask(live.taskId) ?? task;
     const sessionId = info?.sessionId;
 
-    if (!result || (!result.complete && !result.text.trim())) {
+    if (!result || (!result.complete && !result.text.trim() && !(planExit && result.plan?.trim()))) { // a plan handed over with ExitPlanMode is the reply, with no text around it
       this.finishRun(live.runId, task.project, { status: 'failed', error: "The turn ended without a reply the office could read", sessionId });
       await this.apply(task.id, { type: 'failed', error: "The agent's turn ended without a reply the office could read: look at its terminal, then Retry" });
       void this.drain(task.project);

@@ -202,7 +202,15 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
 - Claude flags: `--permission-mode <mode>`, `--disallowedTools`, `--plugin-dir <path>` (skills as a plugin),
   `--resume <id>`, `--session-id <uuid>`; `--json-schema` only works with `--print`, so interactive review
   verdicts are parsed from the final text. The setting `skipDangerousModePermissionPrompt` exists
-  (skips the bypass-mode confirmation in the TUI).
+  (skips the bypass-mode confirmation in the TUI; reviews still use bypass mode, so it is always on).
+  `--permission-mode auto` (Claude Code 2.1.327+) is the default of the implement phases (the plan phase's default is plan mode, auto mode its other choice): hook payloads carry
+  `permission_mode` (`auto`, or `default` when auto mode was asked for and is unavailable: Claude starts in Manual mode
+  without saying so). `--add-dir <untrusted folder>` shows a trust dialog in every mode; a folder in a `--settings`
+  file's `permissions.additionalDirectories` doesn't, so the office's task folders go there. In plan mode an MCP tool
+  prompts even when allowed unless its annotations say `readOnlyHint: true` (`report_turn` has it). The seam in
+  upstream's files: `server/providers/claude.ts` `SETUP_PROMPT` also matches `directory you created or one you trust`, so a
+  trust dialog for some other folder shows as the office's "Waiting on a setup prompt".
+- Codex has no verified unattended equivalent of auto mode: the setting `auto` launches it as `bypass`.
 - Codex flags: `-s read-only|workspace-write|danger-full-access`, `-a never`,
   `--dangerously-bypass-approvals-and-sandbox`, `codex resume <SESSION_ID> [PROMPT]`.
 - Decision (A4 gate): every phase runs on upstream PTY workers; no phase needs a headless fallback.

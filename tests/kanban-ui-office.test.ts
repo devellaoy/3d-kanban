@@ -76,7 +76,7 @@ test('who waits on you: a task waiting on a person, or an unseen review; not one
   assert.equal(taskWaiting(w('done', false, { status: 'in_progress', runState: 'idle' })), false);
   // The engine hands the task on by itself while a run is under way: a plan's ExitPlanMode prompt, a finished step.
   for (const runState of ['running', 'starting', 'queued', 'stopping'] as const) {
-    assert.equal(taskWaiting(w('needs_input', false, { status: 'in_progress', phase: 'plan', runState })), false);
+    assert.equal(taskWaiting(w('needs_input', false, { status: 'in_progress', phase: 'plan', planMode: true, runState })), false);
   }
   for (const phase of ['implement', 'review', 'fix'] as const) {
     // Outside a plan, a prompt mid-run is a permission or a question: it waits, before the engine says so too.

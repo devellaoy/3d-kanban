@@ -14,6 +14,8 @@ export { messagesSent, teammateEvents, teammateTags, teammatesBusy, type Teammat
 export const REVIEW_DISALLOWED = ['Edit', 'Write', 'NotebookEdit'];
 /** And off the web, with the review sandbox on. */
 export const REVIEW_SANDBOXED = ['WebFetch', 'WebSearch'];
+/** The plan-mode tools, off when the plan phase runs in auto mode: there is no plan mode to enter or leave. */
+export const PLAN_MODE_TOOLS = ['EnterPlanMode', 'ExitPlanMode'];
 
 /**
  * The alias upstream takes for a Claude model (validateWorkerModel only knows fable, opus, sonnet and
@@ -329,12 +331,12 @@ export const claudeAdapter: TaskAgentAdapter = {
   tool: 'claude',
   launchArgs(phase: RunPhase, opts: LaunchOptions): string[] {
     const args: string[] = [];
-    if (phase === 'plan') args.push('--permission-mode', 'plan');
+    if (phase === 'plan') args.push(...(opts.planPermission === 'plan' ? ['--permission-mode', 'plan'] : ['--permission-mode', 'auto', '--disallowedTools', ...REVIEW_DISALLOWED, ...PLAN_MODE_TOOLS]));
     else if (phase === 'review' || phase === 'pr-review') args.push('--permission-mode', 'bypassPermissions', '--disallowedTools', ...REVIEW_DISALLOWED, ...(opts.sandbox ? REVIEW_SANDBOXED : []));
     // implement, fix, resume, pr, pr-fix, pr-conflicts, compact, and an investigation (which writes its report
     // files: the contract keeps it off the repositories). Bash keeps the network in every phase, so a
-    // pull-request review's gh works with the review sandbox on too.
-    else args.push('--permission-mode', 'bypassPermissions');
+    // pull-request review's gh works with the review sandbox on too. 'auto' is Claude's auto mode; the other values are bypass mode.
+    else args.push('--permission-mode', opts.permission === 'auto' ? 'auto' : 'bypassPermissions');
     args.push(...addDirs(opts.addDirs));
     // Upstream passes the alias (spawnModel) as its own --model; a full id goes here, after it, and
     // the CLI takes the last --model it is given.

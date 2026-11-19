@@ -44,7 +44,7 @@ export function projectInfos(ctx: KanbanContext): KanbanProjectInfo[] {
 }
 
 /** The fields of a patch that shape how the task runs: set only while it's in To do. */
-const STRUCTURAL: (keyof KanbanTaskPatch)[] = ['type', 'repoIds', 'usePlan', 'planApproval', 'useReview', 'goal', 'implementPermission'];
+const STRUCTURAL: (keyof KanbanTaskPatch)[] = ['type', 'repoIds', 'usePlan', 'planApproval', 'useReview', 'goal', 'implementPermission', 'planPermission'];
 /**
  * Who carries it out (the implementer's tool, model and effort, and the review override): set
  * whenever no run is live. The next phase's hire picks them up; a new tool's session gets the handoff.
@@ -82,12 +82,14 @@ export function taskUpdateFrom(ctx: KanbanContext, task: KanbanTask, patch: Kanb
   if (patch.useReview !== undefined) up.useReview = patch.useReview;
   if (patch.goal !== undefined) up.goal = patch.goal;
   if (patch.tags !== undefined) up.tags = patch.tags;
-  if (patch.review !== undefined || patch.implementPermission !== undefined || patch.uiTesting !== undefined) {
+  if (patch.review !== undefined || patch.implementPermission !== undefined || patch.planPermission !== undefined || patch.uiTesting !== undefined) {
     const o: TaskOverrides = { ...task.overrides };
     if (patch.review === null || (patch.review && !Object.keys(patch.review).length)) delete o.review;
     else if (patch.review) o.review = patch.review;
     if (patch.implementPermission === null) delete o.implementPermission;
     else if (patch.implementPermission) o.implementPermission = patch.implementPermission;
+    if (patch.planPermission === null) delete o.planPermission;
+    else if (patch.planPermission) o.planPermission = patch.planPermission;
     if (patch.uiTesting === null) delete o.uiTesting;
     else if (patch.uiTesting !== undefined) o.uiTesting = patch.uiTesting;
     up.overrides = o;

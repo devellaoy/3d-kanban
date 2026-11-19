@@ -23,7 +23,7 @@ description: Enforces that non-trivial implementation work is planned and execut
 
 Meaningful implementation work is never carried by a single, unchallenged line of reasoning. It is carried by an **agent team** designed for the task, in which exactly one member is a **devil's advocate (DA)** whose job is to break the result before it is declared done — and, when the user has asked for a plan, to break the plan before it is executed. The DA is a mechanism, not a ceremony: it has a required output format, it runs at fixed checkpoints, its findings are logged with a decision, and it has a round limit so it cannot stall the work.
 
-**The user decides whether a plan is made.** This skill never forces a planning step. A plan — and the DA's review of it — happens only when the user asks for a plan or the session is in plan mode. Otherwise the work goes straight to implementation, and the DA reviews the result.
+**The user decides whether a plan is made.** This skill never forces a planning step. A plan — and the DA's review of it — happens only when the user asks for a plan or the session is in plan mode (or the turn was given to you as planning only). Otherwise the work goes straight to implementation, and the DA reviews the result.
 
 ## 1. Sizing — decide whether the team is needed
 
@@ -97,11 +97,11 @@ At the **result** checkpoint the DA is encouraged to make field 3 empirical: wri
 
 ## 5. Process — checkpoints, logged decisions, round limit
 
-Two checkpoints exist. **Checkpoint A runs only when the user asked for a plan or the session is in plan mode.** Checkpoint B always runs for a team-sized task.
+Two checkpoints exist. **Checkpoint A runs only when the user asked for a plan, or the session is in plan mode or on a turn you were told is for planning only.** Checkpoint B always runs for a team-sized task.
 
 | Situation | Checkpoints |
 |---|---|
-| Plan mode, or user asked for a plan | A (plan) → user approves → implement → B (result) |
+| Plan mode, a planning-only turn, or user asked for a plan | A (plan) → user approves → implement → B (result) |
 | Not in plan mode, no plan requested | implement → B (result) |
 
 Outside plan mode the main session still writes briefs for the implementers — that is delegation, not a plan, and gets no DA review. Do not draft a plan document, and do not run a plan review, that the user didn't ask for.
@@ -159,7 +159,7 @@ The line is **substance, not size in lines**: if the edit needs its own reasonin
 
 ## 7. Plan mode — what the plan must contain
 
-This section applies only in plan mode or when the user explicitly asked for a plan. Do not execute anything in plan mode. The plan is produced through Checkpoint A, and it must end with a short **Team** section instead of a boilerplate line:
+This section applies only in plan mode, on a planning-only turn, or when the user explicitly asked for a plan. Do not execute anything in plan mode. The plan is produced through Checkpoint A, and it must end with a short **Team** section instead of a boilerplate line:
 
 ```
 ## Team
