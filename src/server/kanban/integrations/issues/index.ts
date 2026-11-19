@@ -20,6 +20,8 @@ import { refreshWall, setWallProvider, toGhIssue, wallChanged } from './wall.js'
 import { takeIssueForTask } from './autoassign.js';
 import { takeIssue } from './take.js';
 import { agentCreateHook } from './agent-create.js';
+import { agentIssueHook } from './agent-read.js';
+import { bindTicket, taskTickets } from './ticket-binding.js';
 import { announce, issueActionHandlers, statusIoFor, type IssuePatch } from './actions.js';
 import type { runOneShot } from '../../oneshot.js';
 import { draftHandlers } from './draft.js';
@@ -208,6 +210,11 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       // The sources changed while it ran: these are the old ones' issues.
       if ((generation.get(project) ?? 0) !== gen) return state(project);
       cache.set(project, next);
+      // The tasks of the listed Jira issues are bound to them (ticket-binding.ts).
+      if (items.some((i) => i.source === 'jira')) {
+        const tasks = taskTickets(ctx, project);
+        for (const i of items) bindTicket(ctx, project, i, tasks);
+      }
       // Only a fetch that every source answered shows the issues as they are.
       if (!errors.length) settle(project, startedAt);
       return next;
@@ -342,6 +349,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
         { start: opts.start, deskId: opts.deskId, event: { ticket: issue.key } },
       );
       if (typeof made === 'string') return made;
+      bindTicket(ctx, project, issue);
       ctx.broadcast(message(project), project);
       wallChanged(project);
       const r: IssueTaskResult = { taskId: made.task.id, existed: false, ...(made.startError ? { startError: made.startError } : opts.start ? { started: true } : {}) };
@@ -357,6 +365,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
       opts.start,
       startOpts,
     );
+    if (!made.existed) bindTicket(ctx, project, issue);
     ctx.broadcast(message(project), project);
     wallChanged(project);
     const r: IssueTaskResult = { taskId: made.task.id, existed: made.existed, ...(made.startError ? { startError: made.startError } : made.started ? { started: true } : {}) };
@@ -367,20 +376,25 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
 
   const loadIssue = async (project: string, key: string, source?: string) => {
     const issue = await browsing.load(project, key, source);
-    if (issue) browse(project, issue);
+    if (issue) {
+      browse(project, issue);
+      bindTicket(ctx, project, issue);
+    }
     return issue;
   };
   const rememberIssue = (project: string, issue: NormalizedIssue) => {
     const kept = acted.get(project) ?? new Map();
     acted.set(project, kept);
     kept.set(issue.key, { issue, at: now() });
+    // What a person's window shows came from Jira (the list, or a fresh read): its tasks are bound to it.
+    bindTicket(ctx, project, issue);
   };
   const drafting = draftHandlers(ctx, { find, load: loadIssue, remember: rememberIssue, ...(opts.oneShot ? { run: opts.oneShot } : {}) });
 
   const plugin: KanbanPlugin = {
     name: 'issues',
     // An agent's POST /office/tasks/create (this plugin owns it: it alone can look an issue up).
-    hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue) },
+    hook: { '/office/tasks/create': agentCreateHook(ctx, createFromIssue), '/office/tasks/issue': agentIssueHook(ctx, { io, find }) },
     ws: {
       ...browsing.ws,
       ...drafting.ws,

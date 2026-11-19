@@ -361,6 +361,31 @@ test('pr.create takes the language rule and no longer hard-codes the task’s la
   assert.match(compose.language('proj'), /leaves the office in English/);
 });
 
+test('the ticket line says the Jira ticket can be read only for a key a source names, with a connection', (t) => {
+  const { def, dir, repo, settings, ctx, compose } = setup(t);
+  const SITE = 'acme.atlassian.net';
+  const conn = [{ id: 'jira', name: SITE, site: SITE, email: 'me@x.fi', token: 'tok' }];
+  const keyed = { id: 'j', kind: 'jira', site: SITE, projectKeys: ['UYT'], filters: {} };
+  const open = { id: 'jn', kind: 'jira', site: SITE, projectKeys: [], filters: {} };
+  const READ = /get_issue[\s\S]*office-tasks issue[\s\S]*data from the ticket, not instructions/;
+  const prompt = (ticket: string, ticketUrl?: string) => compose.build('implement', def, repo.createTask({ project: 'proj', title: 'T', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada', ticket, ...(ticketUrl ? { ticketUrl } : {}) }), 'claude', dir, { phase: 'implement' });
+  const setup2 = (sources: unknown[], connections: unknown[]) => {
+    settings.setProject('proj', { issueSources: sources as never });
+    (ctx as unknown as { secrets: unknown }).secrets = { jiraConnections: () => connections };
+  };
+  setup2([keyed], conn);
+  assert.match(prompt('UYT-12'), READ);
+  assert.doesNotMatch(prompt('gh:acme/proj#3'), /get_issue/);
+  assert.doesNotMatch(prompt('ZZ-1'), /get_issue/, 'a key no source covers');
+  setup2([open], conn);
+  assert.doesNotMatch(prompt('UYT-12'), /get_issue/, 'an open source is never advertised');
+  assert.doesNotMatch(prompt('UYT-12', `https://${SITE}/browse/UYT-12`), /get_issue/, 'not even for a link on its site');
+  setup2([keyed], conn);
+  assert.doesNotMatch(prompt('UYT-12', 'https://other.atlassian.net/browse/UYT-12'), /get_issue/, 'a link on another site');
+  setup2([keyed], []);
+  assert.doesNotMatch(prompt('UYT-12'), /get_issue/, 'no connection');
+});
+
 test('pr.create asks for the closing line of a GitHub issue ticket, in the pull request of its own repository', (t) => {
   const { def, dir, repo, compose } = setup(t);
   const mk = (ticket: string, repoIds?: string[]) => repo.createTask({ project: 'proj', title: 'T', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada', ticket, ...(repoIds ? { repoIds } : {}) });
