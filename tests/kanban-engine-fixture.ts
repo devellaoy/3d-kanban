@@ -96,9 +96,17 @@ export interface Rule {
    * turn's reply that is logged late (its Stop first).
    */
   lateLogMs?: number;
+  /** With `earlier`: a person types this into the terminal while the agent works (logged as a `queued_command` attachment, absorbed into the turn), and the agent goes on with another tool call (`queuedToolOpen`: its result never comes). */
+  queuedMidTurn?: string;
+  queuedToolOpen?: boolean;
+  /** With `lateLogMs`: the late final reply in the log says this instead of `reply` (which the Stop carries). */
+  lateLogReply?: string;
   /** With `lateLogMs` (also after a `background` helper's report): right after the Stop someone types this into the terminal; its turn (a prompt line, a reply, a Stop of its own) lasts `typedMs` (500 by default), and the late final reply, if any (`lateLogMs` of 0 or more), is logged after it. */
   typedAfterStop?: string;
   typedMs?: number;
+  /** With `typedAfterStop` and no `lateLogMs`: the typed turn follows the reply's own Stop, answers `typedReply`, and its Stop comes `typedLagMs` before its answer is in the log. */
+  typedReply?: string;
+  typedLagMs?: number;
   /** With `typedAfterStop`: the typed turn calls ExitPlanMode with this plan (the agent then waits for its approval) instead of replying. */
   typedExitPlan?: string;
   /**
@@ -187,8 +195,17 @@ async function typedAfter(rule, msgId) {
     await post('PermissionRequest', { tool_name: 'ExitPlanMode' });
     return;
   }
-  append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: 'Answered what you typed.' }] } });
-  await post('Stop', { last_assistant_message: 'Answered what you typed.' });
+  const typedReply = rule.typedReply || 'Answered what you typed.';
+  if (rule.typedLagMs !== undefined) {
+    append({ type: 'assistant', message: { id: msgId + '-typed-t', role: 'assistant', content: [{ type: 'tool_use', id: 'typed-read', name: 'Read', input: { file_path: 'README.md' } }] } });
+    append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'typed-read', content: '# test' }] } });
+    await post('Stop', { last_assistant_message: typedReply });
+    await new Promise((r) => setTimeout(r, rule.typedLagMs));
+    append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: typedReply }] } });
+    return;
+  }
+  append({ type: 'assistant', message: { id: msgId + '-typed', role: 'assistant', content: [{ type: 'text', text: typedReply }] } });
+  await post('Stop', { last_assistant_message: typedReply });
 }
 async function turn(prompt, answered) {
   record({ prompt });
@@ -224,6 +241,11 @@ async function turn(prompt, answered) {
         return;
       }
       append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-1', content: '# test' }] } });
+      if (rule.queuedMidTurn) {
+        append({ type: 'attachment', timestamp: new Date().toISOString(), attachment: { type: 'queued_command', commandMode: 'prompt', prompt: rule.queuedMidTurn } });
+        append({ type: 'assistant', message: { id: msgId + '-b', role: 'assistant', content: [{ type: 'tool_use', id: 'read-2', name: 'Read', input: { file_path: 'README.md' } }] } });
+        if (!rule.queuedToolOpen) append({ type: 'user', message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'read-2', content: '# test' }] } });
+      }
     }
     if (rule.background !== undefined) {
       const agent = (rule.backgroundCommand ? 'bash-' : 'agent-') + msgId;
@@ -323,7 +345,7 @@ async function turn(prompt, answered) {
       }
       return;
     }
-    const final = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.reply }] } };
+    const final = { type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'text', text: rule.lateLogReply ?? rule.reply }] } };
     if (rule.lateLogMs !== undefined) {
       await post('Stop', { last_assistant_message: rule.reply });
       await typedAfter(rule, msgId);
@@ -358,6 +380,7 @@ async function turn(prompt, answered) {
     append({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'task_complete', last_agent_message: rule.reply } });
   }
   await post('Stop', kind === 'claude' ? { last_assistant_message: rule.reply } : {});
+  if (kind === 'claude' && rule.typedAfterStop && rule.typedLagMs !== undefined && rule.lateLogMs === undefined) { await new Promise((r) => setTimeout(r, 400)); await typedAfter(rule, 'm' + Date.now()); }
 }
 let chain = post('SessionStart', { source: at >= 0 ? 'resume' : 'startup' });
 const dash = args.indexOf('--');
