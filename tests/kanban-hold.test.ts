@@ -544,6 +544,63 @@ test('a PR reviewer\'s answer, the run is stopped before its agent has the promp
   assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
 });
 
+const RENAME: Rule = { when: 'commented on task', reply: 'Renamed.', commit: 'Rename' };
+const prompted = (fx: EngineFixture, mark: number, text: string) => distinct(fx, mark).filter((p) => p.includes(text));
+
+test('a PR review\'s Retry gives its reviewer only its own answer: a change request left in the queue stays for the implementer, who gets it when the review ends', async (t) => {
+  const state = { ok: true };
+  const fx = await engineFixture({ runAs: { claudeReady: () => state.ok, why: () => 'Ada is not signed in to Claude', apply: (_o: unknown, env: unknown) => env } as never });
+  t.after(() => fx.close());
+  const { r, c } = await heldPrReviewAsk(fx, [APPROVED, RENAME], { createdByAccount: 'acc1' });
+  state.ok = false;
+  await fx.engine.commented(r.id, c.id, BOB);
+  const failed = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'failed');
+  assert.deepEqual(failed.pendingMessages.map((m) => [m.commentId, m.answer]), [[c.id, true]], 'the answer is marked as the reviewer\'s');
+  // A change request typed meanwhile, as when a review round runs: it waits in the queue for the implementer.
+  const req = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Ada', text: 'Please also rename the helper.' }).comment;
+  fx.repo.setCommentPending(req.id, true);
+  fx.repo.updateTask(r.id, { pendingMessages: [...failed.pendingMessages, { commentId: req.id, text: req.text, by: 'Ada', at: req.createdAt }] });
+  state.ok = true;
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0 && !x.reviewerWorkerId, 'the review ended and the change request worked on', 40_000);
+  const reviewer = prompted(fx, mark, 'The base is main-2.');
+  assert.equal(reviewer.length, 1, 'one prompt carries the answer');
+  assert.equal(reviewer[0].split('The base is main-2.').length - 1, 1);
+  assert.ok(!reviewer[0].includes('rename the helper'), 'the reviewer is not given the change request');
+  const impl = prompted(fx, mark, 'Please also rename the helper.');
+  assert.equal(impl.length, 1, 'the implementer got the change request, in one prompt');
+  assert.equal(impl[0].split('Please also rename the helper.').length - 1, 1);
+  assert.ok(!impl[0].includes('The base is main-2.'), 'and not the reviewer\'s answer');
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});
+
+test('never held: a change request typed during a PR review stays for the implementer when the review is stopped and retried', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT, { when: 'Review these pull requests', reply: 'Looks fine.\n\nREVIEW: APPROVED', delayMs: 5000 }]);
+  const r = await inReview(fx, { ticket: 'UYT-3' });
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 5, branch: r.branch } as never], taskId: r.id }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  await fx.waitTask(r.id, (x) => x.runState === 'running' && !!x.reviewerWorkerId, 'the review running');
+  const req = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Ada', text: 'Please also rename the helper.' }).comment;
+  await fx.engine.commented(r.id, req.id, ADA);
+  assert.equal(fx.task(r.id).pendingMessages.length, 1);
+  assert.equal(await fx.engine.stop(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped' && x.runState === 'idle', 'stopped', 30_000);
+  fx.setRules([IMPLEMENT, { when: 'Review these pull requests', reply: 'Looks fine.\n\nREVIEW: APPROVED' }, RENAME]);
+  const mark = fx.invocations().length;
+  // Its stopped reviewer is still ending its turn for a moment: the Retry waits until it rests.
+  for (let i = 0; i < 200 && fx.workers.list().some((w) => w.kanban?.role === 'reviewer' && (w.status === 'working' || w.status === 'starting')); i++) await new Promise((res) => setTimeout(res, 50));
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0 && !x.reviewerWorkerId, 'the review ended', 40_000);
+  assert.ok(!prompted(fx, mark, 'Review these pull requests').some((p) => p.includes('rename the helper')), 'the reviewer is not given it');
+  const impl = prompted(fx, mark, 'Please also rename the helper.');
+  assert.equal(impl.length, 1, 'the implementer got it, once');
+  assert.equal(impl[0].split('Please also rename the helper.').length - 1, 1);
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});
+
 test('a PR reviewer\'s answer, the office restarts before its agent has the prompt: the run is carried on with the answer, once', async (t) => {
   const fx = await engineFixture({ engine: { restartStaggerMs: 50 } });
   t.after(() => fx.close());

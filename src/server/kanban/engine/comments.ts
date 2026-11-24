@@ -131,10 +131,10 @@ export class Comments<L extends CommentLive> {
    * the one comment a resume was started with. Dated by the comments themselves, so a Stop's own delivery (comments since the stop) doesn't send
    * them straight back.
    */
-  requeue(task: KanbanTask, eff: { prompt?: string; text?: string } | undefined, commentId: number | undefined, taken?: PendingMessage[]) {
+  requeue(task: KanbanTask, eff: { phase?: string; prompt?: string; text?: string } | undefined, commentId: number | undefined, taken?: PendingMessage[]) {
     const back: PendingMessage[] = [...(taken ?? [])];
     const c = commentId !== undefined && eff?.prompt === 'resume' && eff.text ? this.d.ctx.repo.getComment(commentId) : undefined;
-    if (c && !back.some((m) => m.commentId === c.id)) back.push({ commentId: c.id, text: eff!.text!, by: c.authorName, at: c.createdAt });
+    if (c && !back.some((m) => m.commentId === c.id)) back.push({ commentId: c.id, text: eff!.text!, by: c.authorName, at: c.createdAt, ...(eff!.phase === 'pr-review' ? { answer: true as const } : {}) });
     const fresh = this.restore(task, back);
     if (fresh) this.d.note(task, `The comment${fresh === 1 ? '' : 's'} didn't reach the agent: kept, and go${fresh === 1 ? 'es' : ''} to it with its next run.`);
   }
@@ -212,8 +212,8 @@ export class Comments<L extends CommentLive> {
    * one message, who wrote it, and the messages themselves (kept by the run until its prompt is acknowledged: see requeue). The older ones stay
    * for a Retry or Continue.
    */
-  take(task: KanbanTask, since?: number): { text: string; author: string; msgs: PendingMessage[] } | undefined {
-    const msgs = since === undefined ? task.pendingMessages.filter((m) => !m.parked) : task.pendingMessages.filter((m) => m.at >= since);
+  take(task: KanbanTask, since?: number, only: (m: PendingMessage) => boolean = () => true): { text: string; author: string; msgs: PendingMessage[] } | undefined {
+    const msgs = (since === undefined ? task.pendingMessages.filter((m) => !m.parked) : task.pendingMessages.filter((m) => m.at >= since)).filter(only);
     if (!msgs.length) return undefined;
     for (const m of msgs) {
       this.d.ctx.repo.setCommentPending(m.commentId, false);

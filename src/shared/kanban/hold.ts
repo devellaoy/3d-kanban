@@ -40,6 +40,8 @@ declare module './types.js' {
   /** A message kept from a hold (the comments said meanwhile): exempt from the cap on queued comments, as nothing of it may be dropped. */
   interface PendingMessage {
     held?: true;
+    /** The user's answer to a pull-request reviewer's question that its run never got (given back): a Retry of the review delivers it, nothing else of the queue. */
+    answer?: true;
   }
   /** What an agent reading the task (office-tasks, the references) is told of its hold. */
   interface TaskRefBundle {
