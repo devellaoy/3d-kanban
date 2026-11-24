@@ -8,7 +8,7 @@ export const TASK_VARS = {
   ticket: 'A line naming the ticket and its link, when the task has one; empty otherwise',
   attachments: 'A list of the files attached to the task, with their paths on this machine; empty when there are none',
   repos: "The repositories in the agent's workspace: each one's folder, what it is and its branch",
-  instructions: "The project's general and testing instructions under a heading, when it has any (from its kanban settings); empty otherwise",
+  instructions: "A reference to the files holding the project's general, testing and per-repository instructions (the text itself where a file could not be written); empty when the project has none",
   goal: 'The acceptance criteria block (the “Acceptance criteria” prompt), when the task has criteria; empty otherwise',
   taskRefs: 'How to read other tasks (the “Reading other tasks” prompt)',
   skills: 'The skills picked for this phase in the project settings, as a line to use them; empty when none are picked',

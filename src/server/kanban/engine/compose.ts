@@ -28,6 +28,7 @@ import { jiraReadAdvertised } from '../integrations/issues/agent-read-scope.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
 import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, type UiBlockKind } from './uitesting.js';
+import { instructionsBlock } from './instructions-block.js';
 import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
@@ -151,6 +152,8 @@ export interface ComposeExtra {
   fixPrs?: Pick<KanbanPrLink, 'repo' | 'repoId' | 'url'>[];
   prTask?: string;
   prRepos?: string;
+  /** A pull-request review: the repositories involved, whose instructions it gets (besides the primary's). */
+  prRepoIds?: string[];
 }
 
 export class Composer {
@@ -233,6 +236,7 @@ export class Composer {
         ticketId: ticket?.replace(/^gh:/, '') ?? 'none',
         repos: workerReposText(info, floor.dir, name, floor.project.branch) + this.hostingNote(id, [{ name, remote: checkoutRemote(floor.dir) }, ...(info.repos ?? []).map((r) => ({ name: r.name, remote: checkoutRemote(r.dir) }))]),
         summary: info.task?.summary ? `What you worked on:\n${info.task.summary}` : '',
+        instructions: '',
         skills: picked.length ? `Skills picked for this step (use them where they fit): ${picked.map((n) => (tool === 'claude' ? `/${n}` : n)).join(', ')}.` : '',
         language: this.language(id),
       }),
@@ -243,17 +247,6 @@ export class Composer {
   /** The {{skills}} line: the skills picked for the phase that are really installed (the skills plugin's skillHint). */
   skillsLine(task: KanbanTask, tool: KanbanTool, phase: RunPhase): string {
     return skillHint(this.ctx, task.id, tool, skillPhase(phase));
-  }
-
-  private instructions(def: FloorDef, task: KanbanTask): string {
-    const ps = this.ctx.settings.project(task.project);
-    const p = task.project;
-    const parts: string[] = [];
-    if (ps.generalInstructions.trim()) parts.push(this.text('kanban.instructions.general', p, { text: ps.generalInstructions.trim() }));
-    if (ps.testingInstructions.trim()) parts.push(this.text('kanban.instructions.testing', p, { text: ps.testingInstructions.trim() }));
-    for (const r of taskRepos(def, task)) if (r.instructions?.trim()) parts.push(this.text('kanban.instructions.repo', p, { repo: r.name, text: r.instructions.trim() }));
-    const filled = parts.filter((x) => x.trim());
-    return filled.length ? this.text('kanban.instructions', p, { parts: filled.join('\n\n') }) : '';
   }
 
   /** The task-level files its description does not link (older tasks list their files apart from the text); comments' files travel with their own comment. */
@@ -335,6 +328,11 @@ export class Composer {
     return block && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('uiTesting') ? `${text}\n\n${block}` : text;
   }
 
+  /** `text` of prompt `id` with the instructions block at its end when the (rewritten) prompt has no {{instructions}} for it. */
+  private withInstructions(id: KanbanPromptId, project: string, text: string, block: string): string {
+    return block && !placeholders(kanbanPromptText(id, this.layers(project))).includes('instructions') ? `${text.trimEnd()}\n\n${block}` : text;
+  }
+
   /** The ticket line, and for a Jira ticket the office can read for the worker, the line that says how. */
   private ticketText(task: KanbanTask): string {
     const line = this.text('kanban.ticket', task.project, { ticket: task.ticket!, url: task.ticketUrl ? ` (${task.ticketUrl})` : '' });
@@ -355,7 +353,7 @@ export class Composer {
       ticket: task.ticket ? this.ticketText(task) : '',
       attachments: this.attachments(task),
       repos: reposText(def, task, floorDir) + this.hostingNote(task.project, taskRepos(def, task)),
-      instructions: this.instructions(def, task),
+      instructions: instructionsBlock(this.ctx, (id, p, v) => this.text(id, p, v), task, x.prRepoIds ? taskRepos(def, { repoIds: x.prRepoIds }) : taskRepos(def, task)),
       goal: task.goal?.trim() ? this.text('kanban.goal', task.project, { criteria: task.goal.trim() }) : '',
       taskRefs: this.text('kanban.taskRefs', task.project, {
         taskId: task.id,
@@ -394,30 +392,34 @@ export class Composer {
       const text = x.held ? `${body.trimEnd()}\n\nMessages left on the task that you have not seen yet:\n${x.held}` : body;
       return c ? withContract(text, c) : text.trim();
     };
+    // The block of a prompt that has no {{instructions}} (a rewritten one) goes at its end, before the held messages and the contract.
+    const ins = (id: KanbanPromptId, text: string) => this.withInstructions(id, p, text, String(v.instructions));
     switch (kind) {
       case 'plan':
-        return seal(this.text('kanban.plan', p, v));
+        return seal(ins('kanban.plan', this.text('kanban.plan', p, v)));
       case 'replan':
-        return seal(this.text('kanban.replan', p, { taskId: task.id, answer: this.inline(task.id, x.text ?? ''), language: v.language }));
-      case 'implement':
-        return seal(this.withUi(isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement', def, task, 'implement', v));
+        return seal(ins('kanban.replan', this.text('kanban.replan', p, { taskId: task.id, answer: this.inline(task.id, x.text ?? ''), instructions: v.instructions, language: v.language })));
+      case 'implement': {
+        const id = isFolderProject(def) ? 'kanban.implement.folder' : 'kanban.implement';
+        return seal(ins(id, this.withUi(id, def, task, 'implement', v)));
+      }
       case 'investigate':
-        return seal(this.text('kanban.investigate', p, v));
+        return seal(ins('kanban.investigate', this.text('kanban.investigate', p, v)));
       case 'review':
-        return seal(this.withUi('kanban.review', def, task, 'review', v));
+        return seal(ins('kanban.review', this.withUi('kanban.review', def, task, 'review', v)));
       case 'rereview':
-        return seal(this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', language: v.language }));
+        return seal(ins('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', instructions: v.instructions, language: v.language })));
       case 'fix':
-        return seal(this.withUi('kanban.fix', def, task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', language: v.language }));
+        return seal(ins('kanban.fix', this.withUi('kanban.fix', def, task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', instructions: v.instructions, language: v.language })));
       case 'resume':
-        return seal(this.withUi('kanban.resume', def, task, 'comment', { taskId: task.id, author: x.author ?? 'The user', message: this.inline(task.id, x.text ?? ''), attachments: '', language: v.language }));
+        return seal(ins('kanban.resume', this.withUi('kanban.resume', def, task, 'comment', { taskId: task.id, author: x.author ?? 'The user', message: this.inline(task.id, x.text ?? ''), attachments: '', instructions: v.instructions, language: v.language })));
       case 'continue':
-        return seal(this.text('kanban.continue', p, { taskId: task.id, language: v.language }));
+        return seal(ins('kanban.continue', this.text('kanban.continue', p, { taskId: task.id, instructions: v.instructions, language: v.language })));
       case 'restarted':
-        return seal(`${this.text('kanban.restarted', p, {})}\n\n${this.text('kanban.continue', p, { taskId: task.id, language: v.language })}`);
+        return seal(`${this.text('kanban.restarted', p, {})}\n\n${ins('kanban.continue', this.text('kanban.continue', p, { taskId: task.id, instructions: v.instructions, language: v.language }))}`);
       case 'pr.create':
         return seal(
-          this.text('kanban.pr.create', p, {
+          ins('kanban.pr.create', this.text('kanban.pr.create', p, {
             subject: `kanban task #${task.id}: ${task.title}`,
             taskId: task.id,
             title: task.title,
@@ -427,24 +429,24 @@ export class Composer {
             repos: v.repos,
             summary: task.summary?.trim() ? this.text('kanban.prSummary', p, { summary: task.summary.trim() }) : '',
             skills: v.skills,
+            instructions: v.instructions,
             language: v.language,
-          }),
+          })),
         );
       case 'pr.fix':
       case 'pr.conflicts': {
         // The launch says which of the open PRs it may work on (fixTargets); a stand-alone build lists them all.
         const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
         const id = kind === 'pr.fix' ? 'kanban.pr.fix' : 'kanban.pr.conflicts';
-        // `instructions` is only in the conflicts prompt; a prompt ignores variables it has no placeholder for.
         const vars = { taskId: task.id, prs: prs.join('\n'), repos: v.repos, instructions: v.instructions, language: v.language };
-        const text = kind === 'pr.fix' ? this.withUi(id, def, task, 'comment', vars) : this.text(id, p, vars);
+        const text = ins(id, kind === 'pr.fix' ? this.withUi(id, def, task, 'comment', vars) : this.text(id, p, vars));
         // Elsewhere review comments carry no author_association: office-pr marks the ones to act on.
         const elsewhere = kind === 'pr.fix' && (x.fixPrs ?? openPrs(task)).some((pr) => (hostOfUrl(pr.url) ?? hostOf(pr.repo)) !== 'github');
         return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.fixHosted', p)}` : text);
       }
       case 'pr.review':
         // What the user said to a reviewer that asked (a fresh reviewer starts the review again with the answer).
-        return seal([this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, language: v.language }), x.text ? this.text('kanban.sinceSaid', p, { text: x.text }) : ''].filter(Boolean).join('\n\n'));
+        return seal([ins('kanban.pr.review', this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, instructions: v.instructions, language: v.language })), x.text ? this.text('kanban.sinceSaid', p, { text: x.text }) : ''].filter(Boolean).join('\n\n'));
     }
   }
 
@@ -479,6 +481,8 @@ export class Composer {
       repos: reposText(def, task, floorDir) + this.hostingNote(task.project, taskRepos(def, task)),
       language: this.language(task.project),
     });
-    return `${intro}\n\n${next}`.trim();
+    // The block goes in the intro unless `next` carries it already (the reference appears once).
+    const block = instructionsBlock(this.ctx, (id, p, v) => this.text(id, p, v), task, taskRepos(def, task));
+    return `${block && !next.includes(block) ? `${intro}\n\n${block}` : intro}\n\n${next}`.trim();
   }
 }

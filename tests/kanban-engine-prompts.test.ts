@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
@@ -90,7 +90,7 @@ const KINDS: [PromptKind, RunPhase][] = [
 ];
 
 test('every prompt the engine sends is filled in completely and ends with its phase contract', (t) => {
-  const { def, dir, repo, compose, toasts } = setup(t);
+  const { def, dir, repo, compose, toasts, ctx } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'Fix the login redirect', description: 'Go back after login.', ticket: 'UYT-12', ticketUrl: 'https://jira/UYT-12', goal: 'Redirect works', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
   repo.addPlan(task.id, 'The plan');
   repo.acceptPlan(task.id, 'Ada');
@@ -106,8 +106,9 @@ test('every prompt the engine sends is filled in completely and ends with its ph
   const impl = compose.build('implement', def, withPrs, 'claude', dir, { phase: 'implement' });
   assert.match(impl, /Ticket: UYT-12 \(https:\/\/jira\/UYT-12\)/);
   assert.match(impl, /The accepted plan:\n\nThe plan/);
-  assert.match(impl, /General:\nKeep it small\./);
-  assert.match(impl, /In Proj:\nRun npm test\./);
+  assert.match(impl, /The project's instructions/);
+  assert.ok(impl.includes(`\`${path.join(ctx.filesDir, 'instructions', 'proj', 'general.md')}\``), 'the general instructions are a reference to their file');
+  assert.doesNotMatch(impl, /Keep it small\.|Run npm test\./, 'the text itself is in the files');
   assert.match(impl, /Acceptance criteria/);
   // A picked skill that isn't installed isn't named to the agent; the office says so instead.
   assert.doesNotMatch(impl, /no-such-skill-here/);
@@ -170,7 +171,7 @@ test('layering: a project override and an office rewrite are what the engine sen
   const { def, dir, repo, settings, compose } = setup(t, { 'kanban.fix': { text: 'Office fix for #{{taskId}}: {{findings}}' } });
   const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
   settings.setProject('proj', { uiTesting: false });
-  assert.match(compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, findings: 'F' }), /^Office fix for #\d+: F\n\n---/);
+  assert.match(compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, findings: 'F' }), /^Office fix for #\d+: F\n\nThe project's instructions[\s\S]*\n\n---/, 'a rewrite without {{instructions}} gets the block at its end, before the contract');
   settings.setProjectPrompt('proj', 'kanban.fix', 'Project fix: {{findings}}');
   const text = compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, findings: 'F' });
   assert.match(text, /^Project fix: F/);
@@ -179,11 +180,11 @@ test('layering: a project override and an office rewrite are what the engine sen
 
 test('kanban.pr.review: several pull requests at once, editable like the others', (t) => {
   const def = KANBAN_PROMPT_DEFS['kanban.pr.review'];
-  assert.deepEqual(Object.keys(def.vars).sort(), ['language', 'project', 'prs', 'repos', 'task']);
-  assert.deepEqual(placeholders(def.text).sort(), ['language', 'project', 'prs', 'repos', 'task']);
+  assert.deepEqual(Object.keys(def.vars).sort(), ['instructions', 'language', 'project', 'prs', 'repos', 'task']);
+  assert.deepEqual(placeholders(def.text).sort(), ['instructions', 'language', 'project', 'prs', 'repos', 'task']);
   assert.equal(PROMPTS['kanban.pr.review'].group, 'kanban', 'it is in the office prompt editor');
   const prs = '- acme/api#12 https://github.com/acme/api/pull/12 (branch kanban/uyt-1)\n- acme/web#7 https://github.com/acme/web/pull/7 (branch kanban/uyt-1)';
-  const filled = resolveKanbanPrompt('kanban.pr.review', {}, { prs, project: 'Proj', task: '', repos: '- `./proj/`: Proj', language: '' });
+  const filled = resolveKanbanPrompt('kanban.pr.review', {}, { prs, project: 'Proj', task: '', repos: '- `./proj/`: Proj', instructions: '', language: '' });
   assert.match(filled, /^Review these pull requests in the project Proj together, as one change set:\n- acme\/api#12/);
   assert.doesNotMatch(filled, /\{\{/);
   assert.doesNotMatch(filled, /\n\n\n/, 'an empty task line goes');
@@ -263,7 +264,7 @@ test('kanban.pr.conflicts: merges the target branch in, never rebases or force-p
   assert.match(text, /git merge "origin\/<base>"/);
   assert.match(text, /never force-push/);
   assert.match(text, /gh pr view <url> --json headRefName,baseRefName/);
-  assert.match(text, /Run npm test\./, "the project's instructions say how to verify the merge");
+  assert.match(text, /repo-proj\.md/, "the project's instructions say how to verify the merge");
   assert.match(text, /NOT UPDATED: <url>/);
   assert.match(text, /If git status is not clean, stop with NOT UPDATED[\s\S]*never commit anything before the merge/, 'a dirty tree stops it');
   assert.match(text, /git switch "<head>"/);
@@ -547,7 +548,7 @@ test('UI testing: a rewritten prompt without {{uiTesting}} gets the block at its
   const { def, dir, repo, compose } = setup(t, { 'kanban.implement': { text: 'Office implement #{{taskId}}\n\n{{uiTesting}}\n\nEnd.' }, 'kanban.fix': { text: 'Office fix: {{findings}}' } });
   const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
   const impl = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
-  assert.match(impl, /^Office implement #\d+\n\nUI testing is on[\s\S]*\n\nEnd\.\n\n---/);
+  assert.match(impl, /^Office implement #\d+\n\nUI testing is on[\s\S]*\n\nEnd\.\n\nThe project's instructions[\s\S]*\n\n---/);
   assert.equal(impl.split('UI testing is on').length, 2, 'once');
   const fix = compose.build('fix', def, task, 'claude', dir, { phase: 'fix', round: 1, rounds: 2, findings: 'F' });
   assert.match(fix, /^Office fix: F\n\nThe task keeps before and after pictures[\s\S]*\n\n---/);
@@ -656,4 +657,107 @@ test('UI testing: with no repository folders the blocks render as the text witho
     assert.equal(filled, raw.replace('\n{{imageFolders}}', '').replace('{{imagesDir}}', '/i'), id);
     assert.doesNotMatch(filled, /\n\n|\{\{/, id);
   }
+});
+
+// --- the project's instructions as files ---------------------------------------------------------
+
+const INS_KINDS = KINDS.map(([k, ph]) => [k, ph] as const);
+const insTask = (repo: ReturnType<typeof setup>['repo']) => {
+  const task = repo.createTask({ project: 'proj', title: 'Fix it', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 3, url: 'https://github.com/acme/proj/pull/3', state: 'OPEN' });
+  return repo.getTask(task.id)!;
+};
+const insX = (phase: RunPhase) => ({ phase, round: 1, rounds: 2, text: 'An answer', author: 'Ada', findings: 'A finding', fixSummary: 'Fixed', prs: '- acme/api#12 https://github.com/acme/api/pull/12' });
+const count = (text: string, part: string) => text.split(part).length - 1;
+
+test('instructions: every kind names the files, never the text; the files hold the text', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = insTask(repo);
+  const at = (f: string) => path.join(ctx.filesDir, 'instructions', 'proj', f);
+  for (const [kind, phase] of INS_KINDS) {
+    const text = compose.build(kind, def, task, 'claude', dir, insX(phase));
+    assert.doesNotMatch(text, /\{\{/, kind);
+    assert.ok(text.includes(at('general.md')) && text.includes(at('testing.md')) && text.includes(at('repo-proj.md')), `${kind} names the three files`);
+    assert.doesNotMatch(text, /Keep it small\.|Run npm test\./, `${kind} has no instruction text`);
+    assert.equal(count(text, "The project's instructions"), 1, kind);
+  }
+  assert.equal(readFileSync(at('general.md'), 'utf8').trim(), 'Keep it small.');
+  assert.equal(readFileSync(at('testing.md'), 'utf8').trim(), 'npm test');
+  assert.equal(readFileSync(at('repo-proj.md'), 'utf8').trim(), 'Run npm test.');
+});
+
+test('instructions: a pr.review names the repositories involved in the pull requests', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  def.repos![1].instructions = 'API rules.';
+  const task = insTask(repo);
+  const at = (f: string) => path.join(ctx.filesDir, 'instructions', 'proj', f);
+  const only = compose.build('pr.review', def, task, 'claude', dir, { ...insX('pr-review'), prRepoIds: [] });
+  assert.ok(only.includes(at('repo-proj.md')) && !only.includes(at('repo-api.md')));
+  const both = compose.build('pr.review', def, task, 'claude', dir, { ...insX('pr-review'), prRepoIds: ['api'] });
+  assert.ok(both.includes(at('repo-proj.md')) && both.includes(at('repo-api.md')));
+});
+
+test('instructions: a project with none gets nothing extra, in every kind', (t) => {
+  const { def, dir, repo, settings, compose } = setup(t);
+  settings.setProject('proj', { generalInstructions: '', testingInstructions: '' });
+  def.repos![0].instructions = undefined;
+  const task = insTask(repo);
+  for (const [kind, phase] of INS_KINDS) {
+    const text = compose.build(kind, def, task, 'claude', dir, insX(phase));
+    assert.doesNotMatch(text, /The project's instructions|instructions\/proj|\{\{/, kind);
+    assert.doesNotMatch(text, /\n{3,}/, `${kind} has no doubled blank lines`);
+  }
+  assert.doesNotMatch(compose.handoff(def, task, dir, compose.build('fix', def, task, 'claude', dir, insX('fix'))), /The project's instructions/);
+});
+
+test('instructions: a rewrite without {{instructions}} gets the block at its end, before the contract; one with it, once, in place', (t) => {
+  const office = { 'kanban.fix': { text: 'Office fix: {{findings}}' }, 'kanban.continue': { text: 'Office continue.' }, 'kanban.pr.create': { text: 'Office PR: {{title}}\n\n{{instructions}}\n\nEnd.' } };
+  const { def, dir, repo, settings, compose } = setup(t, office);
+  const task = insTask(repo);
+  settings.setProject('proj', { uiTesting: false });
+  const fix = compose.build('fix', def, task, 'claude', dir, insX('fix'));
+  assert.match(fix, /^Office fix: A finding\n\nThe project's instructions[\s\S]*repo-proj\.md` before you work in Proj\.\n\n---/);
+  assert.equal(count(fix, "The project's instructions"), 1);
+  // A project override over an office one, still without the placeholder.
+  settings.setProjectPrompt('proj', 'kanban.fix', 'Project fix: {{findings}}');
+  assert.match(compose.build('fix', def, task, 'claude', dir, insX('fix')), /^Project fix: A finding\n\nThe project's instructions[\s\S]*\n\n---/);
+  // restarted follows continue.
+  const restarted = compose.build('restarted', def, task, 'claude', dir, insX('implement'));
+  assert.equal(count(restarted, "The project's instructions"), 1);
+  assert.match(restarted, /Office continue\.\n\nThe project's instructions/);
+  const pr = compose.build('pr.create', def, task, 'claude', dir, insX('pr'));
+  assert.match(pr, /^Office PR: Fix it\n\nThe project's instructions[\s\S]*\n\nEnd\.\n\n---/);
+  assert.equal(count(pr, "The project's instructions"), 1);
+  // Held messages and the contract stay last.
+  const held = compose.build('fix', def, task, 'claude', dir, { ...insX('fix'), held: '- Ada: hi' });
+  assert.ok(held.indexOf("The project's instructions") < held.indexOf('Messages left on the task') && held.endsWith(KANBAN_CONTRACTS.implementSafety));
+});
+
+test('instructions: the handoff carries the reference once, in the intro when its next prompt lacks it', (t) => {
+  const { def, dir, repo, compose } = setup(t);
+  const task = insTask(repo);
+  for (const [kind, phase] of [['fix', 'fix'], ['resume', 'resume'], ['pr.create', 'pr'], ['pr.fix', 'pr-fix']] as const) {
+    const out = compose.handoff(def, task, dir, compose.build(kind, def, task, 'claude', dir, insX(phase)));
+    assert.equal(count(out, "The project's instructions"), 1, kind);
+  }
+  const bare = compose.handoff(def, task, dir, 'Carry on.');
+  assert.match(bare, /The project's instructions[\s\S]*\n\nCarry on\.$/);
+  assert.equal(count(bare, "The project's instructions"), 1);
+});
+
+test('instructions: a part whose file cannot be written is inlined as text, the others stay references', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  mkdirSync(path.join(ctx.filesDir, 'instructions', 'proj', 'testing.md'), { recursive: true });
+  const text = compose.build('fix', def, insTask(repo), 'claude', dir, insX('fix'));
+  assert.match(text, /Testing and verifying:\nnpm test/);
+  assert.ok(text.includes(path.join(ctx.filesDir, 'instructions', 'proj', 'general.md')) && text.includes('repo-proj.md'));
+  assert.doesNotMatch(text, /\{\{/);
+});
+
+test('instructions: the plain worker PR prompt has no placeholder left', (t) => {
+  const { compose, def, root } = setup(t);
+  const floor = { id: 'proj', def, dir: def.dir, project: { name: 'Proj', branch: 'main' }, queue: { issueOf: () => ({}) } } as unknown as Floor;
+  const info = { id: 'w', name: 'Ada', title: 'Work', provider: 'claude' } as unknown as WorkerInfo;
+  assert.doesNotMatch(compose.workerPr(floor, info), /\{\{instructions\}\}/);
+  void root;
 });
