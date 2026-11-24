@@ -1065,9 +1065,9 @@ export class Orchestrator {
    */
   private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean, asked: RunEffect): Promise<string | NoRoom | undefined> {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
-    const kept = !asked.text && asked.prompt === 'continue' ? this.comments.take(task, via.pendingSince, (m) => !!m.answer) : undefined;
+    const kept = !asked.text ? this.comments.take(task, via.pendingSince, (m) => !!m.answer) : undefined;
     const eff: RunEffect = { ...asked, pending: undefined, ...(kept ? { text: kept.text } : {}) };
-    if (kept) via.taken = kept.msgs; // what the user said to a reviewer that asked: the comment that answered it, or (a Retry after that failed) that answer given back; the rest of the queue is the implementer's
+    if (kept) via.taken = kept.msgs; // what the user said to a reviewer that asked: the comment that answered it, or (a Retry, whichever prompt it picks) that answer given back; the rest of the queue is the implementer's
     const req = via.prReview ?? this.lastPrReview(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
     const review = this.reviewSettings(task), tool: KanbanTool = req.tool ?? review.tool, same = !req.tool || req.tool === review.tool;

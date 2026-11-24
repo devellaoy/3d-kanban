@@ -831,6 +831,35 @@ test('a comment run\'s worker is sent home before its agent has the prompt: the 
   assert.deepEqual(prompted(fx, mark, 'Also rename it.').map((p) => p.split('Also rename it.').length - 1), [1]);
 });
 
+for (const withRequest of [false, true]) {
+  test(`a PR reviewer's answer queued for room, then stopped: the Retry gives the new reviewer the answer once${withRequest ? ', and the implementer\'s own comment stays for the implementer' : ''}`, async (t) => {
+    let full: string | undefined;
+    const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+    t.after(() => fx.close());
+    const { r, c } = await heldPrReviewAsk(fx, [APPROVED, RENAME]);
+    full = 'The office is at its limit';
+    await fx.engine.commented(r.id, c.id, BOB);
+    await fx.waitTask(r.id, (x) => x.runState === 'queued', 'queued');
+    assert.equal(await fx.engine.stop(r.id, ADA), undefined);
+    const stopped = fx.task(r.id);
+    assert.deepEqual(stopped.pendingMessages.map((m) => [m.commentId, !!m.answer]), [[c.id, true]], 'the answer is given back, marked');
+    if (withRequest) {
+      const req = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Ada', text: 'Please also rename the helper.' }).comment;
+      fx.repo.setCommentPending(req.id, true);
+      fx.repo.updateTask(r.id, { pendingMessages: [...stopped.pendingMessages, { commentId: req.id, text: req.text, by: 'Ada', at: req.createdAt }] });
+    }
+    full = undefined;
+    const mark = fx.invocations().length;
+    assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+    await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0 && !x.reviewerWorkerId, 'the Retry done', 40_000);
+    const answer = prompted(fx, mark, 'The base is main-2.');
+    assert.deepEqual(answer.map((p) => p.split('The base is main-2.').length - 1), [1], 'one prompt has the answer, once');
+    assert.ok(!answer[0].includes('rename the helper'), 'the reviewer is not given the implementer\'s comment');
+    if (withRequest) assert.deepEqual(prompted(fx, mark, 'Please also rename the helper.').map((p) => p.split('Please also rename the helper.').length - 1), [1], 'the implementer gets its comment once');
+    assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+  });
+}
+
 test('a held task whose hold is missing is a hold from Waiting: Resume lands in Waiting as a stop, a comment starts exactly one run', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
