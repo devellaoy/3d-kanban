@@ -1,7 +1,7 @@
 // A project's instructions as files the agents read (prompts name the paths instead of inlining the text):
 // `<filesDir>/instructions/<project>/{general,testing,repo-<id>}.md`, kept in step with the settings and the project's repositories.
 
-import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, existsSync, mkdirSync, readFileSync, readdirSync, renameSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import type { KanbanContext } from './registry.js';
 
@@ -51,6 +51,12 @@ function put(file: string, text: string | undefined): boolean {
   const tmp = `${file}.${process.pid}.tmp`;
   try {
     writeFileSync(tmp, body, { mode: 0o444 });
+    // Windows refuses to rename over a read-only file: the old one is made writable first (it is replaced whole either way).
+    try {
+      if (statSync(file).isFile()) chmodSync(file, 0o644);
+    } catch {
+      // not there yet
+    }
     renameSync(tmp, file);
     chmodSync(file, 0o444);
   } catch (err) {

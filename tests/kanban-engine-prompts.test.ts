@@ -762,6 +762,15 @@ test('instructions: a part whose file cannot be written is inlined as text, the 
   assert.doesNotMatch(text, /\{\{/);
 });
 
+test("instructions: a repository called like an Object member still gets its text when its file can't be written", (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  def.repos!.push({ id: 'constructor', name: 'Ctor', kind: 'folder', dir: def.repos![2].dir, primary: false, instructions: 'Ctor rules.' });
+  mkdirSync(path.join(ctx.filesDir, 'instructions', 'proj', 'repo-constructor.md'), { recursive: true });
+  const text = compose.build('fix', def, insTask(repo), 'claude', dir, insX('fix'));
+  assert.match(text, /In Ctor:\nCtor rules\./, 'the text, as no file holds it');
+  assert.doesNotMatch(text, /native code|repo-constructor\.md/);
+});
+
 test('instructions: the plain worker PR prompt has no placeholder left', (t) => {
   const { compose, def, root } = setup(t);
   const floor = { id: 'proj', def, dir: def.dir, project: { name: 'Proj', branch: 'main' }, queue: { issueOf: () => ({}) } } as unknown as Floor;

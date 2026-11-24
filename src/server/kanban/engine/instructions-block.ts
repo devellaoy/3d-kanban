@@ -24,7 +24,8 @@ export function instructionsBlock(ctx: KanbanContext, text: Render, task: Kanban
   for (const r of repos) {
     const own = r.instructions?.trim();
     if (!own) continue;
-    const file = files.repos[r.id];
+    // Its own key only: an id like `constructor` would otherwise find Object's and lose the text.
+    const file = Object.hasOwn(files.repos, r.id) ? files.repos[r.id] : undefined;
     parts.push(file ? text('kanban.instructions.repo.file', p, { repo: r.name, path: file }) : text('kanban.instructions.repo', p, { repo: r.name, text: own }));
   }
   const filled = parts.filter((x) => x.trim());
