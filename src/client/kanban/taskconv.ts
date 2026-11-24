@@ -6,23 +6,15 @@ import { btn } from '../ui/kit';
 import { store } from '../state';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTask } from '../../shared/kanban/types.js';
-import { isRunning } from '../../shared/kanban/moves.js';
 import { attachBox, type AttachBox } from './attachbox';
 import { commentItem } from './commentview';
+import { commentNote, sendTitle } from './holdwords';
 import { kstore } from './store';
 import { onSendKey, sendHint } from './sendkey';
 import { textArea } from './ui';
 import type { Detail, TaskCtx } from './taskctx';
 
 export const COMMENTS_PAGE = 30;
-
-/** What sending a comment does to the task as it is now (docs/kanban.md, "Comments"): Send's tooltip. */
-function sendTitle(task: Pick<KanbanTask, 'status' | 'runState'>): string {
-  if (task.status === 'todo' || task.status === 'done' || task.status === 'archived') return 'Add the comment to the task: it is kept with it, and no agent starts';
-  if (task.status === 'on_hold') return 'Add the comment: the agent gets it when the task is resumed';
-  if (isRunning(task)) return 'Add the comment: the agent gets it in its terminal now, or at its next rest when it can’t take it yet';
-  return 'Add the comment: the agent takes it and goes back to work';
-}
 
 export class Conversation {
   private composer: { el: HTMLElement; ta: HTMLTextAreaElement; attach: AttachBox; send: HTMLButtonElement } | null = null;
@@ -33,7 +25,7 @@ export class Conversation {
   private makeComposer(task: KanbanTask) {
     const ta = textArea('', { rows: 3, placeholder: 'Write a comment, answer, or tell the agent what to do next… (paste or drop files)', 'aria-label': 'Comment', 'data-focus': 'comment' });
     const send = btn('Send', { icon: 'send', size: 'sm', attrs: { 'data-focus': 'act-comment', title: sendTitle(task) } });
-    const hint = h('span.composite-note', {}, `${sendHint()} · ${task.status === 'todo' || task.status === 'done' ? 'a comment is kept with the task' : task.status === 'on_hold' ? 'a comment is kept and given to the agent when it resumes' : 'a comment puts the agent back to work'}`);
+    const hint = h('span.composite-note', {}, `${sendHint()} · ${commentNote(task.status)}`);
     const wrap = h('div.kb-composer.composite');
     const attach = attachBox({ target: ta, dropZone: wrap, insertLinks: true });
     const go = async () => {

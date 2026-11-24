@@ -1,19 +1,16 @@
-// The two small dialogs of the On hold column (docs/kanban.md, "On hold"): putting a task on hold (why
-// and until when, both optional) and resuming it (a message for the agent, optional), and the one flow
-// the board and the task view share: which move needs which dialog, and what the move then carries.
+// The small dialog of the On hold column (docs/kanban.md, "On hold"): putting a task on hold (why and
+// until when, both optional), and the one flow the board and the task view share: which move needs the
+// dialog, and what the move then carries. Resuming has no dialog: it only changes the state.
 
 import './holddialog.css';
 import { h } from '../ui/dom';
-import { icon, type IconName } from '../ui/icons';
+import type { IconName } from '../ui/icons';
 import { btn, formField } from '../ui/kit';
 import { modalShell, openShell } from '../ui/shell';
-import { HOLD_NOTE_MAX, holdWords } from '../../shared/kanban/hold.js';
+import { HOLD_NOTE_MAX } from '../../shared/kanban/hold.js';
 import type { KanbanTaskCard, TaskStatus } from '../../shared/kanban/types.js';
 import { dateInputValue, dayStartMs } from './holdtime';
-import { fmtTime } from './labels';
 import { textArea } from './ui';
-
-type Subject = Pick<KanbanTaskCard, 'id' | 'status' | 'hold'>;
 
 /** A dialog with Cancel and the one confirm button; ✕, Esc and Cancel close it without calling `submit`. */
 function ask(head: { icon: IconName; title: string; id: number }, fields: (Node | null)[], confirm: { label: string; title: string }, submit: () => void) {
@@ -52,28 +49,12 @@ export function openHoldDialog(task: Pick<KanbanTaskCard, 'id'>, onSubmit: (extr
   );
 }
 
-/** "Resume #N": what the hold said, and an optional message for the agent. */
-export function openResumeDialog(task: Pick<KanbanTaskCard, 'id' | 'hold'>, onSubmit: (extras: { note?: string }) => void, now = Date.now()) {
-  const note = textArea('', { class: 'inp', rows: 3, maxlength: HOLD_NOTE_MAX });
-  const since = task.hold ? h('p.kb-hold-since', {}, icon('circle-pause', { size: 14 }), h('span', {}, h('strong', {}, holdWords(task.hold, now)), h('small', {}, ` · since ${fmtTime(task.hold.at)}, by ${task.hold.by}`))) : null;
-  ask(
-    { icon: 'play', title: 'Resume', id: task.id },
-    [since, formField('A message for the agent', note, { optional: true, hint: 'The agent carries on where it left off, with the comments written while it was on hold.' })],
-    { label: 'Resume', title: 'Move the task back to In progress: the agent carries on where it left off' },
-    () => {
-      const text = note.value.trim();
-      onSubmit(text ? { note: text } : {});
-    },
-  );
-}
-
 /**
- * Moves that need a dialog first: to On hold (reason, day) and from On hold to In progress (message).
- * Calls `send` with what the move carries, once the dialog is confirmed; never for a cancelled one.
- * Every other move goes straight to `send`.
+ * The one move that needs a dialog first: to On hold (reason, day). Calls `send` with what the move
+ * carries, once the dialog is confirmed; never for a cancelled one. Every other move goes straight to
+ * `send`: taking a task off hold only changes its state, so it asks nothing.
  */
-export function moveWithDialog(id: number, task: Subject | undefined, to: TaskStatus, send: (extras: { note?: string; until?: number }) => void) {
+export function moveWithDialog(id: number, to: TaskStatus, send: (extras: { note?: string; until?: number }) => void) {
   if (to === 'on_hold') return openHoldDialog({ id }, send);
-  if (task?.status === 'on_hold' && to === 'in_progress') return openResumeDialog({ id, hold: task.hold }, send);
   send({});
 }

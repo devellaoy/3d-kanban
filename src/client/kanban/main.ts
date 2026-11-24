@@ -135,8 +135,8 @@ function openTask(id: number, tab?: string) {
 }
 
 async function move(id: number, to: TaskStatus) {
-  // To On hold and from On hold to In progress a small dialog comes first (holddialog.ts); cancelling it moves nothing.
-  moveWithDialog(id, kstore.tasks.get(id), to, async (extras) => {
+  // To On hold a small dialog comes first (holddialog.ts); cancelling it moves nothing.
+  moveWithDialog(id, to, async (extras) => {
     const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.task.move', id, to, ...extras }));
     if (ok?.startError) toast(ok.startError, 'warn');
   });
