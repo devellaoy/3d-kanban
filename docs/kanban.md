@@ -56,10 +56,10 @@ greyed out with the reason. What you can do by hand:
   a fresh worktree whose agent checks that branch out first. Not while it runs. Workers still at their
   desks go home first and the worktree stays on disk: the task's conversation says where, and on which
   branch.
-- **Waiting / Review → On hold** (not while it runs), asking why and until when; **On hold → In progress**
-  resumes it (its creator or an admin, as for putting it on hold); **On hold → Review / Done / To do** work as from Waiting or Review (To do starts over).
+- **Waiting / Review → On hold** (not while it runs), asking why and until when; **On hold → Waiting or Review**
+  (the column it was held from) resumes it, which only moves it back, for anyone: no agent starts; **On hold → Done / To do** work as from Waiting or Review (To do starts over).
 - **Anything → Archive**, except while it runs.
-- Not allowed: To do ↔ Done, and moving into In progress (from To do or On hold only), Waiting or Review any other way (use
+- Not allowed: To do ↔ Done, and moving into In progress (from To do only; a held task is put back to work with a comment), Waiting or Review any other way (use
   Continue, Retry or a comment).
 
 Done tasks go to the archive by themselves after the *archive after* days in the settings.
@@ -83,12 +83,12 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
   figure sits on can't be sat on meanwhile (*… got there first*). The figures show
   on every project floor that uses the office map; a floor on a map of its own (the castle, a custom map) shows none.
   Aiming at a figure shows "#id title — reason · until d.m." and **E** opens the task window.
-- **Resuming**: **Resume** in the task view, or move the card to In progress (the creator or an admin, as the hold was: it starts an agent on the creator's sign-in). A dialog takes an optional message for
-  the agent. The task carries on in the same session and worktree, with the same worker name when it is free; a worktree
-  removed meanwhile (for instance by `agent-office prune`) is recreated on the task's branch. Comments written while the
-  task was on hold are kept and handed to the agent then. A task put on hold while its plan waited for approval or
-  answers goes back to Waiting with that plan instead: approve it or answer its questions to carry on.
-  If Claude no longer has the session (a long hold), a fresh agent takes over in the same worktree with the task's handoff and
+- **Resuming**: **Resume** in the task view, or move the card back to the column it was held from (Waiting or Review), is only a change of state, for anyone: nothing starts and nobody is hired. A task held in Review is in Review again.
+  A task held from Waiting is back in Waiting with what it waited for: a plan's approval or questions as they were, a stop, failure or interruption as it was. One whose agent was asking in its terminal, or that was waiting out
+  a usage limit, comes back as *stopped* with a text that says so, because no agent is in a terminal any more and nothing retries by itself. A held task can't be dragged to In progress: **add a comment** to put it back to work.
+- **A comment on a held task** starts a run at once, exactly as on any task in Waiting or Review: the task leaves the hold and its agent carries on in the same session and worktree (a plan that waited gets the comment as its answer or requested changes; an agent
+  that was asking gets it as the answer). It is hired as in any resume, so its name and colour are not the figure's. A worktree removed meanwhile (for instance by `agent-office prune`) is recreated on the task's branch. Comments stored
+  on a held task by an older version, which started nothing, are handed to the agent with that run. If Claude no longer has the session (a long hold), a fresh agent takes over in the same worktree with the task's handoff and
   the messages; a session that exists is never dropped.
 - **Otherwise**: a held task doesn't count toward *tasks at once*, is never archived by itself, and leave-on-merge
   doesn't touch it. Fixing or reviewing its PRs through the task asks you to resume it first.
@@ -415,7 +415,7 @@ back to work:
   it) puts it back in the queue; Retry and Continue carry it. The same for a run that took several queued
   comments from the queue.
 
-On To do, **On hold**, Done and archived tasks a comment is just kept; on a held task it is handed to the agent when the task is resumed. Comments take attachments too,
+On To do, Done and archived tasks a comment is just kept; on a held task it takes the task off hold and starts a run, as on a waiting one. Comments take attachments too,
 and so do the answer box and the plan's **Request changes** (**Ctrl/⌘ + Enter** sends). A file goes into the text where the cursor is (a `![Uploading …]` placeholder until it is uploaded, then its link; a picture shows in the comment, others are links), and the message carries the files whose links are still in the text when it is sent: delete a link and that file isn't sent (a file is uploaded unattached and belongs to the task or the comment only once the message is sent or the task saved, so a removed link leaves nothing behind). Comments from before this list their files below the text. An agent can read only its own task's files (copies in `kanban/grants/task-<id>/`). After upgrading, a live agent session started before this change is relaunched once at its next turn (its launch arguments change); until then a file sent into it may need a permission prompt.
 
 In the 3D office, what you tell a task's **implementer** while the task is in progress, waiting or in
@@ -545,7 +545,7 @@ Every window of the kanban is built the same way (`ui/shell.ts`, see [Code layou
 Every action button of the task window and of a pull request's window says what it does in a tooltip, and so do the main buttons of the dialogs they open to hold or resume a task and to link, review, merge, close or label pull requests: rest the pointer on the button for a moment, or move to it with Tab. A greyed-out button's tooltip says why it can't be pressed now. The tooltip goes away when you press the button, press Esc or move on, and a redraw of the window doesn't bring it back; it doesn't show on a touch screen. A plain confirmation (**Delete**, **Unlink**) and **Cancel** have none: the dialog's own text says what the button does.
 
 - **Move** (from a card's Move button or **M**): a short list of columns, each with its icon; the one the task is in says *Current*, and the ones it can't go to are greyed out with the reason. The arrow keys move through it.
-- **Put on hold** / **Resume**: *What is it waiting for?* and *Hold until* (both optional), or, to resume, a message for the agent; **Cancel** and **Put on hold** / **Resume**.
+- **Put on hold**: *What is it waiting for?* and *Hold until* (both optional), **Cancel** and **Put on hold**; Resume only changes the state, so it asks nothing.
 - **Delete, Send home and the like** ask first in a small window with a warning icon: **Cancel** and one red button named for what it does.
 - **Issues** (the top bar, or **Select issue** in the new-task form): a filter row (search and chips for source, status, label and assignee), **Refresh**, **Browse all**, then a row per issue with **Task #N** (opens the task made from it) or **Create task**; the footer counts the issues. A Jira row shows its type (Story, Bug, Sub-task) before the key, and a sub-task sits indented under its parent. When the parent is not in the list (someone else's, done, or filtered out), a low dimmed line with its type, key and title stands in for it above its sub-tasks; it is not counted. The search also matches an issue's type and its parent's key and title, so "bug" lists the bugs and a story's key or title finds its sub-tasks. Rows of other sources stay flat. Picking an issue for a new task shows **Select** instead.
 - **An issue's window**: its key, status and the quiet **Refresh** in the header, the description and comments in the body, **Status** and **Assignee** in the rail beside it (and **Epic** when the issue is in one, or **Parent** when it has a parent that is not an epic, such as a sub-task's story), and in the footer **Open in Jira** / **Open on GitHub** (or Azure Boards) on the left and, on the right, a link to the task made from it (once there is one), **Create task** and **Create and start**.
@@ -826,8 +826,8 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   per run of the task and set of images, so if a later run (the PR phase, a fix, **Push & update PRs**) rewrote it
   without the section, the section is put back at the next refresh; one still there costs a look and no edit. Removing
   every image in the Images tab takes the section out of the description (the text around it is left as it is) and says
-  so on the task. A task that was never given an images folder costs no look. A task taken off hold gets the same UI
-  testing instructions as a comment, by the option as it is when the task resumes.
+  so on the task. A task that was never given an images folder costs no look. A comment's run on a held task gets the same UI
+  testing instructions as any comment.
   In a task in several repositories each pull request gets only its own repository's pictures (the ones in
   `ui/<repo id>/`); a repository without a pull request (nothing changed there, or it was closed) has its pictures
   go to the primary repository's open pull request, else the first open one, under a heading that names the

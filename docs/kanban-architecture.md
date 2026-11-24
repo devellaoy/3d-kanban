@@ -65,27 +65,32 @@ document disagree, fix one of them in the same change.
   stopped, failed, usage-limit wait shown as `retryAt`).
 - `review`: automation finished; the user reviews, comments (resumes work), asks for a PR, or moves to done. Each automated arrival of a reviewed task (not an investigation, review on) stores the workspace's fingerprint (`tasks.handoff_fingerprint`: HEAD, tracked changes, untracked files' contents, nested repositories and checked-out submodules, per repository; ignored files don't count, and neither do files hidden by `.git/info/exclude` or a global excludes file, nor tracked files marked assume-unchanged or skip-worktree); a `resume` turn is reviewed again only when it differs (`resumed` with `since: 'handoff'`), otherwise the task returns to Review with a note. A task that never reached Review has none and is judged against the base branch; a task moved to Review by hand keeps whatever baseline it had (a stale one only causes extra reviews); only a `start` clears it.
 - `on_hold`: put aside from Waiting or Review until something it depends on is there (`src/shared/kanban/hold.ts`).
-  `hold {at, by, from, note?, until?, worker?: {name, color}, deskId?}` (`tasks.hold`, on the card too) says why and
+  **On hold is only a state**: Resume moves the task back and never starts an agent; a comment on a held task starts a run at once, as on any task.
+  `hold {at, by, from, note?, until?, worker?: {name, color}, deskId?, reason?, text?, phase?}` (`tasks.hold`, on the card too) says why and
   since when. **Putting it on hold** (`task.move` to `on_hold`, `checkMove` action `hold`; only from `waiting`/`review`
   with nothing running; for its creator or an admin, as is a reset of a held task to To do (it drops the session and worktree); `engine.hold`, `engine/hold.ts`): a run live only because the agent
-  asks in its terminal is finished as `stopped`; `hold` is recorded (with the implementer's name, colour and desk) and the
+  asks in its terminal is finished as `stopped`; `hold` is recorded (with the implementer's name and colour, for the lounge figure, and its desk, and, for a task that waited, `reason`, `text` and `phase`: what it waited for, whatever it was) and the
   status set to `on_hold`, `runState` `idle`, `queuedRun`, `retryAt`, `retryAttempts` and the waiting reason cleared;
   then the task's workers at rest go home with cleanup `keep` (`all` for a PR review's reviewer in a worktree of its own),
-  departure reason `hold`. `sessionId`, `workspace`, `branch` and `deskId` stay on the task, so the worktree is untouched. A status comment
-  says who held it, why, until when, where the worktree stays and how to resume. It holds no `maxConcurrent` slot
-  (`busyCount` counts `in_progress` only), a comment on it is only stored (nothing starts), the auto-archive only touches `done`, and
+  departure reason `hold` (a plan's worker at its exit prompt may go home too). `sessionId`, `workspace`, `branch` and `deskId` stay on the task, so the worktree is untouched. A status comment
+  says who held it, why, until when, where the worktree stays and that a comment puts it back to work (Resume only moves it back). It holds no `maxConcurrent` slot
+  (`busyCount` counts `in_progress` only), the auto-archive only touches `done`, and
   leave-on-merge has no worker to send home. 3D clients get a view-only lounge figure for it (§6).
-  A task held while it waited for a plan's approval or answers (`plan_approval`, `plan_questions`) records that
-  (`hold.reason`, `text`, `phase`; its worker at the plan's exit prompt may go home too) and is not worked on when resumed: it goes back to
-  `waiting` with them and a status line, and approving or answering hires the worker as usual. What was said since the hold (the user's comments, the resume note included, files too) is kept by comment id as `pendingMessages` (marked `held`, exempt from the cap of 50 on queued comments, so nothing is dropped) when the task is resumed, whichever way it goes on; comments typed while the unhold run waits for a desk join them. The next run that resumes the work (`unhold`, a plan's approval `implement` or answer `replan`, a Retry's `continue`, a comment's `resume`) carries them (`ComposeExtra.held`: in the unhold prompt's `comments`, else under "Messages left on the task that you have not seen yet"). They leave the task, and their comments stop being pending, only once an agent has the prompt, by id: a hire on a fresh session has it on its command line and acknowledges at once; a run resumed on a stored session (`--resume`, in a new hire or an in-place relaunch) acknowledges when its agent is first heard from, ignoring the events of the old process still being ended (`Live.armed`). A launch that fails or waits for room keeps them for the Retry or the dequeue, and nothing is delivered twice.
+  **Resuming** (`task.move` to the column it was held from, `hold.from`: `waiting` or `review`; action `unhold`, `engine.unhold`; anyone signed in, no note): the machine's `unhold` event
+  puts the task back as it was and runs nothing. From Review it is Review again. From Waiting, the reason is restored truthfully: a plan's wait (`plan_approval`, `plan_questions`) and a
+  `stopped`, `failed` or `interrupted` wait come back verbatim (`reason`, `text`, `phase`; approving or answering hires the worker as usual); `agent_asking` and `usage_limit` come back as a
+  `stopped` wait with a text that says what happened (no agent is in a terminal any more, nothing retries by itself), keeping `phase`; a hold with no saved reason (made before the hold kept it)
+  comes back as `stopped` too. `retryAt` is never restored: nothing starts by itself after Resume. A move `on_hold → in_progress` is refused ("Add a comment to put it back to work"), as is `on_hold → waiting` (or `review`, from the other column) when
+  it isn't the column it was held from. `hold` is cleared by whichever event leaves `on_hold` (`apply`).
+  **A comment on a held task** (`Comments.handle`, `Holds.leave`): the engine takes the task off hold and puts it to work in one step: the machine's `comment` event, given what the task was held from (`back`), restores the state as Resume does
+  and then continues as `resumeWith` does for any waiting or review task (a plan wait: `replan`; an agent that was asking: the phase it asked in; otherwise the implementer's `resume` prompt), through `launch()`: same worktree and `resumeSessionId`
+  (a worktree that is gone takes the existing `dropWorkspace` + `kanban.checkout` path), a worker named and coloured as in any resume. The status goes to `in_progress` (or queued for room as usual), a `moved` event (`from: on_hold`) is written, and `hold` is cleared.
+  What was said since the hold (comments stored by an older build while a hold did not start a run, files too) is kept by comment id as `pendingMessages` (marked `held`, exempt from the cap of 50 on queued comments, so nothing is dropped)
+  by `Holds.leave`, all but the comment that triggered it (it is the run's own text, so it is delivered once), and when the task is resumed or released. The next run that resumes the work (a comment's `resume`, a plan's approval `implement` or
+  answer `replan`, a Retry's `continue`) carries them (`ComposeExtra.held`, under "Messages left on the task that you have not seen yet"). They leave the task, and their comments stop being pending, only once an agent has the prompt, by id: a hire on a fresh session has it on its command line and acknowledges at once; a run resumed on a stored session (`--resume`, in a new hire or an in-place relaunch) acknowledges when its agent is first heard from, ignoring the events of the old process still being ended (`Live.armed`). A launch that fails or waits for room keeps them for the Retry or the dequeue, and nothing is delivered twice.
   **A session that is gone.** The engine follows a worker's current run (`KanbanWorkers.follows`, in memory), and for such a worker upstream's silent "No conversation found → fresh Claude with no prompt" is off (`WorkerManager`'s `freshIfResumeFails` branch; other workers, a Stop's relaunch or a manual resume, keep it): an agent that exits before it is heard from, resuming a stored session, is the engine's. Only if Claude's transcript of that session does not exist (`engine/sessions.ts`: `<claude home>/projects/*/<id>.jsonl`, under the home of the task owner's own sign-in, else the office's; Codex and an unreadable folder count as unknown) does `Holds.freshSession` finish the run as interrupted, drop that role's `sessionId`, keep workspace and branch, say which session id was dropped, and launch the same run once more in a fresh session with the handoff and the run's own prompt, the messages still pending. When the session exists, or can't be told, nothing is dropped: the run is interrupted and Retry carries on. The fresh run has no session to lose, so another early exit is an ordinary interrupted run.
-  Moving a held task on to Review (`engine.releaseHeld`) queues the messages first, so the next run carries them; to Done or the archive they stay plain comments (nothing runs again), and a reset starts over. Stop on an unhold that waits for a desk (`Holds.cancelUnhold`) puts the task back on hold with its hold intact, and what was said plain comments again.
-  **Resuming** (`task.move` to `in_progress`, action `unhold`, `engine.unhold`; its creator or an admin, as the hold was: it spends the creator's sign-in on what they parked; an optional `note` becomes the
-  user's comment first): the machine's `unhold` event runs the implementer again (phase `resume`, prompt `unhold`) through
-  `launch()`: same worktree and `resumeSessionId`, preferring the worker's old name (when no one else has it) and colour
-  (`SpawnExtra.name`/`color`) and its desk; a worktree that is gone takes the existing `dropWorkspace` + `kanban.checkout`
-  path. `hold` is cleared with that move (only a queued unhold keeps it, for its prompt). Leaving `on_hold` otherwise: to `review`/`done` only changes the
-  status, to `todo` is a reset, to `archived` as from any column (a task running or queued can't be there); each of them clears `hold`.
+  Moving a held task on to Review (`engine.releaseHeld`) queues the messages first, so the next run carries them; to Done or the archive they stay plain comments (nothing runs again), and a reset starts over. Leaving `on_hold` otherwise: to `review`/`done` only changes the
+  status, to `todo` is a reset, to `archived` as from any column (a task running or queued can't be there); each of them clears `hold`. A `queuedRun` stored with the prompt `unhold` by an older build is read as a `resume`, and its hold is dropped.
 - `done`: accepted by the user: a manual move, a task worker sent home with `done: true`, or leave-on-merge
   sending one home once every linked PR has merged (see §4, *Departures*). `archived`: old done tasks (not on the board).
 - Moving a task to `done` or `archived` (a move, a departure, the auto-archive) sends its task workers at rest
@@ -98,7 +103,7 @@ document disagree, fix one of them in the same change.
 Manual moves (`src/shared/kanban/moves.ts`, enforced on the server): `todo ↔ done` is not allowed;
 allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → review`, `done → archived`,
 `archived → done`, `waiting|review → todo` only when no worker is attached (reset), any → `archived` except running,
-`waiting|review → on_hold` (hold; refused while running), `on_hold → in_progress` (unhold), `on_hold → review|done` (status only), `on_hold → todo` (reset).
+`waiting|review → on_hold` (hold; refused while running), `on_hold → ` the column it was held from (unhold: state only, nothing runs), `on_hold → in_progress` (refused: "Add a comment to put it back to work"), `on_hold → review|done` (status only; `review` when it was held from Waiting), `on_hold → todo` (reset).
 
 ## 4. Engine (server/kanban/engine)
 
@@ -375,10 +380,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   `MERGED`. A task made done this way stops its other run and releases its other workers at rest. `hold` (a task put on
   hold, `engine.hold`) only writes one line ("<name> went to sit in the lounge: the task is on hold"): no `interrupted`, no
   `markDone` (not even for merged PRs), the column stays `on_hold`.
-- **Unhold prompt**: `PromptKind` `unhold` (`kanban.unhold`, §7) is typed into the resumed session. `compose.ts` fills `taskId`,
-  `heldAt` (the day of `hold.at`), `holdNote` (", because: …" or empty), `comments` (the user's comments since `hold.at`, the
-  resume note among them, or "none") and `language`. A fresh worker without a session (it was dropped, or the worktree is gone) gets the handoff
-  first, as for `fix`, `resume`, `continue` and `pr.*`. A held task is not fixable and cannot be reviewed through a PR
+- **A held task** has no prompt of its own: a comment on it runs the ordinary `resume` (or `replan`) prompt (§3, *Resuming*). A held task is not fixable and cannot be reviewed through a PR
   review: `canFixPrs`, `pr` and `prReview` refuse with "It is on hold: resume it first".
 - **Worktree guard** (`WorkerManager.addKeepGuard`): cleanup is forced to `keep` while another worker of the
   same task sits in that worktree, or the task has a live run there. When kill did delete it (the `cleaned`
@@ -543,10 +545,9 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     `task.branch` and `startedAt`, and says in a status comment where the worktree stayed and on which branch. The next start seats a fresh worktree whose agent is told to check that
     branch out (`kanban.checkout`), rather than reusing a worktree that may be gone by then.
     `done` sets `doneAt`; `archived` sets `archivedAt`.
-    `note?` (at most `HOLD_NOTE_MAX` = 500 characters) goes only with a move to `on_hold` (the reason) or `in_progress` (the message for the agent
-    on a resume), `until?` (ms; no more than a day in the past, no more than two years ahead: `validHoldUntil`) only with `on_hold`; anything else is refused by the
+    `note?` (at most `HOLD_NOTE_MAX` = 500 characters) goes only with a move to `on_hold` (the reason; a note sent with a move to `in_progress` by an older browser tab is ignored, and the move is refused), `until?` (ms; no more than a day in the past, no more than two years ahead: `validHoldUntil`) only with `on_hold`; anything else is refused by the
     validator. `hold` (`engine.hold(id, who, {note, until})`) is for the task's creator or an admin ("Only whoever made it, or an admin, can put a task on hold"),
-    `unhold` for anyone signed in; both resolve to a refusal string. Moves out of `on_hold` clear `hold`.
+    `unhold(id, who)` for anyone signed in (it takes no note); both resolve to a refusal string. Moves out of `on_hold` clear `hold`.
   - `task.delete`: only by its creator or an admin. It is refused while running; workers at rest go home first
     (`engine.sendWorkersHome(id, who, 'delete')`), their worktree and branches stay. Its attachment files are deleted too.
   - `comment.add`: stored, attachments linked, `kanban.comment` pushed and `kanban.ok {commentId}` sent;
@@ -754,7 +755,7 @@ block prompts chosen by `uiBlockId(kind, on, images)` (`engine/uitesting.ts`), w
 `images` whether its folder has any: the implementer gets `kanban.uiTesting` (on) or `kanban.uiTesting.onRequest` (off: only
 if the task or a comment asks); a reviewer gets `kanban.uiTesting.review` (`imagesDir`, `imageList` with absolute paths)
 when the choice is on or there are images, and nothing otherwise; a fix round gets `kanban.uiTesting.fix` under the same
-condition; a comment's run, a task taken off hold (`kanban.unhold`, which carries `{{uiTesting}}`; a hand-off's `next` is that built prompt, so the block comes once) and a PR fix get `kanban.uiTesting.fix`, else `kanban.uiTesting.onRequest`. A
+condition; a comment's run (also one that takes a task off hold) and a PR fix get `kanban.uiTesting.fix`, else `kanban.uiTesting.onRequest`. A
 project's or the office's rewritten prompt that lost the `{{uiTesting}}` placeholder gets the block appended to its end.
 In a task with more than one git repository (`taskRepos`, not a folder project) `uiBlock(def, task, kind)` makes a folder per
 repository in the images folder (`ensureUiImagesDir(dir, folders)`) and fills `{{imageFolders}}` of the implement, on-request and fix
@@ -796,7 +797,7 @@ accepts only `https://github.com/<owner>/<repo>/pull/<n>` (no GitHub Enterprise,
 folder itself must be a real directory, not a link, or nothing is listed, served or removed. The images can reach the description before a fix round's
 commits are pushed.
 
-`kanban.unhold` ("Carry on after a hold": `taskId`, `heldAt`, `holdNote`, `comments`, `language`) is the prompt a task taken off hold resumes with (§3, §4).
+There is no prompt for a task taken off hold: a comment's run uses `kanban.resume` (a stored override keyed `kanban.unhold` from before is ignored when the settings are read, as is any id that is not a kanban prompt).
 `kanban.restarted` ("The office was restarted": no variables) is put in front of `kanban.continue` when a run is carried on after a full office restart (§4, "After a full restart").
 `kanban.restate` ("Restate the final answer": `taskId`, `language`) is what a run is asked when a prompt typed into its terminal took the turn its background work ended in, or came before the office's answer reached the log (§4).
 
