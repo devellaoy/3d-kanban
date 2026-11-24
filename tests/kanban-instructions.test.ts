@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { PROMPTS } from '../src/shared/prompts.js';
@@ -165,4 +165,18 @@ test("a primary repository's id is its project's, which may be longer than anoth
   const got = syncInstructionFiles(root, id, { repos: [{ id, instructions: 'Run make check.' }] });
   assert.equal(got.repos[id], path.join(instructionsDir(root, id), `repo-${id}.md`));
   assert.equal(readFileSync(got.repos[id], 'utf8'), 'Run make check.\n');
+});
+
+test("a link where a file belongs is replaced, and what it points at keeps its text and its mode", { skip: process.platform === 'win32' }, (t) => {
+  const root = files(t);
+  const dir = instructionsDir(root, 'web');
+  mkdirSync(dir, { recursive: true });
+  const secret = path.join(root, 'secret.txt');
+  writeFileSync(secret, 'private', { mode: 0o600 });
+  symlinkSync(secret, path.join(dir, 'general.md'));
+  const got = syncInstructionFiles(root, 'web', { general: 'Be kind.' });
+  assert.ok(lstatSync(got.general!).isFile(), 'a file of its own now');
+  assert.equal(readFileSync(got.general!, 'utf8'), 'Be kind.\n');
+  assert.equal(readFileSync(secret, 'utf8'), 'private');
+  assert.equal(statSync(secret).mode & 0o777, 0o600);
 });
