@@ -109,10 +109,11 @@ export class Holds {
    * The messages a run that resumes the work carries (`text`, for its prompt), and `ack` for when an agent has the prompt: they leave
    * the task by id then, their comments stop being pending. Not before: a launch that fails or waits for room keeps them.
    */
-  carried(task: KanbanTask, prompt: string): { text?: string; ack: () => void } {
-    const msgs = ['implement', 'replan', 'continue', 'restarted', 'resume'].includes(prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
+  carried(task: KanbanTask, prompt: string, only?: readonly number[]): { text?: string; ids: number[]; ack: () => void } {
+    const msgs = (['implement', 'replan', 'continue', 'restarted', 'resume'].includes(prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : []).filter((m) => !only || only.includes(m.commentId));
     const ids = new Set(msgs.map((m) => m.commentId));
     return {
+      ids: [...ids],
       ...(msgs.length ? { text: msgs.map((m) => `- ${m.by}: ${m.text}`).join('\n') } : {}),
       ack: () => {
         if (!ids.size) return;

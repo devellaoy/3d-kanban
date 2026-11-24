@@ -245,7 +245,7 @@ export class Orchestrator {
       update: (id, patch) => this.update(id, patch),
       apply: (id, e) => this.apply(id, e),
       drain: (project) => void this.drain(project),
-      carried: (task, prompt) => this.holds.carried(task, prompt),
+      carried: (task, prompt, only) => this.holds.carried(task, prompt, only),
       attach: (run, task, info, launch) => Object.assign(this.attach(run, task, info, launch), { pinSince: true }),
       turnEnded: (live, planExit) => this.turnEnded(live, planExit),
       hiringPaused: () => this.ctx.hiringPaused?.(),
@@ -711,7 +711,7 @@ export class Orchestrator {
         if (r && typeof r === 'object') {
           // No desk, or the office's worker limit: it waits in the queue, and starts as it is (drain).
           this.comments.restore(task, via.taken);
-          this.update(taskId, { queuedRun: queuedOf(eff) });
+          this.update(taskId, { queuedRun: { ...queuedOf(eff), ...(via.commentId !== undefined ? { commentId: via.commentId } : {}) } });
           await this.apply(taskId, { type: 'noRoom', text: r.queued });
           return undefined;
         }
@@ -901,7 +901,7 @@ export class Orchestrator {
     });
     const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: { ...queuedOf({ ...eff, text, pending: undefined }), ...(via.taken?.length ? { taken: via.taken } : {}) } });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: { ...queuedOf({ ...eff, text, pending: undefined }), ...(via.taken?.length ? { taken: via.taken } : {}), carried: carried?.ids ?? [] } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const follow = (workerId: string, prompt: string): Live => {
       const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
@@ -1724,7 +1724,7 @@ export class Orchestrator {
     return this.op(taskId, async (task) => {
       const queued = task.runState === 'queued' ? task.queuedRun : undefined;
       const err = await this.apply(taskId, { type: 'stop' }, { who });
-      if (!err && queued) this.queuedStopped(task, queued, `Stopped by ${who.name} before it started`);
+      if (!err && queued) (this.queuedStopped(task, queued, `Stopped by ${who.name} before it started`), this.comments.requeue(task, queued, queued.commentId)); // the comment that started it is kept for the Retry
       return err;
     });
   }

@@ -41,7 +41,7 @@ export interface RestartDeps<L extends HeldRun> {
   /** Why the office has stopped hiring (its daily budget), if it has. */
   hiringPaused(): string | undefined;
   /** The messages a run that resumes the work carries, and how to release them once an agent has the prompt (HoldFlow.carried). */
-  carried(task: KanbanTask, prompt: string): { ack: () => void };
+  carried(task: KanbanTask, prompt: string, only?: readonly number[]): { ack: () => void };
   /** The gap between one run being carried on and the next in a project (ms), so the woken agents don't all start together. Longer than the workers' own stagger (CARRY_ON_STAGGER_MS): a run launches a whole phase (checks, relaunch, a long prompt), a worker only wakes a process. */
   staggerMs: number;
 }
@@ -85,7 +85,8 @@ export class Restarts<L extends HeldRun> {
   /** What a re-attached run does once its agent has the prompt that was still on its way when the office stopped: its launch record is cleared and its held messages released; undefined when none is. */
   ack(run: KanbanRun, task: KanbanTask, launch: QueuedRun | undefined): (() => void) | undefined {
     if (!launch) return undefined;
-    const carried = this.deps.carried(task, launch.prompt);
+    // Only the messages that run's prompt held (a reviewer's held none; a record of before they were kept: an implementer's carried the queue).
+    const carried = this.deps.carried(task, launch.prompt, launch.role === 'implementer' ? launch.carried : []);
     return () => (carried.ack(), this.deps.ctx.repo.clearRunLaunch(run.id));
   }
 

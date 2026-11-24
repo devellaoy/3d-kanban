@@ -133,7 +133,7 @@ export class Comments<L extends CommentLive> {
    */
   requeue(task: KanbanTask, eff: { phase?: string; prompt?: string; text?: string } | undefined, commentId: number | undefined, taken?: PendingMessage[]) {
     const back: PendingMessage[] = [...(taken ?? [])];
-    const c = commentId !== undefined && eff?.prompt === 'resume' && eff.text ? this.d.ctx.repo.getComment(commentId) : undefined;
+    const c = commentId !== undefined && (eff?.prompt === 'resume' || eff?.prompt === 'replan') && eff.text ? this.d.ctx.repo.getComment(commentId) : undefined;
     if (c && !back.some((m) => m.commentId === c.id)) back.push({ commentId: c.id, text: eff!.text!, by: c.authorName, at: c.createdAt, ...(eff!.phase === 'pr-review' ? { answer: true as const } : {}) });
     const fresh = this.restore(task, back);
     if (fresh) this.d.note(task, `The comment${fresh === 1 ? '' : 's'} didn't reach the agent: kept, and go${fresh === 1 ? 'es' : ''} to it with its next run.`);

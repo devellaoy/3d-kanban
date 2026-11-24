@@ -43,6 +43,13 @@ declare module './types.js' {
     /** The user's answer to a pull-request reviewer's question that its run never got (given back): a Retry of the review delivers it, nothing else of the queue. */
     answer?: true;
   }
+  /** A queued run or a launch record also keeps what its prompt carries, for giving it back or acknowledging it. */
+  interface QueuedRun {
+    /** The comment that started it, so a Stop before it started can give its text back as a pending message. */
+    commentId?: number;
+    /** The ids of the pending messages its prompt carried (a launch record): only those are released when its agent has the prompt. Absent in a record of before this was kept. */
+    carried?: number[];
+  }
   /** What an agent reading the task (office-tasks, the references) is told of its hold. */
   interface TaskRefBundle {
     hold?: { at: number; note?: string; until?: number };
