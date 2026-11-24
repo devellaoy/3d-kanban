@@ -105,7 +105,7 @@ const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const SUMMARY_MAX = 20_000;
 const PENDING_MAX = 50;
 /** The prompts a fresh session taking over work under way is handed off with. */
-const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'unhold', 'pr.create', 'pr.fix', 'pr.conflicts']);
+const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'pr.create', 'pr.fix', 'pr.conflicts']);
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
 /** Why an answer from the kanban isn't typed into a terminal that isn't asking a question (answer). */
@@ -172,7 +172,6 @@ export class Orchestrator {
       stopLive: (live, error) => this.stopLive(live as Live, error),
       update: (id, patch) => this.update(id, patch),
       note: (task, text, runId) => this.note(task, text, runId),
-      addComment: (project, c) => this.addComment(project, c),
       apply: (id, e, via) => this.apply(id, e, via),
       sendHome: (taskId, by, also) => this.sendIdleHome(taskId, by, also, 'hold'),
       drain: (floorId) => this.drain(floorId),
@@ -231,6 +230,7 @@ export class Orchestrator {
       update: (id, patch) => this.update(id, patch),
       note: (task, text, runId) => this.note(task, text, runId),
       lastRun: (taskId) => this.lastRun(taskId),
+      leave: (task, commentId) => this.holds.leave(task, commentId),
       askingNote: (_task, live) => {
         const there = live.asks !== 'question' ? (live.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN) : undefined;
         return there ? `${there}. The comment is kept and goes to it once that turn is over.` : 'The agent is asking something in its terminal: the comment goes to it once that turn is over.';
@@ -676,10 +676,8 @@ export class Orchestrator {
     const tr = next(stateOf(task), e, { type: task.type, usePlan: task.usePlan, useReview: task.useReview, planApproval: task.planApproval }, { rounds: review.rounds, reReviewLastFix: review.reReviewLastFix, ...(defaultAnswer ? { defaultAnswer } : {}) });
     if ('error' in tr) return tr.error;
     const s = tr.state;
-    // Off hold: the hold stays for the run's prompt and the worker's look (via.hold), and only a queued unhold keeps it on the task.
-    if (task.hold) via = { ...via, hold: task.hold };
     this.update(taskId, {
-      ...(task.hold && s.status !== 'on_hold' && s.runState !== 'queued' ? { hold: null } : {}),
+      ...(task.hold && s.status !== 'on_hold' ? { hold: null } : {}),
       status: s.status,
       phase: s.phase,
       runState: s.runState,
@@ -713,7 +711,7 @@ export class Orchestrator {
         if (r && typeof r === 'object') {
           // No desk, or the office's worker limit: it waits in the queue, and starts as it is (drain).
           this.comments.restore(task, via.taken);
-          this.update(taskId, { queuedRun: queuedOf(eff), ...(eff.prompt === 'unhold' && via.hold ? { hold: via.hold } : {}) });
+          this.update(taskId, { queuedRun: queuedOf(eff) });
           await this.apply(taskId, { type: 'noRoom', text: r.queued });
           return undefined;
         }
@@ -845,7 +843,7 @@ export class Orchestrator {
       fixPrs,
       held,
     };
-    const fresh = { ...(this.ctx.repo.getTask(task.id) ?? task), ...(via.hold ? { hold: via.hold } : {}) };
+    const fresh = this.ctx.repo.getTask(task.id) ?? task;
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);
     /** The prompt, told first to check out the task's branch when a fresh worktree has yet to (implement has it as its branch step). */
     const withCheckout = (prompt: string) => {
@@ -998,7 +996,6 @@ export class Orchestrator {
       ...(reuse ? { reuse } : { bases: baseBranches(def, task.repoIds) }),
       ...(session ? { resumeSessionId: session } : {}),
       ...(countsWith ? { countsWith } : {}),
-      ...(role === 'implementer' && eff.prompt === 'unhold' && via.hold?.worker ? via.hold.worker : {}),
       kanban: { taskId: task.id, role },
       env: extras.env,
       settingsFile: 'kanban',
@@ -1728,7 +1725,6 @@ export class Orchestrator {
     // A task asking in its terminal is idle but its run still goes: the machine stops that too.
     return this.op(taskId, async (task) => {
       const queued = task.runState === 'queued' ? task.queuedRun : undefined;
-      if (queued?.prompt === 'unhold' && task.hold) return void this.holds.cancelUnhold(task, who);
       const err = await this.apply(taskId, { type: 'stop' }, { who });
       if (!err && queued) this.queuedStopped(task, queued, `Stopped by ${who.name} before it started`);
       return err;
@@ -1893,9 +1889,9 @@ export class Orchestrator {
     });
   }
 
-  /** A task on hold is taken off it: its implementer is hired again and carries on (hold.ts). */
-  unhold(taskId: number, who: KanbanCaller, note?: string): Promise<string | void> {
-    return this.op(taskId, (task) => this.holds.unhold(task, who, note));
+  /** A task on hold is taken off it: back in the column it was held from, nothing runs (hold.ts). */
+  unhold(taskId: number, who: KanbanCaller): Promise<string | void> {
+    return this.op(taskId, (task) => this.holds.unhold(task, who));
   }
 
   commented(taskId: number, commentId: number, who: KanbanCaller): Promise<void> {

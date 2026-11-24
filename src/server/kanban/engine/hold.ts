@@ -1,7 +1,8 @@
 // A task put on hold and taken off it (docs/kanban-architecture.md §3 and §4). Putting it on hold
 // parks it: its workers go home (the worktree, session and desk stay on the task), nothing runs for
-// it and it uses no maxConcurrent slot. Taking it off hold hires the implementer again through the
-// engine's own launch, in the same worktree and session. Split out of the orchestrator like
+// it and it uses no maxConcurrent slot. On hold is only a state: Resume moves the task back to the column
+// it was held from and starts nothing, and a comment puts it to work like on any other task (the ordinary
+// resume, in the same worktree and session). Split out of the orchestrator like
 // Departures; the engine's own state reaches it through the small `Holding` interface.
 
 import type { KanbanCaller, KanbanContext } from '../registry.js';
@@ -9,8 +10,8 @@ import type { KanbanTask } from '../../../shared/kanban/types.js';
 import type { TaskHold } from '../../../shared/kanban/hold.js';
 import { checkMove } from '../../../shared/kanban/moves.js';
 import { isBusy } from '../../../shared/status.js';
-import type { NewComment, TaskUpdate } from '../db/repository.js';
-import type { MachineEvent, RunEffect } from './machine.js';
+import type { TaskUpdate } from '../db/repository.js';
+import type { HoldBack, MachineEvent, RunEffect } from './machine.js';
 
 /** What holding borrows from the orchestrator. */
 export interface Holding {
@@ -20,7 +21,6 @@ export interface Holding {
   stopLive(live: { workerId: string }, error: string): void;
   update(id: number, patch: TaskUpdate): unknown;
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): unknown;
-  addComment(project: string, c: NewComment): unknown;
   apply(taskId: number, e: MachineEvent, via?: { who?: KanbanCaller }): Promise<string | undefined>;
   /** The task's workers at rest (and `also`) go home with the reason 'hold'. */
   sendHome(taskId: number, by: string, also?: string): Promise<number>;
@@ -72,7 +72,8 @@ export class Holds {
       from: task.status === 'review' ? 'review' : 'waiting',
       ...(opts.note ? { note: opts.note } : {}),
       ...(opts.until !== undefined ? { until: opts.until } : {}),
-      ...(planWait ? { reason: task.waitingReason, ...(task.waitingText ? { text: task.waitingText } : {}), ...(task.phase ? { phase: task.phase } : {}) } : {}),
+      // What it waited for, whatever it was: Resume puts it back to Waiting with it.
+      ...(task.status === 'waiting' && task.waitingReason ? { reason: task.waitingReason, ...(task.waitingText ? { text: task.waitingText } : {}), ...(task.phase ? { phase: task.phase } : {}) } : {}),
       ...(seated ? { worker: { name: seated.name, color: seated.color } } : {}),
       ...(deskId ? { deskId } : {}),
     };
@@ -84,27 +85,15 @@ export class Holds {
     if (opts.note) parts[0] += `: ${opts.note}`;
     if (opts.until !== undefined) parts[0] += ` (until ${day(opts.until)})`;
     parts[0] += '.';
-    if (wt) parts.push(`Its worktree stays at ${wt.path} on branch ${wt.branch}; ▶️ Resume (move it to In progress) to carry on in the same session.`);
-    else parts.push('▶️ Resume (move it to In progress) to carry on.');
+    parts.push(`A comment puts it back to work${wt ? ` in the same worktree and session (it stays at ${wt.path} on branch ${wt.branch})` : ''}; ▶️ Resume only moves it back to ${task.status === 'review' ? 'Review' : 'Waiting'}.`);
     this.d.note(task, parts.join(' '));
     void this.d.drain(task.project);
     return undefined;
   }
 
-  /** Stop on a queued unhold (it waited for a desk): the task is back on hold, its hold intact, and what was said meanwhile plain comments again. */
-  cancelUnhold(task: KanbanTask, who: KanbanCaller) {
-    for (const m of task.pendingMessages) {
-      this.ctx.repo.setCommentPending(m.commentId, false);
-      const c = this.ctx.repo.getComment(m.commentId);
-      if (c) this.ctx.broadcast({ t: 'kanban.comment', comment: c, project: task.project }, task.project);
-    }
-    this.d.update(task.id, { status: 'on_hold', runState: 'idle', queuedRun: null, pendingMessages: [], waitingReason: null, waitingText: null });
-    this.d.note(task, `${who.name} stopped the resume before it started: the task is back on hold.`);
-  }
-
   /** The user's comments since `since` are kept as pending messages (files included), by comment id, for the next run that resumes the work. They are exempt from the cap on queued comments. */
-  queueHeld(task: KanbanTask, since: number) {
-    const comments = this.ctx.repo.userCommentsSince(task.id, since).filter((c) => !task.pendingMessages.some((p) => p.commentId === c.id));
+  queueHeld(task: KanbanTask, since: number, except?: number) {
+    const comments = this.ctx.repo.userCommentsSince(task.id, since).filter((c) => c.id !== except && !task.pendingMessages.some((p) => p.commentId === c.id));
     if (!comments.length) return;
     const files = this.ctx.repo.listAttachments(task.id);
     const queued = comments.map((c) => ({ commentId: c.id, text: this.d.commentText(task.project, task.id, c.text, files.filter((a) => a.commentId === c.id)), by: c.authorName, at: c.createdAt, held: true as const }));
@@ -121,7 +110,7 @@ export class Holds {
    * the task by id then, their comments stop being pending. Not before: a launch that fails or waits for room keeps them.
    */
   carried(task: KanbanTask, prompt: string): { text?: string; ack: () => void } {
-    const msgs = ['implement', 'replan', 'continue', 'restarted', 'unhold', 'resume'].includes(prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
+    const msgs = ['implement', 'replan', 'continue', 'restarted', 'resume'].includes(prompt) ? (this.ctx.repo.getTask(task.id) ?? task).pendingMessages : [];
     const ids = new Set(msgs.map((m) => m.commentId));
     return {
       ...(msgs.length ? { text: msgs.map((m) => `- ${m.by}: ${m.text}`).join('\n') } : {}),
@@ -149,18 +138,24 @@ export class Holds {
     if (err) this.d.note(task, `Couldn't start it again: ${err}`);
   }
 
-  /** Takes a task off hold: the implementer is hired again (same worktree and session) and carries on. */
-  async unhold(task: KanbanTask, who: KanbanCaller, note?: string): Promise<string | undefined> {
+  /**
+   * What a task leaves its hold with, before it goes back to work: its desk is the one it sat at, and what was said during the hold (comments
+   * of before a comment started a run for it) is kept for the next run, all but `exceptComment`, which is that run's own text. Says what the
+   * task was held from, for the machine. Doesn't touch the status: the machine's unhold or comment event does.
+   */
+  leave(task: KanbanTask, exceptComment?: number): HoldBack | undefined {
+    const hold = task.hold;
+    if (!hold) return undefined;
+    if (hold.deskId && hold.deskId !== task.deskId) this.d.update(task.id, { deskId: hold.deskId });
+    this.queueHeld(task, hold.at, exceptComment);
+    return { from: hold.from, ...(hold.reason ? { reason: hold.reason } : {}), ...(hold.text ? { text: hold.text } : {}), ...(hold.phase ? { phase: hold.phase } : {}) };
+  }
+
+  /** Takes a task off hold: back in the column it was held from, as it waited. Nobody is hired and nothing runs: a comment puts it to work. */
+  async unhold(task: KanbanTask, who: KanbanCaller): Promise<string | undefined> {
     if (task.status !== 'on_hold') return 'Only a task on hold can be resumed';
-    // Resuming hires a worker on the creator's sign-in for a task they (or an admin) parked: theirs to say, as the hold was.
-    if (!who.admin && task.createdBy !== who.name) return 'Only whoever made it, or an admin, can resume a task on hold';
-    const text = note?.trim();
-    // Its message to the agent is the user's comment first: the prompt quotes the comments left since the hold.
-    if (text) this.d.addComment(task.project, { taskId: task.id, authorKind: 'user', authorName: who.name, kind: 'message', text });
-    if (task.hold?.deskId && task.hold.deskId !== task.deskId) this.d.update(task.id, { deskId: task.hold.deskId });
-    // What was said meanwhile (the note included) is kept by id on the task until an agent has it: the prompt of whatever run comes next carries it.
-    if (task.hold) this.queueHeld(task, task.hold.at);
-    const back = task.hold?.reason ? { reason: task.hold.reason, ...(task.hold.text ? { text: task.hold.text } : {}), ...(task.hold.phase ? { phase: task.hold.phase } : {}) } : undefined;
-    return this.d.apply(task.id, { type: 'unhold', ...(text ? { text } : {}), ...(back ? { back } : {}) }, { who });
+    // A hold made before the hold kept its column is a hold from Waiting.
+    const back = this.leave(task) ?? { from: 'waiting' as const };
+    return this.d.apply(task.id, { type: 'unhold', back }, { who });
   }
 }

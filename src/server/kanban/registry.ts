@@ -91,8 +91,8 @@ export interface KanbanEngineApi {
   hold?(taskId: number, who: KanbanCaller, opts?: { note?: string; until?: number }): Promise<string | void>;
   /** A held task goes on to Review or Done: the messages left meanwhile are kept for its next run. */
   releaseHeld?(taskId: number): Promise<string | void>;
-  /** A task on hold is taken off it: its implementer is hired again and carries on, with `note` as the user's message. */
-  unhold?(taskId: number, who: KanbanCaller, note?: string): Promise<string | void>;
+  /** A task on hold is taken off it: back in the column it was held from, nothing runs. */
+  unhold?(taskId: number, who: KanbanCaller): Promise<string | void>;
   /** A user comment was stored: resume the task's work with it when its state allows. */
   commented(taskId: number, commentId: number, who: KanbanCaller): Promise<void>;
   /**

@@ -43,8 +43,6 @@ export interface Via {
   prReview?: KanbanPrReviewRequest;
   /** Where a start's first hire sits (start with a desk: the 3D hire form). */
   deskId?: string;
-  /** The hold a task is being taken off (kept for the unhold run's prompt and the worker's look). */
-  hold?: KanbanTask['hold'];
   /** A run that works on the comments made since then (a Stop's own: see finishStopped); the older ones stay queued. */
   pendingSince?: number;
   /** The queued comments the run took off the task for its prompt (Comments.take): put back if its agent never gets the prompt. */
