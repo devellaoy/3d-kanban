@@ -238,7 +238,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.task.move': async (c, m) => {
       const task = taskOf(c, m.rid, m.id);
       if (!task) return;
-      const check = checkMove({ status: task.status, runState: task.runState, heldFrom: task.hold?.from }, m.to);
+      const check = checkMove({ status: task.status, runState: task.runState, heldFrom: task.hold?.from ?? 'waiting' }, m.to);
       if (!check.ok) return fail(c, m.rid, check.reason);
       if (check.action === 'start') {
         const err = await ctx.engine.start(task.id, c);

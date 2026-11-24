@@ -380,6 +380,27 @@ test('a task on hold that an old hold knows no reason for (held from Waiting bef
   await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId, 'worked on', 30_000);
 });
 
+test('a held task whose hold is missing is a hold from Waiting: Resume lands in Waiting as a stop, a comment starts exactly one run', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  fx.repo.updateTask(r.id, { status: 'on_hold', workerId: null, hold: null });
+  assert.equal(await fx.engine.unhold!(r.id, BOB), undefined);
+  const back = fx.task(r.id);
+  assert.equal(back.status, 'waiting');
+  assert.equal(back.waitingReason, 'stopped');
+  assert.match(back.waitingText ?? '', /comment, or Continue/);
+  fx.repo.updateTask(r.id, { status: 'on_hold', hold: null, waitingReason: null, waitingText: null });
+  fx.setRules([COMMENTED]);
+  const mark = fx.invocations().length;
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Go on.' }).comment;
+  await fx.engine.commented(r.id, c.id, BOB);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId, 'worked on', 30_000);
+  assert.equal(fx.invocations().slice(mark).filter((i) => !i.prompt && i.kind === 'claude').length, 1);
+  assert.equal(fx.repo.listRuns(r.id).filter((x) => x.phase === 'resume').length, 1);
+});
+
 test('a comment on a held task while the office has no room: it waits in the queue the ordinary way, off hold, and its run starts once with the comment', async (t) => {
   let full: string | undefined;
   const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });

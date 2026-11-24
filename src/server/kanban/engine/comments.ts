@@ -51,7 +51,7 @@ export interface CommentDeps<L extends CommentLive> {
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): void;
   lastRun(taskId: number): LastRun | undefined;
   /** A task on hold is being taken off it by this comment (Holds.leave): what it was held from, the comment itself not kept for a later run. */
-  leave(task: KanbanTask, exceptComment: number): HoldBack | undefined;
+  leave(task: KanbanTask, exceptComment: number): HoldBack;
   /** The text an asking agent's comment waits for, when it can't be typed in (a permission prompt). */
   askingNote(task: KanbanTask, live: L): string;
 }

@@ -59,11 +59,13 @@ export function checkMove(task: MoveSubject, to: TaskStatus): MoveCheck {
     return no("Only a started task that isn't running can be put on hold");
   }
   if (from === 'on_hold') {
+    // A hold that can't be read is a hold from Waiting, as everywhere else.
+    const heldFrom = task.heldFrom ?? 'waiting';
     if (to === 'in_progress') return no('Add a comment to put it back to work');
-    if (to === task.heldFrom) return { ok: true, action: 'unhold' };
+    if (to === heldFrom) return { ok: true, action: 'unhold' };
     if (to === 'review' || to === 'done') return { ok: true, action: 'status' };
     if (to === 'todo') return { ok: true, action: 'reset' };
-    if (to === 'waiting') return no(`It was held from ${COLUMN[task.heldFrom ?? 'review']}: Resume it to put it back there`);
+    if (to === 'waiting') return no(`It was held from ${COLUMN[heldFrom]}: Resume it to put it back there`);
   }
   if (from === 'in_progress') return no('It is running: stop it first');
   if (to === 'in_progress') return no('Use Continue, Retry or a comment to put it back to work');

@@ -143,19 +143,19 @@ export class Holds {
    * of before a comment started a run for it) is kept for the next run, all but `exceptComment`, which is that run's own text. Says what the
    * task was held from, for the machine. Doesn't touch the status: the machine's unhold or comment event does.
    */
-  leave(task: KanbanTask, exceptComment?: number): HoldBack | undefined {
+  leave(task: KanbanTask, exceptComment?: number): HoldBack {
     const hold = task.hold;
-    if (!hold) return undefined;
+    // A hold that is missing or unreadable is a hold from Waiting, as everywhere else.
+    if (!hold) return { from: 'waiting' };
     if (hold.deskId && hold.deskId !== task.deskId) this.d.update(task.id, { deskId: hold.deskId });
     this.queueHeld(task, hold.at, exceptComment);
-    return { from: hold.from, ...(hold.reason ? { reason: hold.reason } : {}), ...(hold.text ? { text: hold.text } : {}), ...(hold.phase ? { phase: hold.phase } : {}) };
+    return { from: hold.from ?? 'waiting', ...(hold.reason ? { reason: hold.reason } : {}), ...(hold.text ? { text: hold.text } : {}), ...(hold.phase ? { phase: hold.phase } : {}) };
   }
 
   /** Takes a task off hold: back in the column it was held from, as it waited. Nobody is hired and nothing runs: a comment puts it to work. */
   async unhold(task: KanbanTask, who: KanbanCaller): Promise<string | undefined> {
     if (task.status !== 'on_hold') return 'Only a task on hold can be resumed';
-    // A hold made before the hold kept its column is a hold from Waiting.
-    const back = this.leave(task) ?? { from: 'waiting' as const };
+    const back = this.leave(task);
     return this.d.apply(task.id, { type: 'unhold', back }, { who });
   }
 }

@@ -18,7 +18,7 @@ test('the manual moves are the documented ones', () => {
     in_progress: [],
     waiting: ['todo', 'on_hold', 'done', 'archived'],
     review: ['todo', 'on_hold', 'done', 'archived'],
-    on_hold: ['todo', 'review', 'done', 'archived'],
+    on_hold: ['todo', 'waiting', 'review', 'done', 'archived'],
     done: ['review', 'archived'],
     archived: ['done'],
   };
@@ -46,6 +46,8 @@ test('the manual moves are the documented ones', () => {
   assert.deepEqual(no2(checkMove(at('on_hold', { heldFrom: 'waiting' }), 'in_progress')), 'Add a comment to put it back to work');
   assert.deepEqual(no2(checkMove(at('on_hold', { heldFrom: 'review' }), 'in_progress')), 'Add a comment to put it back to work');
   assert.match(no2(checkMove(at('on_hold', { heldFrom: 'review' }), 'waiting')), /held from Review: Resume/);
+  // A hold that can't be read is a hold from Waiting.
+  assert.deepEqual(checkMove(at('on_hold'), 'waiting'), { ok: true, action: 'unhold' });
   assert.deepEqual(checkMove(at('on_hold'), 'review'), { ok: true, action: 'status' });
   assert.deepEqual(checkMove(at('on_hold'), 'done'), { ok: true, action: 'status' });
   assert.deepEqual(checkMove(at('on_hold'), 'todo'), { ok: true, action: 'reset' });

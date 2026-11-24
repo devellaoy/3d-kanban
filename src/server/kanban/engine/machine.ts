@@ -257,10 +257,10 @@ function resumeWith(s: MachineState, text: string, pending = false, last?: LastR
 function restored(s: MachineState, back: HoldBack): MachineState {
   if (back.from === 'review') return moved(s, { status: 'review', runState: 'idle', retryAttempts: 0 });
   const patch = { retryAttempts: 0, ...(back.phase ? { phase: back.phase } : {}) };
-  if (back.reason === 'agent_asking') return waiting(s, 'stopped', "The agent was asking something in its terminal when the task was put on hold, and that run was stopped: comment to answer it, or Retry to carry on", patch);
-  if (back.reason === 'usage_limit') return waiting(s, 'stopped', 'It was waiting out a usage limit when the task was put on hold, and nothing retries by itself now: comment, or Retry, to carry on', patch);
+  if (back.reason === 'agent_asking') return waiting(s, 'stopped', "The agent was asking something in its terminal when the task was put on hold, and that run was stopped: comment to answer it, or Continue, to carry on", patch);
+  if (back.reason === 'usage_limit') return waiting(s, 'stopped', 'It was waiting out a usage limit when the task was put on hold, and nothing retries by itself now: comment, or Continue, to carry on', patch);
   if (back.reason) return waiting(s, back.reason, back.text, patch);
-  return waiting(s, 'stopped', 'It was put on hold while it waited: comment, or Retry, to carry on', patch);
+  return waiting(s, 'stopped', 'It was put on hold while it waited: comment, or Continue, to carry on', patch);
 }
 
 /** What each event does to a task on hold: unhold only puts it back where it came from, a comment does that and puts it to work (the ordinary way), a turn's end changes nothing, the rest are refused. */
