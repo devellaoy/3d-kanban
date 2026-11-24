@@ -52,6 +52,33 @@ test('a comment while the implementer works is typed into its terminal at once; 
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'succeeded');
 });
 
+test("a comment typed into a working implementer names the project's instructions files; without instructions it carries nothing more", async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const rules = [
+    { when: 'Implement kanban task', reply: 'Implemented.', commit: 'Work', delayMs: 1500 },
+    { when: 'from Grace on task', reply: 'Done that too.', commit: 'More' },
+  ];
+  const plain = await working(fx, rules);
+  await say(fx, plain.id, 'One more thing.').done;
+  await waitFor(() => prompts(fx, COMMENT).length === 1, 'the comment in the terminal', 5000);
+  const bare = prompts(fx, COMMENT)[0].prompt!;
+  assert.doesNotMatch(bare, /The project's instructions/);
+  assert.match(bare, /One more thing\.\n\(Take it into account/, 'nothing between the comment and its closing line');
+  await fx.waitTask(plain.id, (x) => x.status === 'review' && x.runState === 'idle', 'the first task done');
+
+  fx.settings.setProject(plain.project, { generalInstructions: 'Keep it small.', testingInstructions: 'Run npm test.' });
+  const task = await working(fx, rules);
+  await say(fx, task.id, 'And log it.').done;
+  await waitFor(() => prompts(fx, COMMENT).some((i) => /And log it/.test(i.prompt!)), 'the second comment in the terminal', 5000);
+  const typed = prompts(fx, COMMENT).find((i) => /And log it/.test(i.prompt!))!.prompt!;
+  const dir = path.join(fx.ctx.filesDir, 'instructions', task.project);
+  assert.ok(typed.includes(path.join(dir, 'general.md')) && typed.includes(path.join(dir, 'testing.md')), 'the paths of the files');
+  assert.doesNotMatch(typed, /Keep it small|Run npm test/, 'not the text');
+  assert.ok(typed.indexOf('And log it.') < typed.indexOf('general.md') && typed.indexOf('testing.md') < typed.indexOf('end your final reply with WORK DONE'), 'after the comment, before the closing line');
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the second task done');
+});
+
 test('a comment is queued, with a note, while a reviewer works; the implementer gets it after the round', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());

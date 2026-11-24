@@ -20,7 +20,8 @@ export interface InstructionFiles {
 }
 
 const PROJECT_ID = /^[a-z0-9-]{1,40}$/;
-const REPO_ID = /^[a-z0-9][a-z0-9-]{0,19}$/;
+// A repository's id, or the project's own for its primary repository (so up to a project id's length).
+const REPO_ID = /^[a-z0-9-]{1,40}$/;
 
 export function instructionsDir(filesDir: string, projectId: string): string {
   return path.join(filesDir, 'instructions', projectId);

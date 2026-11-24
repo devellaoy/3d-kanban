@@ -157,3 +157,12 @@ test('an installed kanban keeps the files in step with the settings, the reposit
   kanban.projectsChanged();
   assert.ok(!existsSync(instructionsDir(kanban.ctx.filesDir, 'new')), 'and loses it with the floor');
 });
+
+test("a primary repository's id is its project's, which may be longer than another repository's", (t) => {
+  const root = files(t);
+  const id = 'a-project-with-quite-a-long-name-0123456'; // 40 characters
+  assert.equal(id.length, 40);
+  const got = syncInstructionFiles(root, id, { repos: [{ id, instructions: 'Run make check.' }] });
+  assert.equal(got.repos[id], path.join(instructionsDir(root, id), `repo-${id}.md`));
+  assert.equal(readFileSync(got.repos[id], 'utf8'), 'Run make check.\n');
+});

@@ -462,6 +462,12 @@ export class Composer {
     return c ? withContract(text, c) : text.trim();
   }
 
+  /** The {{instructions}} block of `task`, for a text no prompt of the composer carries (a comment typed into a working agent); '' when there is none. */
+  instructionsOf(task: KanbanTask): string {
+    const def = this.ctx.project(task.project);
+    return def ? instructionsBlock(this.ctx, (id, p, v) => this.text(id, p, v), task, taskRepos(def, task)) : '';
+  }
+
   /** The first message of a fresh session taking a task over (kanban.handoff), for `next` to follow. */
   handoff(def: FloorDef, task: KanbanTask, floorDir: string, next: string): string {
     const accepted = this.ctx.repo.acceptedPlan(task.id);
