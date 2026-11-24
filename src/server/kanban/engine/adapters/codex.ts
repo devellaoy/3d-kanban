@@ -90,6 +90,7 @@ export function readCodexTurn(file: string, opts?: ReadOpts): TurnResult | undef
 export const codexAdapter: TaskAgentAdapter = {
   tool: 'codex',
   launchArgs(phase: RunPhase, opts: LaunchOptions): string[] {
+    // opts.readDirs aren't passed: Codex reads anywhere, and --add-dir would make such a folder writable.
     const args: string[] = [];
     if (phase === 'plan' || phase === 'review') args.push('-s', 'read-only', '-a', 'never');
     // Reading pull requests takes gh, and gh the network, which Codex's read-only sandbox has none of:

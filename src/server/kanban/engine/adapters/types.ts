@@ -15,6 +15,8 @@ export interface LaunchOptions {
   investigate?: boolean;
   /** Folders outside the workspace the agent reads (or, investigating, writes its report in). */
   addDirs?: string[];
+  /** Folders the agent only reads (the project's instructions files). */
+  readDirs?: string[];
   model?: string;
   effort?: KanbanEffort;
   /** What the plugins add (skills and the like: ctx.workerExtras().args), last. */

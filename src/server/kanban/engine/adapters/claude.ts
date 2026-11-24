@@ -337,7 +337,7 @@ export const claudeAdapter: TaskAgentAdapter = {
     // files: the contract keeps it off the repositories). Bash keeps the network in every phase, so a
     // pull-request review's gh works with the review sandbox on too. 'auto' is Claude's auto mode; the other values are bypass mode.
     else args.push('--permission-mode', opts.permission === 'auto' ? 'auto' : 'bypassPermissions');
-    args.push(...addDirs(opts.addDirs));
+    args.push(...addDirs([...(opts.addDirs ?? []), ...(opts.readDirs ?? [])]));
     // Upstream passes the alias (spawnModel) as its own --model; a full id goes here, after it, and
     // the CLI takes the last --model it is given.
     if (opts.model && !isClaudeModel(opts.model)) args.push('--model', opts.model);

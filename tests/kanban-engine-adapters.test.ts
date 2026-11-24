@@ -24,6 +24,17 @@ const cAssistant = (content: unknown[], extra: object = {}, id?: string) => ({ t
 const text = (t: string) => ({ type: 'text', text: t });
 const messageTextOf = (l: { message: { content: unknown } }) => String(l.message.content);
 
+test('readDirs are --add-dir for Claude in every phase (deduplicated with addDirs) and never passed to Codex', () => {
+  const base = { permission: 'bypass' as const, planPermission: 'plan' as const, sandbox: false, readDirs: ['/instr'] };
+  for (const phase of ['plan', 'implement', 'review', 'pr-review'] as const) {
+    const args = claudeAdapter.launchArgs(phase, { ...base, addDirs: ['/refs', '/instr'] });
+    assert.deepEqual(args.slice(-4), ['--add-dir', '/refs', '--add-dir', '/instr'], phase);
+  }
+  assert.ok(!codexAdapter.launchArgs('implement', base).includes('/instr'));
+  assert.ok(!codexAdapter.launchArgs('implement', { ...base, permission: 'workspace-write' }).includes('/instr'));
+  assert.deepEqual(codexAdapter.launchArgs('implement', { ...base, permission: 'workspace-write', addDirs: ['/up'] }), ['-s', 'workspace-write', '-a', 'never', '--add-dir', '/up']);
+});
+
 test('claude launch flags per phase, with the review sandbox, extra dirs, models and plugin extras', () => {
   const base = { permission: 'bypass' as const, planPermission: 'plan' as const, sandbox: false };
   assert.deepEqual(claudeAdapter.launchArgs('plan', { ...base, addDirs: ['/refs', '/refs'] }), ['--permission-mode', 'plan', '--add-dir', '/refs']);

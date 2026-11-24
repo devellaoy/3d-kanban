@@ -180,6 +180,7 @@ test('a pull-request review is an engine run: a new investigate task, a reviewer
   const inv = fx.invocations().find((i) => i.kind === 'claude' && promptOf(i) && /Review these pull requests/.test(promptOf(i)!))!;
   assert.ok(inv.cwd.includes('.worktrees'), `it ran in its worktree, not ${inv.cwd}`);
   assert.ok(['--permission-mode', 'bypassPermissions', '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'].every((a) => inv.args.includes(a)));
+  assert.ok(inv.args.some((x, i) => x === '--add-dir' && inv.args[i + 1] === path.join(fx.ctx.filesDir, 'instructions', 'proj')), "the project's instructions folder is readable");
   assert.equal(inv.args[inv.args.lastIndexOf('--model') + 1], 'claude-opus-5-5[1m]', 'the full id is what runs');
   const prompt = promptOf(inv)!;
   assert.match(prompt, /- acme\/proj#3 “UYT-9 Fix login” \(branch kanban\/uyt-9-fix\) https:\/\/github\.com\/acme\/proj\/pull\/3/);
