@@ -389,8 +389,9 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     },
     projectsChanged() {
       if (closed) return;
-      // Only when the projects or their repositories changed: this is called on every change of the floors.
-      const sig = JSON.stringify(opts.floors().map((d) => [d.id, projectRepos(d).map((r) => [r.id, r.instructions ?? ''])]));
+      // Only when the projects or their repositories changed: this is called on every change of the floors, so the
+      // signature is read from the floors as saved (projectRepos may ask git for a checkout's remote).
+      const sig = JSON.stringify(opts.floors().map((d) => [d.id, (d.repos ?? []).map((r) => [r.id, r.instructions ?? ''])]));
       if (sig !== instructionsSynced) {
         instructionsSynced = sig;
         syncAll(true);

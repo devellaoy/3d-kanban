@@ -8,6 +8,7 @@ import type { Floor } from '../src/server/floor.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 import { openKanbanDb } from '../src/server/kanban/db/open.js';
 import { KanbanRepository } from '../src/server/kanban/db/repository.js';
+import { prReviewRepoIds } from '../src/server/kanban/engine/launchdirs.js';
 import { Composer, reposText, slugify } from '../src/server/kanban/engine/compose.js';
 import type { PromptKind } from '../src/server/kanban/engine/machine.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
@@ -695,6 +696,13 @@ test('instructions: a pr.review names the repositories involved in the pull requ
   assert.ok(only.includes(at('repo-proj.md')) && !only.includes(at('repo-api.md')));
   const both = compose.build('pr.review', def, task, 'claude', dir, { ...insX('pr-review'), prRepoIds: ['api'] });
   assert.ok(both.includes(at('repo-proj.md')) && both.includes(at('repo-api.md')));
+  // A continued review (an answer, a restart) keeps to the repositories of its request, read from the pull requests again.
+  assert.deepEqual(prReviewRepoIds(def, [{ repo: 'acme/proj' }]), []);
+  assert.deepEqual(prReviewRepoIds(def, [{ repo: 'ACME/api' }]), ['api']);
+  for (const kind of ['continue', 'restarted', 'resume'] as const) {
+    const later = compose.build(kind, def, task, 'claude', dir, { ...insX('pr-review'), text: 'Go on.', prRepoIds: prReviewRepoIds(def, [{ repo: 'acme/proj' }]) });
+    assert.ok(later.includes(at('repo-proj.md')) && !later.includes(at('repo-api.md')), kind);
+  }
 });
 
 test('instructions: a project with none gets nothing extra, in every kind', (t) => {

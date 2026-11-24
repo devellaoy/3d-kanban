@@ -4,7 +4,9 @@
 import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
-import type { KanbanTask } from '../../../shared/kanban/types.js';
+import type { KanbanTask, PrRef } from '../../../shared/kanban/types.js';
+import { sameRepo } from '../../../shared/floors.js';
+import { projectRepos } from '../projects.js';
 import type { KanbanContext } from '../registry.js';
 import { instructionsDir } from '../instructions.js';
 import { grantDir, grantFiles } from '../uploads.js';
@@ -48,4 +50,12 @@ export function prReviewDirs(ctx: KanbanContext, task: KanbanTask, withFiles: bo
   if (!withFiles) return { readDirs };
   grantFiles(ctx.filesDir, task.id, ctx.repo.listAttachments(task.id));
   return { addDirs: [grantDir(ctx.filesDir, task.id)], readDirs };
+}
+
+/**
+ * The project's other git repositories the pull requests `prs` are in: the ones a pull-request review works in besides the
+ * primary, on its first prompt and on every later one (a continued review must not be told to read the rest of the task's).
+ */
+export function prReviewRepoIds(def: FloorDef, prs: Pick<PrRef, 'repo'>[]): string[] {
+  return projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
 }

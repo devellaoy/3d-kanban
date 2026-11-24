@@ -25,8 +25,8 @@ test('the folder and the parts are written with the trimmed text and a newline, 
   assert.equal(readFileSync(got.testing!, 'utf8'), 'Run it.\n');
   assert.deepEqual(got.repos, { api: path.join(dir, 'repo-api.md') });
   assert.equal(readFileSync(got.repos.api, 'utf8'), 'Use X\n');
-  assert.equal(statSync(got.general!).mode & 0o777, 0o444);
-  assert.equal(statSync(dir).mode & 0o777, 0o700);
+  if (process.platform !== 'win32') assert.equal(statSync(got.general!).mode & 0o777, 0o444);
+  if (process.platform !== 'win32') assert.equal(statSync(dir).mode & 0o777, 0o700);
 });
 
 test('with no instructions the folder still exists and no path is returned', (t) => {
@@ -45,7 +45,7 @@ test('the same text is not written again, a changed one is (although the file is
   assert.equal(statSync(file).mtimeMs, at);
   assert.equal(syncInstructionFiles(root, 'web', { general: 'two' }).general, file);
   assert.equal(readFileSync(file, 'utf8'), 'two\n');
-  assert.equal(statSync(file).mode & 0o777, 0o444);
+  if (process.platform !== 'win32') assert.equal(statSync(file).mode & 0o777, 0o444);
   assert.equal(syncInstructionFiles(root, 'web', { general: ' \n\t' }).general, undefined);
   assert.ok(!existsSync(file));
 });

@@ -20,7 +20,7 @@ import type { TurnSignal } from '../../../shared/kanban/signals.js';
 import type { DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
 import { BRANCH_PREFIX, Worktrees } from '../../worktrees.js';
 import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js';
-import { launchDirs, prReviewDirs } from './launchdirs.js';
+import { launchDirs, prReviewDirs, prReviewRepoIds } from './launchdirs.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
 import { sameRepo } from '../../../shared/floors.js';
@@ -839,7 +839,7 @@ export class Orchestrator {
       findings: eff.prompt === 'fix' ? reviewFindings(this.latestSummary(task.id, 'review') ?? '') : undefined,
       fixSummary: eff.prompt === 'rereview' ? this.latestSummary(task.id, 'fix') : undefined,
       refsFile,
-      fixPrs,
+      fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.lastPrReview(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
       held,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
@@ -1062,7 +1062,7 @@ export class Orchestrator {
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
     const review = this.reviewSettings(task), tool: KanbanTool = req.tool ?? review.tool, same = !req.tool || req.tool === review.tool;
     const model = req.model ?? (same ? review.model : undefined), effort = req.effort ?? (same ? review.effort : undefined);
-    const adapter = this.adapters[tool], involved = projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
+    const adapter = this.adapters[tool], involved = prReviewRepoIds(def, req.prs);
 
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
