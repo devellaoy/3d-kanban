@@ -1744,12 +1744,12 @@ export class Orchestrator {
         return err;
       }
       if (this.liveOf(task.id)) return 'It is still running: answer in its terminal, or stop it first';
-      const text = answer?.trim() ?? '';
-      const rows = this.takable(taskId, attachmentIds);
+      const text = answer?.trim() ?? '', rows = this.takable(taskId, attachmentIds);
       const msg = this.compose.commentText(task.project, taskId, text, rows);
-      const err = await this.apply(taskId, { type: 'continue', answer: msg, last: this.lastRun(taskId) }, { who });
-      if (!err && (text || rows.length)) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text }, rows.map((r) => r.id));
-      return err;
+      if (task.status !== 'waiting' || task.runState !== 'idle') return 'Only a waiting task can be continued';
+      // The answer is a comment first, so the run it starts has its id: whatever its agent never gets goes back in the queue (Comments.requeue).
+      const c = text || rows.length ? this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text }, rows.map((r) => r.id)) : undefined;
+      return this.apply(taskId, { type: 'continue', answer: msg, last: this.lastRun(taskId) }, { who, ...(c ? { commentId: c.id } : {}) });
     });
   }
 

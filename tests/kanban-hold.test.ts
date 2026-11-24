@@ -860,6 +860,105 @@ for (const withRequest of [false, true]) {
   });
 }
 
+/** How often a prompt carries `text` as a message left on the task ("- Ada: text"; a hand-off's list of the latest comments is another thing). */
+const asMessage = (p: string, text: string) => p.split(`- Ada: ${text}`).length - 1;
+
+/** An implementer that asked a question and whose run is over: held and resumed, or (`restart`) the office restarted meanwhile. */
+async function askingNoRun(fx: EngineFixture, how: 'resume' | 'restart', patch: Parameters<EngineFixture['newTask']>[0] = {}) {
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Which colour?', ask: 'question' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false, ...patch });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking' && x.runState === 'idle', 'asking', 30_000);
+  if (how === 'resume') {
+    assert.equal(await fx.engine.hold!(task.id, ADA, {}), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+    assert.equal(await fx.engine.unhold!(task.id, BOB), undefined);
+  } else {
+    await fx.restartOffice({ carryOn: false });
+    await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking' && x.runState === 'idle', 'asking, no live run', 30_000);
+  }
+  return task;
+}
+
+test('asking with no run (held and resumed): the answer from the box is a comment, queued for room then stopped, the Retry delivers it once', async (t) => {
+  let full: string | undefined;
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+  t.after(() => fx.close());
+  const task = await askingNoRun(fx, 'resume');
+  full = 'The office is at its limit';
+  assert.equal(await fx.engine.continue(task.id, ADA, 'Blue, please.'), undefined);
+  const q = await fx.waitTask(task.id, (x) => x.runState === 'queued', 'queued');
+  const answer = fx.repo.listComments(task.id).comments.filter((c) => c.authorKind === 'user' && c.text === 'Blue, please.');
+  assert.equal(answer.length, 1, 'stored once');
+  assert.equal(q.queuedRun?.commentId, answer[0].id);
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  assert.deepEqual(fx.task(task.id).pendingMessages.map((m) => m.commentId), [answer[0].id], 'the answer is given back');
+  full = undefined;
+  fx.setRules([{ when: 'Your last turn on task', reply: 'Blue then.', commit: 'Blue' }]);
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0, 'the Retry done', 30_000);
+  assert.deepEqual(prompted(fx, mark, 'Blue, please.').map((p) => asMessage(p, 'Blue, please.')), [1], 'one prompt carries it as a message, once');
+  assert.equal(fx.repo.listComments(task.id).comments.some((c) => c.pending), false);
+});
+
+test('asking with no run (after a restart, never held): the answer from the box, its launch fails: it is kept, and the Retry delivers it once', async (t) => {
+  const state = { ok: true };
+  const fx = await engineFixture({ runAs: { claudeReady: () => state.ok, why: () => 'Ada is not signed in to Claude', apply: (_o: unknown, env: unknown) => env } as never });
+  t.after(() => fx.close());
+  const task = await askingNoRun(fx, 'restart', { createdByAccount: 'acc1' });
+  // Its woken worker goes home, so the answer needs a new hire (which fails below).
+  await fx.workers.kill(fx.task(task.id).workerId!, 'keep');
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking', 'still asking');
+  state.ok = false;
+  assert.ok(String(await fx.engine.continue(task.id, ADA, 'Blue, please.')), 'the launch fails');
+  const failed = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'failed');
+  assert.deepEqual(failed.pendingMessages.map((m) => m.text.includes('Blue, please.')), [true], 'the answer is kept');
+  state.ok = true;
+  fx.setRules([{ when: 'Your last turn on task', reply: 'Blue then.', commit: 'Blue' }]);
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0, 'the Retry done', 30_000);
+  assert.deepEqual(prompted(fx, mark, 'Blue, please.').map((p) => asMessage(p, 'Blue, please.')), [1]);
+});
+
+test('asking with no run: the answer from the box, its launch fails: it is kept, and the Retry delivers it once', async (t) => {
+  const state = { ok: true };
+  const fx = await engineFixture({ runAs: { claudeReady: () => state.ok, why: () => 'Ada is not signed in to Claude', apply: (_o: unknown, env: unknown) => env } as never });
+  t.after(() => fx.close());
+  const task = await askingNoRun(fx, 'resume', { createdByAccount: 'acc1' });
+  state.ok = false;
+  const err = await fx.engine.continue(task.id, ADA, 'Blue, please.');
+  assert.ok(String(err), 'the launch fails');
+  const failed = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'failed');
+  assert.equal(failed.pendingMessages.length, 1, 'the answer is kept');
+  assert.equal(fx.repo.listComments(task.id).comments.filter((c) => c.authorKind === 'user' && c.text === 'Blue, please.').length, 1, 'stored once');
+  state.ok = true;
+  fx.setRules([{ when: 'Your last turn on task', reply: 'Blue then.', commit: 'Blue' }]);
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0, 'the Retry done', 30_000);
+  assert.deepEqual(prompted(fx, mark, 'Blue, please.').map((p) => asMessage(p, 'Blue, please.')), [1]);
+});
+
+test('a PR reviewer asked, held and resumed: the answer from the box, queued then stopped, reaches the new reviewer once on Retry', async (t) => {
+  let full: string | undefined;
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+  t.after(() => fx.close());
+  const { r } = await heldPrReviewAsk(fx, [APPROVED, RENAME]);
+  assert.equal(await fx.engine.unhold!(r.id, BOB), undefined);
+  full = 'The office is at its limit';
+  assert.equal(await fx.engine.continue(r.id, ADA, 'Use main-2 as the base.'), undefined);
+  await fx.waitTask(r.id, (x) => x.runState === 'queued', 'queued');
+  assert.equal(await fx.engine.stop(r.id, ADA), undefined);
+  assert.deepEqual(fx.task(r.id).pendingMessages.filter((m) => m.answer).map((m) => m.text.includes('Use main-2 as the base.')), [true], 'given back as the reviewer\'s answer');
+  full = undefined;
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0 && !x.reviewerWorkerId, 'the Retry done', 40_000);
+  assert.deepEqual(prompted(fx, mark, 'Use main-2 as the base.').map((p) => p.split('Use main-2 as the base.').length - 1), [1]);
+});
+
 test('a held task whose hold is missing is a hold from Waiting: Resume lands in Waiting as a stop, a comment starts exactly one run', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
