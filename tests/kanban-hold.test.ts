@@ -473,6 +473,92 @@ for (const resumeFirst of [false, true]) {
   });
 }
 
+/** A PR reviewer has asked something, the task was held and its reviewer is gone; the fake agents answer a later prompt by `then`. */
+async function heldPrReviewAsk(fx: EngineFixture, then: Rule[], patch: Parameters<EngineFixture['newTask']>[0] = {}) {
+  fx.setRules([IMPLEMENT, { when: 'Review these pull requests', reply: 'Which branch is the base?', ask: 'question' }]);
+  const r = await inReview(fx, { ticket: 'UYT-3', ...patch });
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 5, branch: r.branch } as never], taskId: r.id }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking' && x.phase === 'pr-review', 'the reviewer asking', 30_000);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'on_hold' && !x.reviewerWorkerId, 'held, the reviewer gone');
+  fx.setRules([...then, { when: 'Review these pull requests', reply: 'Which branch is the base?', ask: 'question' }]);
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'The base is main-2.' }).comment;
+  return { r, c };
+}
+const APPROVED: Rule = { when: 'has since said|The base is main-2', reply: 'Thanks.\n\nREVIEW: APPROVED' };
+/** How many different prompts carry the answer, and how many times the answer is in the one that has it. */
+const delivered = (fx: EngineFixture, mark = 0) => distinct(fx, mark).filter((p) => p.includes('The base is main-2.')).map((p) => p.split('The base is main-2.').length - 1);
+
+test('a PR reviewer\'s answer, no room: queued the ordinary way, then launched with the answer once', async (t) => {
+  let full: string | undefined;
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, engine: { sweepMs: 100 } });
+  t.after(() => fx.close());
+  const { r, c } = await heldPrReviewAsk(fx, [APPROVED]);
+  full = 'The office is at its limit';
+  await fx.engine.commented(r.id, c.id, BOB);
+  const q = await fx.waitTask(r.id, (x) => x.runState === 'queued', 'queued');
+  assert.equal(q.queuedRun?.phase, 'pr-review');
+  assert.match(q.queuedRun?.text ?? '', /The base is main-2\./);
+  full = undefined;
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !x.reviewerWorkerId, 'the review answered', 30_000);
+  assert.deepEqual(delivered(fx), [1], 'one prompt has the answer, once');
+  assert.equal(fx.task(r.id).pendingMessages.length, 0);
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});
+
+test('a PR reviewer\'s answer, its launch fails: the answer is kept and the Retry delivers it, once', async (t) => {
+  const state = { ok: true };
+  const fx = await engineFixture({ runAs: { claudeReady: () => state.ok, why: () => 'Ada is not signed in to Claude', apply: (_o: unknown, env: unknown) => env } as never });
+  t.after(() => fx.close());
+  const { r, c } = await heldPrReviewAsk(fx, [APPROVED], { createdByAccount: 'acc1' });
+  state.ok = false;
+  await fx.engine.commented(r.id, c.id, BOB);
+  const failed = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'failed');
+  assert.equal(failed.pendingMessages.length, 1, 'kept: no agent has it');
+  state.ok = true;
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !x.reviewerWorkerId, 'back in review', 30_000);
+  assert.equal(delivered(fx, mark).length, 1, 'one prompt carries the answer');
+  assert.equal(delivered(fx, mark)[0], 1, 'once');
+  assert.equal(fx.task(r.id).pendingMessages.length, 0);
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});
+
+test('a PR reviewer\'s answer, the run is stopped before its agent has the prompt: the answer is kept and the Retry delivers it, once', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const { r, c } = await heldPrReviewAsk(fx, [{ when: 'has since said', reply: 'Thanks.\n\nREVIEW: APPROVED', submitDelayMs: 5000 }]);
+  await fx.engine.commented(r.id, c.id, BOB);
+  await fx.waitTask(r.id, (x) => x.runState !== 'idle' && !!x.reviewerWorkerId, 'the reviewer hired');
+  assert.equal(await fx.engine.stop(r.id, ADA), undefined);
+  const w = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped' && x.runState === 'idle', 'stopped', 30_000);
+  assert.equal(w.pendingMessages.length, 1, 'kept: its agent never had it');
+  fx.setRules([APPROVED]);
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !x.reviewerWorkerId, 'back in review', 30_000);
+  assert.deepEqual(delivered(fx, mark), [1], 'one prompt carries the answer, once');
+  assert.equal(fx.task(r.id).pendingMessages.length, 0);
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});
+
+test('a PR reviewer\'s answer, the office restarts before its agent has the prompt: the run is carried on with the answer, once', async (t) => {
+  const fx = await engineFixture({ engine: { restartStaggerMs: 50 } });
+  t.after(() => fx.close());
+  const { r, c } = await heldPrReviewAsk(fx, [{ when: 'has since said|The base is main-2', reply: 'Thanks.\n\nREVIEW: APPROVED', submitDelayMs: 3000 }]);
+  await fx.engine.commented(r.id, c.id, BOB);
+  await fx.waitTask(r.id, (x) => x.runState !== 'idle' && !!x.reviewerWorkerId, 'the reviewer hired');
+  fx.setRules([APPROVED]);
+  await fx.restartOffice();
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !x.reviewerWorkerId, 'back in review', 40_000);
+  const all = delivered(fx);
+  assert.ok(all.length >= 1 && all.every((n) => n === 1), `the answer is in each prompt that has it once: ${all}`);
+  assert.equal(fx.task(r.id).pendingMessages.length, 0);
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});
+
 test('a held task whose hold is missing is a hold from Waiting: Resume lands in Waiting as a stop, a comment starts exactly one run', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());

@@ -795,7 +795,7 @@ export class Orchestrator {
     if (!def || !floor) return "The project's floor isn't open";
     // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer (see Restarts.reviewer).
     const { same: last, restarted } = this.restarts.reviewer(task, eff, floor);
-    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted, eff.text);
+    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted, eff);
     const role = eff.role;
     const review = this.reviewSettings(task);
     const defaults = this.ctx.settings.get().defaults;
@@ -1064,16 +1064,16 @@ export class Orchestrator {
    * pull requests are in (never the floor's checkout, never the task's worktree), with the review's
    * read-only flags. A Retry reviews them again from the start.
    */
-  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean, said?: string): Promise<string | NoRoom | undefined> {
+  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean, asked: RunEffect): Promise<string | NoRoom | undefined> {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
+    const kept = !asked.text && asked.prompt === 'continue' ? this.comments.take(task, via.pendingSince) : undefined;
+    const eff: RunEffect = { ...asked, pending: undefined, ...(kept ? { text: kept.text } : {}) };
+    if (kept) via.taken = kept.msgs; // what the user said to a reviewer that asked: the comment that answered it, or (a Retry after that failed) the messages kept for it
     const req = via.prReview ?? this.lastPrReview(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
-    const review = this.reviewSettings(task);
-    const tool: KanbanTool = req.tool ?? review.tool;
-    const same = !req.tool || req.tool === review.tool;
+    const review = this.reviewSettings(task), tool: KanbanTool = req.tool ?? review.tool, same = !req.tool || req.tool === review.tool;
     const model = req.model ?? (same ? review.model : undefined), effort = req.effort ?? (same ? review.effort : undefined);
-    const adapter = this.adapters[tool];
-    const involved = projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
+    const adapter = this.adapters[tool], involved = projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
 
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
@@ -1087,11 +1087,11 @@ export class Orchestrator {
       phase: 'pr-review',
       prs,
       prTask: attached ? `They are kanban task #${task.id}'s: ${task.title}${task.ticket ? ` (${task.ticket})` : ''}` : '',
-      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir), text: said,
+      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir), text: eff.text,
     };
     const prompt = typeable(this.compose.build('pr.review', def, task, tool, floor.dir, x));
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase('pr-review'));
-    const addDirs = said ? (grantFiles(this.ctx.filesDir, task.id, this.ctx.repo.listAttachments(task.id)), [grantDir(this.ctx.filesDir, task.id)]) : undefined;
+    const addDirs = eff.text ? (grantFiles(this.ctx.filesDir, task.id, this.ctx.repo.listAttachments(task.id)), [grantDir(this.ctx.filesDir, task.id)]) : undefined;
     const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args, ...(addDirs ? { addDirs } : {}) });
 
     const owner = hireOwner(task, via.who);
@@ -1102,7 +1102,7 @@ export class Orchestrator {
     const full = signIn ? undefined : this.noRoom(floor, undefined, countsWith);
     if (full) return { queued: full };
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' } });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { ...queuedOf({ ...eff, phase: 'pr-review', role: 'reviewer' }), prompt: eff.text ? eff.prompt : 'pr.review', ...(via.taken?.length ? { taken: via.taken } : {}) } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const fail = (err: string) => {
       this.finishRun(run.id, task.project, { status: 'failed', error: err });
@@ -1126,7 +1126,7 @@ export class Orchestrator {
       settingsFile: 'kanban',
     });
     if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired);
-    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, ack: () => this.ctx.repo.clearRunLaunch(run.id) };
+    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, eff, via, ack: () => this.ctx.repo.clearRunLaunch(run.id) };
     this.live.set(hired.id, live);
     this.prompted(live, prompt);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id });
