@@ -35,8 +35,8 @@ test('a move carries a note and a date only where they mean something', () => {
   assert.deepEqual(move({ note: '  keys  ', until }), { t: 'kanban.task.move', id: 1, to: 'on_hold', note: 'keys', until });
   assert.deepEqual(move({ note: '   ' }), { t: 'kanban.task.move', id: 1, to: 'on_hold' });
   assert.deepEqual(move({}), { t: 'kanban.task.move', id: 1, to: 'on_hold' });
-  // A message for the agent on a resume.
-  assert.deepEqual(move({ note: 'keys are in' }, 'in_progress'), { t: 'kanban.task.move', id: 1, to: 'in_progress', note: 'keys are in' });
+  // A note sent with a move to In progress (a browser tab of before Resume only changed the state) is dropped: the move itself is refused or starts the task.
+  assert.deepEqual(move({ note: 'keys are in' }, 'in_progress'), { t: 'kanban.task.move', id: 1, to: 'in_progress' });
   assert.deepEqual(move({ note: 'x'.repeat(HOLD_NOTE_MAX) }), { t: 'kanban.task.move', id: 1, to: 'on_hold', note: 'x'.repeat(HOLD_NOTE_MAX) });
   assert.match(String(move({ note: 'x'.repeat(HOLD_NOTE_MAX + 1) })), /too long/);
   assert.match(String(move({ note: 5 })), /must be text/);

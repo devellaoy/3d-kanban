@@ -7,13 +7,16 @@ import { TASK_STATUSES, type RunState, type TaskStatus } from './types.js';
 export interface MoveSubject {
   status: TaskStatus;
   runState: RunState;
+  /** The column a task on hold was held from (TaskHold.from); Resume goes back there. */
+  heldFrom?: 'waiting' | 'review';
 }
 
 /**
  * What a move does. `start`: todo → in_progress starts the task (the engine's start). `reset`: back
  * to todo, the automation's state cleared, to start over. `status`: only the column changes. `hold`:
  * waiting or review → on_hold sends the task's workers home and parks it (see hold.ts). `unhold`:
- * on_hold → in_progress hires a worker again and carries on where it left off.
+ * on_hold → the column it was held from: only the state changes (Resume), no agent starts; a comment
+ * is what puts a held task back to work.
  */
 export type MoveAction = 'start' | 'reset' | 'status' | 'hold' | 'unhold';
 
@@ -56,9 +59,11 @@ export function checkMove(task: MoveSubject, to: TaskStatus): MoveCheck {
     return no("Only a started task that isn't running can be put on hold");
   }
   if (from === 'on_hold') {
-    if (to === 'in_progress') return { ok: true, action: 'unhold' };
+    if (to === 'in_progress') return no('Add a comment to put it back to work');
+    if (to === task.heldFrom) return { ok: true, action: 'unhold' };
     if (to === 'review' || to === 'done') return { ok: true, action: 'status' };
     if (to === 'todo') return { ok: true, action: 'reset' };
+    if (to === 'waiting') return no(`It was held from ${COLUMN[task.heldFrom ?? 'review']}: Resume it to put it back there`);
   }
   if (from === 'in_progress') return no('It is running: stop it first');
   if (to === 'in_progress') return no('Use Continue, Retry or a comment to put it back to work');

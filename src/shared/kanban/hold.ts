@@ -17,9 +17,9 @@ export interface TaskHold {
   note?: string;
   /** "Hold until" (ms; the start of that local day is fine): what the task waits for is due then. */
   until?: number;
-  /** The implementer's look, so the lounge figure and the worker hired on resume keep its name and colour. */
+  /** The implementer's look, for the lounge figure. */
   worker?: { name: string; color: string };
-  /** Held while waiting for a plan's approval or answers: why it waited, its text and phase. Resuming puts it back to Waiting with them (nothing is hired). */
+  /** What the task waited for when it was held (any waiting reason): why, its text and phase. Resuming puts it back to Waiting with them (nothing is hired, nothing runs). */
   reason?: WaitingReason;
   text?: string;
   phase?: RunPhase;
@@ -47,7 +47,7 @@ declare module './types.js' {
   }
 }
 
-/** The longest reason a hold (or a message sent along with a resume) may give. */
+/** The longest reason a hold may give. */
 export const HOLD_NOTE_MAX = 500;
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** How far ahead "hold until" may reach: about two years. */
@@ -59,14 +59,14 @@ export function validHoldUntil(until: unknown, now: number): until is number {
 }
 
 /**
- * The `note` and `until` of a kanban.task.move (the validator's one-line call). A note comes with a
- * move to on_hold (the reason) or to in_progress (a message for the agent when it is resumed); a date
- * only with a move to on_hold. Returns only what was given.
+ * The `note` and `until` of a kanban.task.move (the validator's one-line call). A note and a date come
+ * only with a move to on_hold (the reason, and until when). Returns only what was given.
  */
 export function moveExtras(r: Obj, to: TaskStatus, now = Date.now()): { note?: string; until?: number } {
   const out: { note?: string; until?: number } = {};
-  if (r.note !== undefined) {
-    if (to !== 'on_hold' && to !== 'in_progress') bad('A note goes only with a move to On hold or In progress');
+  // A note sent with a move to In progress comes from a browser tab of before Resume only moved the state: ignored, the move itself is refused or starts the task.
+  if (r.note !== undefined && to !== 'in_progress') {
+    if (to !== 'on_hold') bad('A note goes only with a move to On hold');
     const note = text(r.note, 'The note', HOLD_NOTE_MAX, { empty: true }).trim();
     if (note) out.note = note;
   }

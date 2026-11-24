@@ -261,16 +261,18 @@ test('On hold: the longest-held card first, and the column takes the cards of it
   assert.equal(cols.review.length, 1);
 });
 
-test('dropZones: a waiting or review card may go on hold, an on hold card back to work', () => {
+test('dropZones: a waiting or review card may go on hold, an on hold card back where it came from (not to work)', () => {
   for (const status of ['waiting', 'review'] as const) {
     const z = dropZones({ status, runState: 'idle' }).find((x) => x.to === 'on_hold');
     assert.deepEqual([z?.ok, z?.action], [true, 'hold']);
     assert.equal(dropZones({ status, runState: 'running' }).find((x) => x.to === 'on_hold')?.ok, false);
   }
-  const held = dropZones({ status: 'on_hold', runState: 'idle' });
+  const held = dropZones({ status: 'on_hold', runState: 'idle', hold: { at: 1, by: 'Ada', from: 'waiting' } });
   assert.equal(held.some((x) => x.to === 'on_hold'), false);
-  assert.equal(held.find((x) => x.to === 'in_progress')?.action, 'unhold');
-  assert.deepEqual(dropTargets({ status: 'on_hold', runState: 'idle' }).sort(), ['archived', 'done', 'in_progress', 'review', 'todo']);
+  assert.equal(held.find((x) => x.to === 'waiting')?.action, 'unhold');
+  assert.equal(held.find((x) => x.to === 'in_progress')?.ok, false);
+  assert.deepEqual(dropTargets({ status: 'on_hold', runState: 'idle', hold: { at: 1, by: 'Ada', from: 'waiting' } }).sort(), ['archived', 'done', 'review', 'todo', 'waiting']);
+  assert.deepEqual(dropTargets({ status: 'on_hold', runState: 'idle', hold: { at: 1, by: 'Ada', from: 'review' } }).sort(), ['archived', 'done', 'review', 'todo']);
 });
 
 test('boardStats counts a held task in the total only', () => {
