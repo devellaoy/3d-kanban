@@ -289,7 +289,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   delivered at the turn's end once the prompt is answered in the terminal), with a status note saying
   so. `continue` without text is refused ("Type your answer, or answer in the terminal"). The task view
   shows the answer box only for `askingKind: 'question'`; otherwise "answer it in its terminal" with
-  **⌨️ Open its terminal**.
+  **⌨️ Open its terminal**. That is while the run is live (one of the task's runs is `running`). With no live run
+  (`agent_asking` after a turn that ended on a question, an office restart or a hold) the view shows the answer box
+  whatever `askingKind` says, with no terminal link: `continue(answer)` then starts a run in the asked phase
+  (`client/kanban/asking.ts`).
 - Markers (appended by the engine as a non-editable contract block, never user-editable):
   - final marker (`finalMarker(phase, text, exitPlan)`; the end of the turn, see above): plan → `PLAN READY`, a `QUESTIONS:` heading or ExitPlanMode; review and pr-review → a verdict line among the last 3 non-empty lines; any other phase (implement, fix, resume, pr, pr-fix, pr-conflicts, investigations) → a line `WORK DONE` (`WORK_DONE_LINE`; any case, emphasis, closing punctuation or emoji allowed, e.g. `Work done ✅`) among the last 3 non-empty lines once `PR:` lines are left out (the pr contract asks for those at the end too), not in a code block or quote. The implement, investigate and pr contracts ask for it (`FINISH` in `shared/kanban/prompts.ts`), the plan and review ones say that a reply without their marker is an interim update. All of them also ask for the announcement (`office-tasks …` or `report_turn`, see "The end of a turn"), as an addition that never replaces the marker line and is skipped when the command isn't available.
   - plan: a line `PLAN READY` → ready; a `QUESTIONS:` heading → questions; Claude's `ExitPlanMode` → ready;

@@ -207,6 +207,11 @@ with **Open the terminal** and no answer box: nothing is typed for you, since En
 prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
 There is no Continue without an answer then: its run is still going.
 
+A question whose run is over is answered in the same box: the agent ended its turn on it, the office
+restarted while it was asking, or the task was put on hold while it was asking and then resumed. The
+task then says *the agent asked a question*, with no **Open the terminal** (there is no terminal to
+answer in): your answer, or a comment, starts the agent again with it, in the phase it was asked in.
+
 **When the office decides a turn is over.** The agent says so itself: its final answer ends with
 `WORK DONE` (implement, fix, resume and PR turns, and investigations), `PLAN READY` or `QUESTIONS:` (a
 plan), or its `REVIEW:` verdict (a review). The line is taken off before the answer is kept as a comment.
