@@ -622,7 +622,12 @@ repository's file before it works there (a pull request review gets those of the
 pull requests). The prompts carry the paths, not the text, so an edit in the settings reaches a task
 that is already under way the next time its agent reads the file. The files are brought up to date when
 the settings are saved and again whenever a prompt is composed. If a file cannot be written, that part
-goes into the prompt as text instead.
+goes into the prompt as text instead. A comment typed into an agent that is at work carries no reference:
+the next prompt of the task does. After upgrading, a Claude session started before this change is
+relaunched once at its next prompt (its launch arguments gain the folder), and a comment to an agent at
+work waits for that turn to end the first time. A project or office rewrite of the *general*, *testing*
+or *repository* part of the instructions made before this change now applies only to the text form:
+rewrite the matching *file* part to change the usual wording.
 
 With several repositories, the floor's issues and PR boards show every repository's cards with a
 repository chip. The issues board has a repository filter; the PR board (E at the board) has a tab

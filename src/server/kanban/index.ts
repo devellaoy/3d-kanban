@@ -357,6 +357,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
   }
 
   syncAll(true);
+  let instructionsSynced = '';
 
   let projectsSent = '';
   let closed = false;
@@ -388,7 +389,12 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     },
     projectsChanged() {
       if (closed) return;
-      syncAll(true);
+      // Only when the projects or their repositories changed: this is called on every change of the floors.
+      const sig = JSON.stringify(opts.floors().map((d) => [d.id, projectRepos(d).map((r) => [r.id, r.instructions ?? ''])]));
+      if (sig !== instructionsSynced) {
+        instructionsSynced = sig;
+        syncAll(true);
+      }
       if (!subscribers.size) return;
       const projects = projectInfos(ctx);
       const json = JSON.stringify(projects);

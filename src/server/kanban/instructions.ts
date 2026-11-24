@@ -26,7 +26,14 @@ export function instructionsDir(filesDir: string, projectId: string): string {
   return path.join(filesDir, 'instructions', projectId);
 }
 
-const fail = (what: string, err: unknown) => console.error(`agent-office: couldn't ${what}: ${(err as Error).message}`);
+/** Each failure is logged once: the files are synced often, and a folder that can't be written stays that way. */
+const logged = new Set<string>();
+const fail = (what: string, err: unknown) => {
+  const line = `agent-office: couldn't ${what}: ${(err as Error).message}`;
+  if (logged.has(line)) return;
+  logged.add(line);
+  console.error(line);
+};
 
 /** Writes `text` to `file` unless it is there already; blank text removes the file. Returns whether the file now holds the text. */
 function put(file: string, text: string | undefined): boolean {
@@ -69,6 +76,12 @@ export function syncInstructionFiles(filesDir: string, projectId: string, texts:
       return put(file, text) ? file : undefined;
     } catch (err) {
       fail(`write ${file}`, err);
+      // An older text would be read as the current one: the prompt carries the text itself now.
+      try {
+        rmSync(file, { force: true });
+      } catch {
+        // it stays; nothing more to try
+      }
       return undefined;
     }
   };
@@ -93,16 +106,6 @@ export function syncInstructionFiles(filesDir: string, projectId: string, texts:
     fail(`clear the old files of project ${projectId}'s instructions`, err);
   }
   return out;
-}
-
-/** Never throws. */
-export function removeInstructionDir(filesDir: string, projectId: string): void {
-  if (!PROJECT_ID.test(projectId)) return;
-  try {
-    rmSync(instructionsDir(filesDir, projectId), { recursive: true, force: true });
-  } catch (err) {
-    fail(`remove project ${projectId}'s instructions`, err);
-  }
 }
 
 /** Removes the folders of projects that no longer exist. Never throws. */

@@ -7,7 +7,7 @@ import { PROMPTS } from '../src/shared/prompts.js';
 import type { FloorDef } from '../src/server/building.js';
 import { installKanban } from '../src/server/kanban/index.js';
 import type { KanbanEngine } from '../src/server/kanban/engine/index.js';
-import { instructionsDir, projectInstructionTexts, pruneInstructionDirs, removeInstructionDir, syncInstructionFiles } from '../src/server/kanban/instructions.js';
+import { instructionsDir, projectInstructionTexts, pruneInstructionDirs, syncInstructionFiles } from '../src/server/kanban/instructions.js';
 
 function files(t: { after(fn: () => void): void }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-instructions-'));
@@ -61,15 +61,13 @@ test("a repository's file goes when the repository does or its text is blanked",
   assert.ok(!existsSync(path.join(dir, 'repo-api.md')));
 });
 
-test('removeInstructionDir and pruneInstructionDirs remove folders, and only the right ones', (t) => {
+test('pruneInstructionDirs removes the folders of projects that are gone, and only those', (t) => {
   const root = files(t);
   for (const id of ['a', 'b', 'c']) syncInstructionFiles(root, id, { general: id });
-  removeInstructionDir(root, 'a');
-  assert.ok(!existsSync(instructionsDir(root, 'a')));
   pruneInstructionDirs(root, ['c']);
+  assert.ok(!existsSync(instructionsDir(root, 'a')));
   assert.ok(!existsSync(instructionsDir(root, 'b')));
   assert.ok(existsSync(instructionsDir(root, 'c')));
-  removeInstructionDir(root, 'nothing-here');
   pruneInstructionDirs(path.join(root, 'no-such'), ['c']);
 });
 
@@ -96,9 +94,6 @@ test('ids that could leave the folder are refused', (t) => {
   assert.ok(!existsSync(path.join(root, 'escape')));
   const got = syncInstructionFiles(root, 'web', { repos: [{ id: '../x', instructions: 'a' }, { id: 'A', instructions: 'a' }, { id: 'ok-1', instructions: 'a' }] });
   assert.deepEqual(Object.keys(got.repos), ['ok-1']);
-  mkdirSync(path.join(root, 'victim'));
-  removeInstructionDir(root, '../../victim');
-  assert.ok(existsSync(path.join(root, 'victim')));
 });
 
 test("projectInstructionTexts reads the project's settings and every repository", () => {
