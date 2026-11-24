@@ -34,6 +34,8 @@ export interface Departing<L extends DepartingRun> {
   apply(taskId: number, e: MachineEvent): Promise<unknown>;
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string): unknown;
   finishRun(runId: number, floorId: string, patch: Parameters<KanbanContext['repo']['finishRun']>[1]): unknown;
+  /** What a run's agent never had (its prompt not acknowledged) goes back in the task's queue. */
+  giveBack(task: KanbanTask, live: L): void;
   /** A run stopped on purpose ends. */
   finishStopped(live: L): Promise<unknown>;
   /** The task is done because its worker went home with it. */
@@ -119,6 +121,7 @@ export class Departures<L extends DepartingRun> {
     let then: (() => Promise<unknown>) | undefined;
     if (own) {
       const what = own.phase === 'pr-review' || own.phase === 'review' ? 'review round' : `${own.phase} run`;
+      this.d.giveBack(task, own);
       this.d.finishRun(own.runId, own.floorId, { status: 'stopped', error: `${line} mid-run` });
       if (done) {
         line += `: its ${what} was stopped, and the task is done`;

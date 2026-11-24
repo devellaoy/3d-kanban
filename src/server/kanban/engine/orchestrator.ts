@@ -164,8 +164,7 @@ export class Orchestrator {
       note: (task, text) => this.note(task, text),
       finishRun: (id, project, patch) => this.finishRun(id, project, patch),
       finishStopped: (live) => this.finishStopped(live),
-      markDone: (task, by) => this.markDone(task, by),
-      drain: (floorId) => this.drain(floorId),
+      markDone: (task, by) => this.markDone(task, by), drain: (floorId) => this.drain(floorId), giveBack: (task, live) => this.comments.giveBack(task, live),
     });
     this.holds = new Holds(ctx, {
       liveOf: (taskId) => this.liveOf(taskId),
@@ -245,7 +244,7 @@ export class Orchestrator {
       update: (id, patch) => this.update(id, patch),
       apply: (id, e) => this.apply(id, e),
       drain: (project) => void this.drain(project),
-      carried: (task, prompt, only) => this.holds.carried(task, prompt, only),
+      carried: (task, prompt, only) => this.holds.carried(task, prompt, only), requeue: (task, q) => this.comments.requeue(task, runOf(q), q.commentId, q.taken),
       attach: (run, task, info, launch) => Object.assign(this.attach(run, task, info, launch), { pinSince: true }),
       turnEnded: (live, planExit) => this.turnEnded(live, planExit),
       hiringPaused: () => this.ctx.hiringPaused?.(),
@@ -375,13 +374,13 @@ export class Orchestrator {
 
   /** Follows a run left `running` by the last office on its worker. */
   private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo, launch: QueuedRun | undefined): Live {
-    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch?.taken?.length ? { via: { taken: launch.taken } } : {}) };
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch ? { eff: runOf(launch), via: { ...(launch.taken?.length ? { taken: launch.taken } : {}), ...(launch.commentId !== undefined ? { commentId: launch.commentId } : {}) } } : {}) };
     this.live.set(info.id, live);
     return live;
   }
 
   private async interruptedRun(run: KanbanRun, task: KanbanTask, text: string) {
-    this.finishRun(run.id, task.project, { status: 'interrupted', error: text });
+    this.restarts.back(run, task); this.finishRun(run.id, task.project, { status: 'interrupted', error: text });
     if (task.status === 'in_progress' || task.status === 'waiting') await this.apply(task.id, { type: 'interrupted', text });
   }
 
@@ -560,7 +559,7 @@ export class Orchestrator {
           this.update(t.id, { runState: 'idle', queuedRun: null });
           return;
         }
-        const via: Via = { who: { name: task.createdBy, admin: false }, ...(task.queuedRun?.taken?.length ? { taken: task.queuedRun.taken } : {}) };
+        const via: Via = { who: { name: task.createdBy, admin: false }, ...(task.queuedRun?.taken?.length ? { taken: task.queuedRun.taken } : {}), ...(task.queuedRun?.commentId !== undefined ? { commentId: task.queuedRun.commentId } : {}) };
         if (task.queuedRun) {
           const err = await this.apply(t.id, { type: 'dequeue', run: runOf(task.queuedRun) }, via);
           if (err) this.note(task, `Couldn't start it from the queue: ${err}`);
@@ -901,7 +900,7 @@ export class Orchestrator {
     });
     const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: { ...queuedOf({ ...eff, text, pending: undefined }), ...(via.taken?.length ? { taken: via.taken } : {}), carried: carried?.ids ?? [] } });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: { ...queuedOf({ ...eff, text, pending: undefined }), ...(via.taken?.length ? { taken: via.taken } : {}), ...(via.commentId !== undefined ? { commentId: via.commentId } : {}), carried: carried?.ids ?? [] } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const follow = (workerId: string, prompt: string): Live => {
       const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
@@ -1102,7 +1101,7 @@ export class Orchestrator {
     const full = signIn ? undefined : this.noRoom(floor, undefined, countsWith);
     if (full) return { queued: full };
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { ...queuedOf({ ...eff, phase: 'pr-review', role: 'reviewer' }), prompt: eff.text ? eff.prompt : 'pr.review', ...(via.taken?.length ? { taken: via.taken } : {}) } });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { ...queuedOf({ ...eff, phase: 'pr-review', role: 'reviewer' }), prompt: eff.text ? eff.prompt : 'pr.review', ...(via.taken?.length ? { taken: via.taken } : {}), ...(via.commentId !== undefined ? { commentId: via.commentId } : {}) } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const fail = (err: string) => {
       this.finishRun(run.id, task.project, { status: 'failed', error: err });

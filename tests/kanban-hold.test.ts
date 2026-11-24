@@ -18,7 +18,7 @@ import { createRefsPlugin } from '../src/server/kanban/integrations/refs/index.j
 import { canFixPrs } from '../src/shared/kanban/prs.js';
 import type { KanbanServerMsg } from '../src/shared/kanban/protocol.js';
 import type { TaskHold } from '../src/shared/kanban/hold.js';
-import type { RunPhase, WaitingReason } from '../src/shared/kanban/types.js';
+import type { KanbanTask, RunPhase, WaitingReason } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
 import { def, makeCtx } from './kanban-integrations-ctx.js';
 
@@ -731,6 +731,104 @@ test('Holds.carried with ids releases only those messages and says which it carr
   assert.deepEqual(repo.getTask(t.id)!.pendingMessages.map((m) => m.commentId), [b.id], 'the other stays for its own run');
   assert.deepEqual(holds.carried(repo.getTask(t.id)!, 'resume', []).ids, []);
   assert.deepEqual(holds.carried(repo.getTask(t.id)!, 'resume').ids, [b.id]);
+});
+
+test('a comment run queued for room, then its launch fails: the comment is given back, and the Retry delivers it once', async (t) => {
+  let full: string | undefined;
+  const state = { ok: true };
+  const fx = await engineFixture({ capacity: { full: () => full, room: () => (full ? 0 : 5) }, runAs: { claudeReady: () => state.ok, why: () => 'Ada is not signed in to Claude', apply: (_o: unknown, env: unknown) => env } as never, engine: { sweepMs: 100 } });
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx, { createdByAccount: 'acc1' });
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+  full = 'The office is at its limit';
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Also rename it.' }).comment;
+  await fx.engine.commented(r.id, c.id, BOB);
+  const q = await fx.waitTask(r.id, (x) => x.runState === 'queued', 'queued');
+  assert.equal(q.queuedRun?.commentId, c.id, 'the queue remembers the comment');
+  state.ok = false;
+  full = undefined;
+  const failed = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the launch failed');
+  assert.deepEqual(failed.pendingMessages.map((m) => m.commentId), [c.id], 'the comment is given back');
+  state.ok = true;
+  fx.setRules([{ when: 'Your last turn on task', reply: 'Renamed.', commit: 'Rename' }]);
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0, 'the Retry done', 30_000);
+  assert.deepEqual(prompted(fx, mark, 'Also rename it.').map((p) => p.split('Also rename it.').length - 1), [1]);
+  assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+});
+
+test('a comment run\'s launch record keeps the comment and the carried ids until its agent has the prompt', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+  const old = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Left on hold.' }).comment;
+  fx.setRules([{ when: 'commented on task', reply: 'Done.', commit: 'Rename', submitDelayMs: 4000 }]);
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Also rename it.' }).comment;
+  await fx.engine.commented(r.id, c.id, BOB);
+  const run = await (async () => { for (let i = 0; i < 100; i++) { const a = fx.repo.activeRun(r.id); if (a && fx.repo.runLaunch(a.id)) return a; await new Promise((res) => setTimeout(res, 30)); } throw new Error('no launch record'); })();
+  const rec = fx.repo.runLaunch(run.id)!;
+  assert.equal(rec.commentId, c.id);
+  assert.deepEqual(rec.carried, [old.id]);
+  assert.match(rec.text ?? '', /Also rename it\./);
+});
+
+for (const pr of [false, true]) {
+  test(`${pr ? 'a PR reviewer\'s answer' : 'a comment on a held task'}, the office restarts without carrying on before the agent has the prompt: the run is interrupted, the comment given back, the Retry delivers it once`, async (t) => {
+    const fx = await engineFixture();
+    t.after(() => fx.close());
+    let r: KanbanTask;
+    let c: { id: number };
+    const slow = { when: pr ? 'has since said|The base is main-2' : 'commented on task', reply: pr ? 'Thanks.\n\nREVIEW: APPROVED' : 'Done.', ...(pr ? {} : { commit: 'Rename' }), submitDelayMs: 4000 } as Rule;
+    if (pr) ({ r, c } = await heldPrReviewAsk(fx, [slow]));
+    else {
+      fx.setRules([IMPLEMENT]);
+      r = await inReview(fx);
+      assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+      await fx.waitTask(r.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+      fx.setRules([slow]);
+      c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'The base is main-2.' }).comment;
+    }
+    await fx.engine.commented(r.id, c.id, BOB);
+    await fx.waitTask(r.id, (x) => x.runState !== 'idle' && (pr ? !!x.reviewerWorkerId : !!x.workerId), 'the run started');
+    await fx.restartOffice({ carryOn: false });
+    const w = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted' && x.runState === 'idle', 'interrupted', 30_000);
+    assert.deepEqual(w.pendingMessages.map((m) => [m.commentId, !!m.answer]), [[c.id, pr]], 'the comment was given back');
+    fx.setRules([APPROVED, { when: 'Your last turn on task', reply: 'Done.', commit: 'Rename' }, RENAME]);
+    const mark = fx.invocations().length;
+    // The reviewer woken by the restart rests after a moment; a new review waits for it.
+    for (let i = 0; i < 300 && fx.workers.list().some((x) => x.kanban?.role === 'reviewer' && (x.status === 'working' || x.status === 'starting')); i++) await new Promise((res) => setTimeout(res, 50));
+    assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+    await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0 && !x.reviewerWorkerId, 'the Retry done', 40_000);
+    assert.deepEqual(prompted(fx, mark, 'The base is main-2.').map((p) => p.split('The base is main-2.').length - 1), [1], 'one prompt, once');
+    assert.equal(fx.repo.listComments(r.id).comments.some((x) => x.pending), false);
+  });
+}
+
+test('a comment run\'s worker is sent home before its agent has the prompt: the comment is given back, and the Retry delivers it once', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([IMPLEMENT]);
+  const r = await inReview(fx);
+  assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'on_hold' && !x.workerId, 'held');
+  fx.setRules([{ when: 'commented on task', reply: 'Done.', commit: 'Rename', submitDelayMs: 4000 }]);
+  const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'Also rename it.' }).comment;
+  await fx.engine.commented(r.id, c.id, BOB);
+  const hired = await fx.waitTask(r.id, (x) => x.runState !== 'idle' && !!x.workerId, 'the run started');
+  await fx.workers.kill(hired.workerId!, 'keep');
+  const w = await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.runState === 'idle' && x.pendingMessages.length === 1, 'stopped, the comment given back', 30_000);
+  assert.equal(w.pendingMessages[0].commentId, c.id);
+  fx.setRules([{ when: 'Your last turn on task', reply: 'Renamed.', commit: 'Rename' }, RENAME]);
+  const mark = fx.invocations().length;
+  assert.equal(await fx.engine.retry(r.id, ADA), undefined);
+  await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && x.pendingMessages.length === 0, 'the Retry done', 30_000);
+  assert.deepEqual(prompted(fx, mark, 'Also rename it.').map((p) => p.split('Also rename it.').length - 1), [1]);
 });
 
 test('a held task whose hold is missing is a hold from Waiting: Resume lands in Waiting as a stop, a comment starts exactly one run', async (t) => {
