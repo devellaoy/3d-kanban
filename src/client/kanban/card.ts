@@ -11,6 +11,7 @@ import { holdWords } from '../../shared/kanban/hold.js';
 import { countdown, needsAttention, phaseBadge, prTone } from './model';
 import { prMarkWords } from '../../shared/kanban/prs.js';
 import { prMarkIcons } from './prmarks';
+import { askingView } from './asking';
 import { COUNTDOWN_UNITS, phaseName, PR_STATE_NAMES, toolName, waitingName } from './labels';
 
 const TILTS = ['-0.8deg', '0.6deg', '-0.3deg', '0.9deg', '0deg', '-0.6deg'];
@@ -38,7 +39,7 @@ function cardNote(c: KanbanTaskCard, now: number): HTMLElement | null {
   const retry = c.retryAt ? h('span.kb-retry', { 'data-retry-at': String(c.retryAt) }, retryWords(c.retryAt, now)) : null;
   if (c.status === 'waiting' && c.waitingReason) {
     const limit = c.waitingReason === 'usage_limit';
-    const why = limit && retry ? 'Usage limit' : `${waitingName(c.waitingReason)}${c.waitingText ? `: ${c.waitingText}` : ''}`;
+    const why = limit && retry ? 'Usage limit' : `${c.waitingReason === 'agent_asking' ? askingView(c).title : waitingName(c.waitingReason)}${c.waitingText ? `: ${c.waitingText}` : ''}`;
     return h('div.kb-note.kb-wait', { class: needsAttention(c) ? 'attention' : '' }, icon(limit ? 'hourglass' : 'hand', { size: 14 }), h('span', {}, why, retry ? ': ' : null, retry));
   }
   if (c.status === 'on_hold' && c.hold) {
