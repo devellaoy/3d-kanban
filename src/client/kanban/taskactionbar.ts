@@ -10,7 +10,9 @@ import type { KanbanTask } from '../../shared/kanban/types.js';
 import type { ActionId, ActionPlace, ActionSubject } from './taskactions';
 import { currentActions, footerActions, tabActions } from './taskactions';
 import type { TaskCtx } from './taskctx';
-import { openHoldDialog, openResumeDialog } from './holddialog';
+import { openHoldDialog } from './holddialog';
+import { resumeTarget, resumeTitle } from './holdwords';
+import { columnName } from './labels';
 import { findPrsButton, prModeButton } from './prbuttons';
 
 /** What an action looks like and does; the PR-mode buttons and Find PRs are built by prbuttons.ts. */
@@ -33,7 +35,7 @@ function draftPlan(c: TaskCtx) {
 function specOf(id: Exclude<ActionId, 'fix-prs' | 'resolve-conflicts' | 'find-prs' | 'review-prs' | 'send-plan-feedback'>, task: KanbanTask, c: TaskCtx): Spec {
   const tid = task.id;
   const send = (msg: Parameters<TaskCtx['req']>[0], done?: string) => (b: HTMLButtonElement) => void c.req(msg, b, done);
-  const move = (to: 'in_progress' | 'on_hold', b: HTMLButtonElement, extras: { note?: string; until?: number }) => void c.req({ t: 'kanban.task.move', id: tid, to, ...extras }, b);
+  const move = (to: 'waiting' | 'review' | 'on_hold', b: HTMLButtonElement, extras: { note?: string; until?: number } = {}, done?: string) => void c.req({ t: 'kanban.task.move', id: tid, to, ...extras }, b, done);
   switch (id) {
     case 'start':
       return { label: 'Start', icon: 'play', title: 'An agent takes the task to a free desk and works through its phases', go: send({ t: 'kanban.task.start', id: tid }, 'Started') };
@@ -74,8 +76,11 @@ function specOf(id: Exclude<ActionId, 'fix-prs' | 'resolve-conflicts' | 'find-pr
         title: 'The agent pushes and opens (or updates) a pull request in every repository with commits',
         go: send({ t: 'kanban.task.pr', id: tid, mode: 'create' }, 'An agent is on the pull requests'),
       };
-    case 'resume':
-      return { label: 'Resume', icon: 'play', title: 'Carry on where it left off, with the comments written meanwhile', go: (b) => openResumeDialog(task, (x) => move('in_progress', b, x)) };
+    case 'resume': {
+      // Only the state changes (no dialog, no agent): back to the column it was held from.
+      const to = resumeTarget(task);
+      return { label: 'Resume', icon: 'corner-up-left', title: resumeTitle(task), go: (b) => move(to, b, {}, `Back in ${columnName(to)}`) };
+    }
     case 'hold':
       return { label: 'Put on hold', icon: 'circle-pause', title: 'Put it aside: its worker goes home and the worktree is kept', go: (b) => openHoldDialog(task, (x) => move('on_hold', b, x)) };
     case 'move':

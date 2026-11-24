@@ -11,8 +11,8 @@ import { KanbanRepository } from '../src/server/kanban/db/repository.js';
 import { Composer, reposText, slugify } from '../src/server/kanban/engine/compose.js';
 import type { PromptKind } from '../src/server/kanban/engine/machine.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
-import { KanbanSettingsStore } from '../src/server/kanban/settings.js';
-import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
+import { KanbanSettingsStore, sanitizeKanbanSettings } from '../src/server/kanban/settings.js';
+import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, isKanbanPromptId, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
 import { PROMPTS, placeholders, promptText, type PromptId } from '../src/shared/prompts.js';
 import type { RunPhase } from '../src/shared/kanban/types.js';
 import type { LanguageSettings } from '../src/shared/language.js';
@@ -581,40 +581,33 @@ test('UI testing: a folder project’s implementer gets the block too', (t) => {
   assert.doesNotMatch(text, /\{\{/);
 });
 
-test('UI testing: a task taken off hold gets the block, with the option as it is then, and a rewritten text gets it appended', (t) => {
-  const { def, dir, repo, settings, compose, ctx } = setup(t);
+test('a prompt override stored for the removed kanban.unhold prompt is ignored, not an error', (t) => {
+  const { def, dir, repo, settings, compose } = setup(t);
+  assert.equal(isKanbanPromptId('kanban.unhold'), false);
+  // A settings file saved before the prompt went: its override is dropped when the file is read, the others stay.
+  const stored = sanitizeKanbanSettings({ projects: { proj: { prompts: { 'kanban.unhold': 'Back to work.', 'kanban.resume': 'Mine.' } } } });
+  assert.deepEqual(stored.projects.proj.prompts, { 'kanban.resume': 'Mine.' });
   const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
-  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
-  const held = { ...task, hold: { at: Date.now(), by: 'Ada', note: 'waiting' } } as typeof task;
-  const on = compose.build('unhold', def, held, 'claude', dir, { phase: 'implement', held: '- Ada: hi' });
-  assert.match(on, /take the after pictures again/);
-  assert.ok(on.includes(images));
-  assert.doesNotMatch(on, /\{\{/);
-  // The option was turned off while the task was on hold: the resume uses it.
-  settings.setProject('proj', { uiTesting: false });
-  const off = compose.build('unhold', def, held, 'claude', dir, { phase: 'implement' });
-  assert.match(off, /UI testing is off for this task by default/);
-  assert.doesNotMatch(off, /take the after pictures again/);
-  settings.setProject('proj', { uiTesting: true });
-  settings.setProjectPrompt('proj', 'kanban.unhold', 'Back to work on #{{taskId}}.');
-  const custom = compose.build('unhold', def, held, 'claude', dir, { phase: 'implement' });
-  assert.match(custom, /^Back to work on #\d+\.\n\nThe task keeps before and after pictures/);
-  assert.equal(custom.split('take the after pictures again').length, 2);
+  assert.match(String(settings.setProjectPrompt('proj', 'kanban.unhold', 'Back to work.')), /Only kanban prompts/);
+  // A comment's run on a task that was held is the ordinary resume.
+  const held = { ...task, hold: { at: Date.now(), by: 'Ada', from: 'review' as const, note: 'waiting' } } as typeof task;
+  const text = compose.build('resume', def, held, 'claude', dir, { phase: 'resume', text: 'The keys are in.', author: 'Ada' });
+  assert.match(text, /Ada commented on task #\d+/);
+  assert.match(text, /The keys are in\./);
+  assert.doesNotMatch(text, /on hold since/);
 });
 
-test('UI testing: a fresh session’s hand-off carries the block exactly once, for implement, fix, comment and unhold', (t) => {
+test('UI testing: a fresh session’s hand-off carries the block exactly once, for implement, fix and comment', (t) => {
   const { def, dir, repo, compose, ctx } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
   const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
-  const held = { ...task, hold: { at: Date.now(), by: 'Ada' } } as typeof task;
   const cases: [PromptKind, RunPhase, string][] = [
     ['implement', 'implement', 'UI testing is on for this task'],
     ['fix', 'fix', 'take the after pictures again'],
     ['resume', 'resume', 'take the after pictures again'],
-    ['unhold', 'implement', 'take the after pictures again'],
   ];
   for (const [kind, phase, phrase] of cases) {
-    const next = compose.build(kind, def, kind === 'unhold' ? held : task, 'claude', dir, { phase, round: 1, rounds: 2, findings: 'F', text: 'Please', author: 'Ada' });
+    const next = compose.build(kind, def, task, 'claude', dir, { phase, round: 1, rounds: 2, findings: 'F', text: 'Please', author: 'Ada' });
     const text = compose.handoff(def, task, dir, next);
     assert.equal(text.split(phrase).length, 2, `${kind}: the block once`);
     // The repositories' folders under it (this project has two) are named by their own lines.

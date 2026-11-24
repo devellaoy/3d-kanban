@@ -26,6 +26,7 @@ export function promptTaskWorker(ctx: KanbanContext, info: WorkerInfo, text: str
   const task = ctx.repo.getTask(k.taskId);
   if (!task) return undefined;
   if (k.role === 'reviewer') return Promise.resolve(`${info.name} is reviewing task #${task.id}: comment on the task instead, or type into its terminal`);
+  if (task.status === 'on_hold') return Promise.resolve(`Task #${task.id} is on hold, so ${info.name} isn't at work on it: comment on the kanban to put it back to work (a comment starts it again), or resume it there`);
   if (!OPEN.has(task.status)) return Promise.resolve(`Task #${task.id} is in ${OUT[task.status] ?? task.status}, so its agent isn't on it: comment on the kanban, or type into ${info.name}'s terminal`);
   const body = text.replace(/\r\n?/g, '\n').trim();
   if (!body) return Promise.resolve('Say what to tell it');

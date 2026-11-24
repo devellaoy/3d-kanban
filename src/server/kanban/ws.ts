@@ -238,7 +238,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
     'kanban.task.move': async (c, m) => {
       const task = taskOf(c, m.rid, m.id);
       if (!task) return;
-      const check = checkMove({ status: task.status, runState: task.runState }, m.to);
+      const check = checkMove({ status: task.status, runState: task.runState, heldFrom: task.hold?.from ?? 'waiting' }, m.to);
       if (!check.ok) return fail(c, m.rid, check.reason);
       if (check.action === 'start') {
         const err = await ctx.engine.start(task.id, c);
@@ -247,7 +247,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       }
       if (check.action === 'hold' || check.action === 'unhold') {
         // The engine parks the task (its workers go home) or hires its implementer again; it says why not.
-        const run = check.action === 'hold' ? ctx.engine.hold?.(task.id, c, { note: m.note, until: m.until }) : ctx.engine.unhold?.(task.id, c, m.note);
+        const run = check.action === 'hold' ? ctx.engine.hold?.(task.id, c, { note: m.note, until: m.until }) : ctx.engine.unhold?.(task.id, c);
         const err = run ? await run : "This office can't put tasks on hold";
         if (!(typeof err === 'string' && err)) ctx.repo.appendEvent(task.id, 'moved', { by: c.name, from: task.status, to: m.to, ...(m.note ? { note: m.note } : {}) });
         ctx.taskChanged(task.id);

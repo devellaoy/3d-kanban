@@ -9,6 +9,7 @@ import { PROMPT_MAX } from '../src/shared/prompts.js';
 import { INSTRUCTIONS_MAX } from '../src/server/kanban/settings.js';
 import { KANBAN_PROMPT_IDS } from '../src/shared/kanban/prompts.js';
 
+const no2 = (r: ReturnType<typeof checkMove>) => (r.ok ? '' : r.reason);
 const at = (status: TaskStatus, over: Partial<MoveSubject> = {}): MoveSubject => ({ status, runState: 'idle', ...over });
 
 test('the manual moves are the documented ones', () => {
@@ -17,7 +18,7 @@ test('the manual moves are the documented ones', () => {
     in_progress: [],
     waiting: ['todo', 'on_hold', 'done', 'archived'],
     review: ['todo', 'on_hold', 'done', 'archived'],
-    on_hold: ['todo', 'in_progress', 'review', 'done', 'archived'],
+    on_hold: ['todo', 'waiting', 'review', 'done', 'archived'],
     done: ['review', 'archived'],
     archived: ['done'],
   };
@@ -36,12 +37,21 @@ test('the manual moves are the documented ones', () => {
   assert.match(no(checkMove(at('in_progress'), 'done')), /stop it first/);
   assert.deepEqual(checkMove(at('waiting'), 'on_hold'), { ok: true, action: 'hold' });
   assert.deepEqual(checkMove(at('review'), 'on_hold'), { ok: true, action: 'hold' });
-  assert.deepEqual(checkMove(at('on_hold'), 'in_progress'), { ok: true, action: 'unhold' });
+  // Resume goes back to the column the task was held from, and only changes the state; In progress is for a comment.
+  assert.deepEqual(checkMove(at('on_hold', { heldFrom: 'waiting' }), 'waiting'), { ok: true, action: 'unhold' });
+  assert.deepEqual(checkMove(at('on_hold', { heldFrom: 'review' }), 'review'), { ok: true, action: 'unhold' });
+  assert.deepEqual(moveTargets(at('on_hold', { heldFrom: 'waiting' })), ['todo', 'waiting', 'review', 'done', 'archived']);
+  assert.deepEqual(moveTargets(at('on_hold', { heldFrom: 'review' })), ['todo', 'review', 'done', 'archived']);
+  assert.deepEqual(checkMove(at('on_hold', { heldFrom: 'waiting' }), 'review'), { ok: true, action: 'status' });
+  assert.deepEqual(no2(checkMove(at('on_hold', { heldFrom: 'waiting' }), 'in_progress')), 'Add a comment to put it back to work');
+  assert.deepEqual(no2(checkMove(at('on_hold', { heldFrom: 'review' }), 'in_progress')), 'Add a comment to put it back to work');
+  assert.match(no2(checkMove(at('on_hold', { heldFrom: 'review' }), 'waiting')), /held from Review: Resume/);
+  // A hold that can't be read is a hold from Waiting.
+  assert.deepEqual(checkMove(at('on_hold'), 'waiting'), { ok: true, action: 'unhold' });
   assert.deepEqual(checkMove(at('on_hold'), 'review'), { ok: true, action: 'status' });
   assert.deepEqual(checkMove(at('on_hold'), 'done'), { ok: true, action: 'status' });
   assert.deepEqual(checkMove(at('on_hold'), 'todo'), { ok: true, action: 'reset' });
   assert.deepEqual(checkMove(at('on_hold'), 'archived'), { ok: true, action: 'status' });
-  assert.match(no(checkMove(at('on_hold'), 'waiting')), /Only the automation/);
   assert.match(no(checkMove(at('in_progress'), 'on_hold')), /stop it first/);
   assert.match(no(checkMove(at('waiting', { runState: 'running' }), 'on_hold')), /Stop it first/);
   assert.match(no(checkMove(at('review', { runState: 'queued' }), 'on_hold')), /Stop it first/);

@@ -41,7 +41,9 @@ export interface RestartDeps<L extends HeldRun> {
   /** Why the office has stopped hiring (its daily budget), if it has. */
   hiringPaused(): string | undefined;
   /** The messages a run that resumes the work carries, and how to release them once an agent has the prompt (HoldFlow.carried). */
-  carried(task: KanbanTask, prompt: string): { ack: () => void };
+  carried(task: KanbanTask, prompt: string, only?: readonly number[]): { ack: () => void };
+  /** Puts what a run's launch record held (its comment, the messages it took) back in the task's queue: its agent never had them. */
+  requeue(task: KanbanTask, launch: QueuedRun): void;
   /** The gap between one run being carried on and the next in a project (ms), so the woken agents don't all start together. Longer than the workers' own stagger (CARRY_ON_STAGGER_MS): a run launches a whole phase (checks, relaunch, a long prompt), a worker only wakes a process. */
   staggerMs: number;
 }
@@ -85,7 +87,8 @@ export class Restarts<L extends HeldRun> {
   /** What a re-attached run does once its agent has the prompt that was still on its way when the office stopped: its launch record is cleared and its held messages released; undefined when none is. */
   ack(run: KanbanRun, task: KanbanTask, launch: QueuedRun | undefined): (() => void) | undefined {
     if (!launch) return undefined;
-    const carried = this.deps.carried(task, launch.prompt);
+    // Only the messages that run's prompt held (a reviewer's held none; a record of before they were kept: an implementer's carried the queue).
+    const carried = this.deps.carried(task, launch.prompt, launch.role === 'implementer' ? launch.carried : []);
     return () => (carried.ack(), this.deps.ctx.repo.clearRunLaunch(run.id));
   }
 
@@ -218,6 +221,7 @@ export class Restarts<L extends HeldRun> {
     // The user's Stop hadn't completed when the office closed: it completes now, as a Stop does, and nothing carries on.
     if (task.runState === 'stopping') {
       void this.deps.serial(task.id, async () => {
+        this.back(run, task);
         this.deps.finishRun(run.id, task.project, { status: 'stopped' });
         await this.deps.apply(task.id, { type: 'stopped' });
       });
@@ -281,8 +285,17 @@ export class Restarts<L extends HeldRun> {
     return file ? (run.tool === 'claude' ? claudeAdapter : codexAdapter).readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: run.promptedAt }) : undefined;
   }
 
+  /** A run over before its agent had its prompt (its launch record is still there): the comment and messages that prompt held go back in the queue, once. */
+  back(run: KanbanRun, task: KanbanTask) {
+    const launch = this.deps.ctx.repo.runLaunch(run.id);
+    if (!launch) return;
+    this.deps.requeue(task, launch);
+    this.deps.ctx.repo.clearRunLaunch(run.id);
+  }
+
   /** The run is over for good: it waits interrupted for a Retry. */
   private interrupt(run: KanbanRun, task: KanbanTask, text: string) {
+    this.back(run, task);
     this.deps.finishRun(run.id, task.project, { status: 'interrupted', error: text });
     if (task.status === 'in_progress' || task.status === 'waiting') void this.deps.serial(task.id, () => this.deps.apply(task.id, { type: 'interrupted', text }));
   }

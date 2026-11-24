@@ -455,7 +455,8 @@ export class KanbanRepository {
     if (!row?.launch) return undefined;
     try {
       const q = JSON.parse(row.launch) as Partial<QueuedRun> | null;
-      return q && typeof q.phase === 'string' && typeof q.role === 'string' && typeof q.prompt === 'string' ? (q as QueuedRun) : undefined;
+      // The 'unhold' prompt of before a comment put a held task to work is the ordinary resume now.
+      return q && typeof q.phase === 'string' && typeof q.role === 'string' && typeof q.prompt === 'string' ? ({ ...q, ...(q.prompt === 'unhold' ? { prompt: 'resume' } : {}) } as QueuedRun) : undefined;
     } catch {
       return undefined; // a record that can't be read launches nothing
     }
@@ -715,6 +716,8 @@ export class KanbanRepository {
   private task(r: Row): KanbanTask {
     const id = r.id as number;
     const legacy: LegacyRef | undefined = r.legacy_source ? { source: r.legacy_source as string, id: r.legacy_id as number, migratedAt: (r.migrated_at as number) ?? 0 } : undefined;
+    const queued = json<KanbanTask['queuedRun']>(r.queued_run, undefined);
+    const queuedOld = queued?.prompt === 'unhold' ? queued : undefined;
     const t: KanbanTask = {
       id,
       project: r.project as string,
@@ -761,9 +764,10 @@ export class KanbanRepository {
       legacy,
       deskId: opt(r.desk_id),
       createdByAccount: opt(r.created_by_account),
-      queuedRun: json<KanbanTask['queuedRun']>(r.queued_run, undefined),
+      // A resume that was queued for a desk before a comment put a held task to work ('unhold') is an ordinary resume now, and the hold is over.
+      queuedRun: queuedOld ? { ...queuedOld, prompt: 'resume' } : queued,
       handoffFingerprint: opt(r.handoff_fingerprint),
-      hold: json<KanbanTask['hold']>(r.hold, undefined),
+      hold: queuedOld ? undefined : json<KanbanTask['hold']>(r.hold, undefined),
       askingKind: r.waiting_reason === 'agent_asking' ? this.askingKinds.get(id) : undefined,
     };
     for (const k of Object.keys(t) as (keyof KanbanTask)[]) if (t[k] === undefined) delete t[k];

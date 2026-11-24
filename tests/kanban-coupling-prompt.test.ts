@@ -71,6 +71,8 @@ test('an asComment prompt to a task implementer is a comment its agent works on;
     fx.repo.updateTask(task.id, { status });
     assert.match((await promptTaskWorker(ctx, info, 'hi', ADA, true)) ?? '', new RegExp(`Task #${task.id} is in .*its agent isn't on it`), status);
   }
+  fx.repo.updateTask(task.id, { status: 'on_hold', hold: { at: Date.now(), by: 'Ada', from: 'review' } });
+  assert.match((await promptTaskWorker(ctx, info, 'hi', ADA, true)) ?? '', new RegExp(`Task #${task.id} is on hold.*comment on the kanban to put it back to work`));
   assert.equal(fx.repo.listComments(task.id).comments.length, before, 'no comment stored for a refused one');
 });
 

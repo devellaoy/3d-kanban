@@ -1,5 +1,5 @@
 // What the task view shows of a task on hold (taskview.ts): the banner with why, until when, since when and by
-// whom. (The buttons that put a task on hold and resume it are taskactionbar.ts's, through holddialog.ts.)
+// whom. (The buttons that put a task on hold and resume it are taskactionbar.ts's; holding asks first, in holddialog.ts.)
 
 import { h } from '../ui/dom';
 import { banner } from '../ui/kit';

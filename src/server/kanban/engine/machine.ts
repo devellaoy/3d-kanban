@@ -44,7 +44,7 @@ export interface MachineConfig {
  * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
  * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
  */
-export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'restarted' | 'unhold' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review';
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'restarted' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review';
 
 export type Effect =
   /**
@@ -113,13 +113,21 @@ export type MachineEvent =
   | { type: 'continue'; answer?: string; last?: LastRun }
   | { type: 'approvePlan' }
   | { type: 'requestPlanChanges'; text: string }
-  /** Take it off hold: a worker is hired again and carries on (the 'unhold' prompt). `text`: the user's note, stored as a comment first. */
-  | { type: 'unhold'; text?: string; back?: { reason: WaitingReason; text?: string; phase?: RunPhase } }
-  /** A user's comment. `busy`: the worker is in the middle of a turn (or asking in its terminal). */
-  | { type: 'comment'; text: string; busy: boolean; last?: LastRun }
+  /** Take it off hold: back to the column it was held from, as it waited then. Only the state changes: nothing runs. */
+  | { type: 'unhold'; back: HoldBack }
+  /** A user's comment. `busy`: the worker is in the middle of a turn (or asking in its terminal). `back`: on a task on hold, what it was held from: the comment takes it off hold and puts it to work in one step. */
+  | { type: 'comment'; text: string; busy: boolean; last?: LastRun; back?: HoldBack }
   /** One review round by hand. */
   | { type: 'review' }
   | { type: 'pr'; mode: PrMode };
+
+/** What a task on hold was held from (TaskHold's from, reason, text and phase): what it goes back to. */
+export interface HoldBack {
+  from: 'waiting' | 'review';
+  reason?: WaitingReason;
+  text?: string;
+  phase?: RunPhase;
+}
 
 /**
  * The run Retry and Continue carry on. `fresh`: it never started (stopped while queued), so it goes
@@ -240,16 +248,37 @@ function resumeWith(s: MachineState, text: string, pending = false, last?: LastR
   return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text, ...(pending ? { pending } : {}) });
 }
 
-/** What each event does to a task on hold: the unhold resumes it, a comment is only stored, a turn's end changes nothing, the rest are refused. */
+/**
+ * A held task as it was before the hold: back in Review, or Waiting for what it waited for. A plan wait (and a stopped, failed or
+ * interrupted run) comes back as it was. A usage-limit wait can't: nothing retries by itself now, so it comes back as a plain stop with the true
+ * text. An agent that was asking comes back as `agent_asking` with a text that says its run was stopped: the same state as after an office
+ * restart (no live agent, the answer goes on in the phase, role and round it was asked in: resumeWith). `retryAt` is never restored: nothing
+ * may start by itself once the task is off hold.
+ */
+function restored(s: MachineState, back: HoldBack): MachineState {
+  if (back.from === 'review') return moved(s, { status: 'review', runState: 'idle', retryAttempts: 0 });
+  const patch = { retryAttempts: 0, ...(back.phase ? { phase: back.phase } : {}) };
+  if (back.reason === 'agent_asking') return waiting(s, 'agent_asking', 'The agent was asking something when the task was put on hold, and its run was stopped: answer here (or comment) to carry on', patch);
+  if (back.reason === 'usage_limit') return waiting(s, 'stopped', 'It was waiting out a usage limit when the task was put on hold, and nothing retries by itself now: comment, or Continue, to carry on', patch);
+  if (back.reason) return waiting(s, back.reason, back.text, patch);
+  return waiting(s, 'stopped', 'It was put on hold while it waited: comment, or Continue, to carry on', patch);
+}
+
+/** What each event does to a task on hold: unhold only puts it back where it came from, a comment does that and puts it to work (the ordinary way), a turn's end changes nothing, the rest are refused. */
 function onHold(s: MachineState, e: MachineEvent): Transition {
   switch (e.type) {
-    case 'unhold':
+    case 'unhold': {
       if (busy(s)) return no('Stop it first: it is running');
-      // Held while waiting for the user's say on a plan: it waits for it again, nothing runs.
-      if (e.back) return ok(waiting(s, e.back.reason, e.back.text, { phase: e.back.phase, retryAttempts: 0 }), { type: 'note', text: `▶️ Back from hold: ${e.back.reason === 'plan_approval' ? 'approve the plan' : "answer the plan's questions"} to carry on` });
-      return ok(running(s, 'resume', { retryAttempts: 0 }), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'unhold' });
-    case 'comment':
-      return ok(s);
+      const state = restored(s, e.back);
+      return ok(state, { type: 'note', text: `▶️ Off hold: back in ${state.status === 'review' ? 'Review' : 'Waiting'}. A comment puts it back to work` });
+    }
+    case 'comment': {
+      if (!e.back) return ok(s);
+      if (e.busy || busy(s)) return ok(s, { type: 'queueComment' });
+      // The comment takes it off hold and puts it to work as it would a task that waited there: one step.
+      const state = restored(s, e.back);
+      return resumeWith(state, e.text, false, e.last);
+    }
     case 'prReview':
     case 'pr':
       return no('It is on hold: resume it first');

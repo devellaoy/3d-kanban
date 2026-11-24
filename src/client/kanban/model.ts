@@ -161,12 +161,12 @@ export function boardStats(cards: Iterable<KanbanTaskCard>, project: string | nu
 
 // --- Moving cards ---------------------------------------------------------------------------------
 
-export function moveSubject(card: Pick<KanbanTaskCard, 'status' | 'runState'>): MoveSubject {
-  return { status: card.status, runState: card.runState };
+export function moveSubject(card: Pick<KanbanTaskCard, 'status' | 'runState' | 'hold'>): MoveSubject {
+  return { status: card.status, runState: card.runState, ...(card.status === 'on_hold' && card.hold ? { heldFrom: card.hold.from } : {}) };
 }
 
 /** Where a dragged card lights up: every board column (and the archive) with whether it takes the card, and why not. */
-export function dropZones(card: Pick<KanbanTaskCard, 'status' | 'runState'>): { to: TaskStatus; ok: boolean; reason?: string; action?: MoveAction }[] {
+export function dropZones(card: Pick<KanbanTaskCard, 'status' | 'runState' | 'hold'>): { to: TaskStatus; ok: boolean; reason?: string; action?: MoveAction }[] {
   const subject = moveSubject(card);
   return [...BOARD_COLUMNS, 'archived' as const]
     .filter((to) => to !== card.status)
@@ -177,7 +177,7 @@ export function dropZones(card: Pick<KanbanTaskCard, 'status' | 'runState'>): { 
 }
 
 /** Just the columns a card may go to. */
-export function dropTargets(card: Pick<KanbanTaskCard, 'status' | 'runState'>): TaskStatus[] {
+export function dropTargets(card: Pick<KanbanTaskCard, 'status' | 'runState' | 'hold'>): TaskStatus[] {
   return moveTargets(moveSubject(card));
 }
 

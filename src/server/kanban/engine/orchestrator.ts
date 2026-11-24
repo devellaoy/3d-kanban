@@ -105,7 +105,7 @@ const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const SUMMARY_MAX = 20_000;
 const PENDING_MAX = 50;
 /** The prompts a fresh session taking over work under way is handed off with. */
-const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'unhold', 'pr.create', 'pr.fix', 'pr.conflicts']);
+const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'pr.create', 'pr.fix', 'pr.conflicts']);
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
 /** Why an answer from the kanban isn't typed into a terminal that isn't asking a question (answer). */
@@ -164,15 +164,13 @@ export class Orchestrator {
       note: (task, text) => this.note(task, text),
       finishRun: (id, project, patch) => this.finishRun(id, project, patch),
       finishStopped: (live) => this.finishStopped(live),
-      markDone: (task, by) => this.markDone(task, by),
-      drain: (floorId) => this.drain(floorId),
+      markDone: (task, by) => this.markDone(task, by), drain: (floorId) => this.drain(floorId), giveBack: (task, live) => this.comments.giveBack(task, live),
     });
     this.holds = new Holds(ctx, {
       liveOf: (taskId) => this.liveOf(taskId),
       stopLive: (live, error) => this.stopLive(live as Live, error),
       update: (id, patch) => this.update(id, patch),
       note: (task, text, runId) => this.note(task, text, runId),
-      addComment: (project, c) => this.addComment(project, c),
       apply: (id, e, via) => this.apply(id, e, via),
       sendHome: (taskId, by, also) => this.sendIdleHome(taskId, by, also, 'hold'),
       drain: (floorId) => this.drain(floorId),
@@ -231,6 +229,7 @@ export class Orchestrator {
       update: (id, patch) => this.update(id, patch),
       note: (task, text, runId) => this.note(task, text, runId),
       lastRun: (taskId) => this.lastRun(taskId),
+      leave: (task, commentId) => this.holds.leave(task, commentId),
       askingNote: (_task, live) => {
         const there = live.asks !== 'question' ? (live.asks === 'permission' ? ASKS_PERMISSION : ASKS_UNKNOWN) : undefined;
         return there ? `${there}. The comment is kept and goes to it once that turn is over.` : 'The agent is asking something in its terminal: the comment goes to it once that turn is over.';
@@ -245,7 +244,7 @@ export class Orchestrator {
       update: (id, patch) => this.update(id, patch),
       apply: (id, e) => this.apply(id, e),
       drain: (project) => void this.drain(project),
-      carried: (task, prompt) => this.holds.carried(task, prompt),
+      carried: (task, prompt, only) => this.holds.carried(task, prompt, only), requeue: (task, q) => this.comments.requeue(task, runOf(q), q.commentId, q.taken),
       attach: (run, task, info, launch) => Object.assign(this.attach(run, task, info, launch), { pinSince: true }),
       turnEnded: (live, planExit) => this.turnEnded(live, planExit),
       hiringPaused: () => this.ctx.hiringPaused?.(),
@@ -375,13 +374,13 @@ export class Orchestrator {
 
   /** Follows a run left `running` by the last office on its worker. */
   private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo, launch: QueuedRun | undefined): Live {
-    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch?.taken?.length ? { via: { taken: launch.taken } } : {}) };
+    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch ? { eff: runOf(launch), via: { ...(launch.taken?.length ? { taken: launch.taken } : {}), ...(launch.commentId !== undefined ? { commentId: launch.commentId } : {}) } } : {}) };
     this.live.set(info.id, live);
     return live;
   }
 
   private async interruptedRun(run: KanbanRun, task: KanbanTask, text: string) {
-    this.finishRun(run.id, task.project, { status: 'interrupted', error: text });
+    this.restarts.back(run, task); this.finishRun(run.id, task.project, { status: 'interrupted', error: text });
     if (task.status === 'in_progress' || task.status === 'waiting') await this.apply(task.id, { type: 'interrupted', text });
   }
 
@@ -560,7 +559,7 @@ export class Orchestrator {
           this.update(t.id, { runState: 'idle', queuedRun: null });
           return;
         }
-        const via: Via = { who: { name: task.createdBy, admin: false }, ...(task.queuedRun?.taken?.length ? { taken: task.queuedRun.taken } : {}) };
+        const via: Via = { who: { name: task.createdBy, admin: false }, ...(task.queuedRun?.taken?.length ? { taken: task.queuedRun.taken } : {}), ...(task.queuedRun?.commentId !== undefined ? { commentId: task.queuedRun.commentId } : {}) };
         if (task.queuedRun) {
           const err = await this.apply(t.id, { type: 'dequeue', run: runOf(task.queuedRun) }, via);
           if (err) this.note(task, `Couldn't start it from the queue: ${err}`);
@@ -676,10 +675,8 @@ export class Orchestrator {
     const tr = next(stateOf(task), e, { type: task.type, usePlan: task.usePlan, useReview: task.useReview, planApproval: task.planApproval }, { rounds: review.rounds, reReviewLastFix: review.reReviewLastFix, ...(defaultAnswer ? { defaultAnswer } : {}) });
     if ('error' in tr) return tr.error;
     const s = tr.state;
-    // Off hold: the hold stays for the run's prompt and the worker's look (via.hold), and only a queued unhold keeps it on the task.
-    if (task.hold) via = { ...via, hold: task.hold };
     this.update(taskId, {
-      ...(task.hold && s.status !== 'on_hold' && s.runState !== 'queued' ? { hold: null } : {}),
+      ...(task.hold && s.status !== 'on_hold' ? { hold: null } : {}),
       status: s.status,
       phase: s.phase,
       runState: s.runState,
@@ -713,7 +710,7 @@ export class Orchestrator {
         if (r && typeof r === 'object') {
           // No desk, or the office's worker limit: it waits in the queue, and starts as it is (drain).
           this.comments.restore(task, via.taken);
-          this.update(taskId, { queuedRun: queuedOf(eff), ...(eff.prompt === 'unhold' && via.hold ? { hold: via.hold } : {}) });
+          this.update(taskId, { queuedRun: { ...queuedOf(eff), ...(via.commentId !== undefined ? { commentId: via.commentId } : {}) } });
           await this.apply(taskId, { type: 'noRoom', text: r.queued });
           return undefined;
         }
@@ -797,7 +794,7 @@ export class Orchestrator {
     if (!def || !floor) return "The project's floor isn't open";
     // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer (see Restarts.reviewer).
     const { same: last, restarted } = this.restarts.reviewer(task, eff, floor);
-    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted);
+    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted, eff);
     const role = eff.role;
     const review = this.reviewSettings(task);
     const defaults = this.ctx.settings.get().defaults;
@@ -845,7 +842,7 @@ export class Orchestrator {
       fixPrs,
       held,
     };
-    const fresh = { ...(this.ctx.repo.getTask(task.id) ?? task), ...(via.hold ? { hold: via.hold } : {}) };
+    const fresh = this.ctx.repo.getTask(task.id) ?? task;
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);
     /** The prompt, told first to check out the task's branch when a fresh worktree has yet to (implement has it as its branch step). */
     const withCheckout = (prompt: string) => {
@@ -903,7 +900,7 @@ export class Orchestrator {
     });
     const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: { ...queuedOf({ ...eff, text, pending: undefined }), ...(via.taken?.length ? { taken: via.taken } : {}) } });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, model, effort, launch: { ...queuedOf({ ...eff, text, pending: undefined }), ...(via.taken?.length ? { taken: via.taken } : {}), ...(via.commentId !== undefined ? { commentId: via.commentId } : {}), carried: carried?.ids ?? [] } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const follow = (workerId: string, prompt: string): Live => {
       const live: Live = { taskId: task.id, runId: run.id, phase: eff.phase, ...(eff.round !== undefined ? { round: eff.round } : {}), role, tool, workerId, floorId: task.project, exitPlan: false, ended: false, eff: { ...eff, pending: undefined, ...(text !== undefined ? { text } : {}) }, via };
@@ -998,7 +995,6 @@ export class Orchestrator {
       ...(reuse ? { reuse } : { bases: baseBranches(def, task.repoIds) }),
       ...(session ? { resumeSessionId: session } : {}),
       ...(countsWith ? { countsWith } : {}),
-      ...(role === 'implementer' && eff.prompt === 'unhold' && via.hold?.worker ? via.hold.worker : {}),
       kanban: { taskId: task.id, role },
       env: extras.env,
       settingsFile: 'kanban',
@@ -1067,24 +1063,21 @@ export class Orchestrator {
    * pull requests are in (never the floor's checkout, never the task's worktree), with the review's
    * read-only flags. A Retry reviews them again from the start.
    */
-  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean): Promise<string | NoRoom | undefined> {
+  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean, asked: RunEffect): Promise<string | NoRoom | undefined> {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
+    const kept = !asked.text ? this.comments.take(task, via.pendingSince, (m) => !!m.answer) : undefined;
+    const eff: RunEffect = { ...asked, pending: undefined, ...(kept ? { text: kept.text } : {}) };
+    if (kept) via.taken = kept.msgs; // what the user said to a reviewer that asked: the comment that answered it, or (a Retry, whichever prompt it picks) that answer given back; the rest of the queue is the implementer's
     const req = via.prReview ?? this.lastPrReview(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
-    const review = this.reviewSettings(task);
-    const tool: KanbanTool = req.tool ?? review.tool;
-    const same = !req.tool || req.tool === review.tool;
-    const model = req.model ?? (same ? review.model : undefined);
-    const effort = req.effort ?? (same ? review.effort : undefined);
-    const adapter = this.adapters[tool];
-    const involved = projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
+    const review = this.reviewSettings(task), tool: KanbanTool = req.tool ?? review.tool, same = !req.tool || req.tool === review.tool;
+    const model = req.model ?? (same ? review.model : undefined), effort = req.effort ?? (same ? review.effort : undefined);
+    const adapter = this.adapters[tool], involved = projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
 
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
-    if (prev) {
-      if (prev.status === 'working' || (prev.status === 'starting' && !restarted)) return `${prev.name} is busy: wait for its turn to end`;
-      await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
-    }
+    if (prev && (prev.status === 'working' || (prev.status === 'starting' && !restarted))) return `${prev.name} is busy: wait for its turn to end`;
+    if (prev) await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
     this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
 
     const attached = req.taskId !== undefined;
@@ -1093,11 +1086,12 @@ export class Orchestrator {
       phase: 'pr-review',
       prs,
       prTask: attached ? `They are kanban task #${task.id}'s: ${task.title}${task.ticket ? ` (${task.ticket})` : ''}` : '',
-      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir),
+      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir), text: eff.text,
     };
     const prompt = typeable(this.compose.build('pr.review', def, task, tool, floor.dir, x));
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase('pr-review'));
-    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args });
+    const addDirs = eff.text ? (grantFiles(this.ctx.filesDir, task.id, this.ctx.repo.listAttachments(task.id)), [grantDir(this.ctx.filesDir, task.id)]) : undefined;
+    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args, ...(addDirs ? { addDirs } : {}) });
 
     const owner = hireOwner(task, via.who);
     const signIn = owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner) ? this.signInMissing(task, owner, via.who) : undefined;
@@ -1107,7 +1101,7 @@ export class Orchestrator {
     const full = signIn ? undefined : this.noRoom(floor, undefined, countsWith);
     if (full) return { queued: full };
 
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' } });
+    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { ...queuedOf({ ...eff, phase: 'pr-review', role: 'reviewer' }), prompt: eff.text ? eff.prompt : 'pr.review', ...(via.taken?.length ? { taken: via.taken } : {}), ...(via.commentId !== undefined ? { commentId: via.commentId } : {}) } });
     this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
     const fail = (err: string) => {
       this.finishRun(run.id, task.project, { status: 'failed', error: err });
@@ -1131,7 +1125,7 @@ export class Orchestrator {
       settingsFile: 'kanban',
     });
     if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired);
-    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, ack: () => this.ctx.repo.clearRunLaunch(run.id) };
+    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, eff, via, ack: () => this.ctx.repo.clearRunLaunch(run.id) };
     this.live.set(hired.id, live);
     this.prompted(live, prompt);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id });
@@ -1728,9 +1722,8 @@ export class Orchestrator {
     // A task asking in its terminal is idle but its run still goes: the machine stops that too.
     return this.op(taskId, async (task) => {
       const queued = task.runState === 'queued' ? task.queuedRun : undefined;
-      if (queued?.prompt === 'unhold' && task.hold) return void this.holds.cancelUnhold(task, who);
       const err = await this.apply(taskId, { type: 'stop' }, { who });
-      if (!err && queued) this.queuedStopped(task, queued, `Stopped by ${who.name} before it started`);
+      if (!err && queued) (this.queuedStopped(task, queued, `Stopped by ${who.name} before it started`), this.comments.requeue(task, queued, queued.commentId)); // the comment that started it is kept for the Retry
       return err;
     });
   }
@@ -1751,12 +1744,12 @@ export class Orchestrator {
         return err;
       }
       if (this.liveOf(task.id)) return 'It is still running: answer in its terminal, or stop it first';
-      const text = answer?.trim() ?? '';
-      const rows = this.takable(taskId, attachmentIds);
+      const text = answer?.trim() ?? '', rows = this.takable(taskId, attachmentIds);
       const msg = this.compose.commentText(task.project, taskId, text, rows);
-      const err = await this.apply(taskId, { type: 'continue', answer: msg, last: this.lastRun(taskId) }, { who });
-      if (!err && (text || rows.length)) this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text }, rows.map((r) => r.id));
-      return err;
+      if (task.status !== 'waiting' || task.runState !== 'idle') return 'Only a waiting task can be continued';
+      // The answer is a comment first, so the run it starts has its id: whatever its agent never gets goes back in the queue (Comments.requeue).
+      const c = text || rows.length ? this.addComment(task.project, { taskId, authorKind: 'user', authorName: who.name, kind: 'message', text }, rows.map((r) => r.id)) : undefined;
+      return this.apply(taskId, { type: 'continue', answer: msg, last: this.lastRun(taskId) }, { who, ...(c ? { commentId: c.id } : {}) });
     });
   }
 
@@ -1893,9 +1886,9 @@ export class Orchestrator {
     });
   }
 
-  /** A task on hold is taken off it: its implementer is hired again and carries on (hold.ts). */
-  unhold(taskId: number, who: KanbanCaller, note?: string): Promise<string | void> {
-    return this.op(taskId, (task) => this.holds.unhold(task, who, note));
+  /** A task on hold is taken off it: back in the column it was held from, nothing runs (hold.ts). */
+  unhold(taskId: number, who: KanbanCaller): Promise<string | void> {
+    return this.op(taskId, (task) => this.holds.unhold(task, who));
   }
 
   commented(taskId: number, commentId: number, who: KanbanCaller): Promise<void> {

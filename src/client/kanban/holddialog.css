@@ -1,7 +1,4 @@
-/* Put on hold and Resume (holddialog.ts): the shared shell with two fields. Tokens only. */
+/* Put on hold (holddialog.ts): the shared shell with two fields. Tokens only. */
 .kb-hold-fields { display: flex; flex-direction: column; gap: 14px; }
 .kb-hold-fields textarea.inp { min-height: 76px; }
 .kb-hold-fields .kb-hold-until { width: 180px; }
-.kb-hold-since { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--text-2); overflow-wrap: anywhere; }
-.kb-hold-since > svg { flex: none; margin-top: 2px; }
-.kb-hold-since small { font-size: var(--fs-xs); color: var(--muted); }
