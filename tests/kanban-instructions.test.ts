@@ -180,3 +180,17 @@ test("a link where a file belongs is replaced, and what it points at keeps its t
   assert.equal(readFileSync(secret, 'utf8'), 'private');
   assert.equal(statSync(secret).mode & 0o777, 0o600);
 });
+
+test("a link whose text already matches is replaced too, so a later change of what it points at can't reach the agents", { skip: process.platform === 'win32' }, (t) => {
+  const root = files(t);
+  const dir = instructionsDir(root, 'web');
+  mkdirSync(dir, { recursive: true });
+  const other = path.join(root, 'other.md');
+  writeFileSync(other, 'Be kind.\n', { mode: 0o600 });
+  symlinkSync(other, path.join(dir, 'general.md'));
+  const got = syncInstructionFiles(root, 'web', { general: 'Be kind.' });
+  assert.ok(lstatSync(got.general!).isFile(), 'a file of its own, although the text was the same');
+  writeFileSync(other, 'Changed elsewhere.\n');
+  assert.equal(readFileSync(got.general!, 'utf8'), 'Be kind.\n');
+  assert.equal(statSync(other).mode & 0o777, 0o600);
+});

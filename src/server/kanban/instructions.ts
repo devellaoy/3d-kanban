@@ -44,7 +44,8 @@ function put(file: string, text: string | undefined): boolean {
     return false;
   }
   try {
-    if (readFileSync(file, 'utf8') === body) return true;
+    // A plain file of ours only: a link with the same text is replaced, as what it points at may change later.
+    if (lstatSync(file).isFile() && readFileSync(file, 'utf8') === body) return true;
   } catch {
     // missing or unreadable: written below
   }
