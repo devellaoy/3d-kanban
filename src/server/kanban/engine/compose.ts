@@ -443,7 +443,8 @@ export class Composer {
         return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.fixHosted', p)}` : text);
       }
       case 'pr.review':
-        return seal(this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, language: v.language }));
+        // What the user said to a reviewer that asked (a fresh reviewer starts the review again with the answer).
+        return seal([this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, language: v.language }), x.text ? this.text('kanban.sinceSaid', p, { text: x.text }) : ''].filter(Boolean).join('\n\n'));
     }
   }
 

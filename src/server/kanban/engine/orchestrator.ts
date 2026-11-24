@@ -795,7 +795,7 @@ export class Orchestrator {
     if (!def || !floor) return "The project's floor isn't open";
     // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer (see Restarts.reviewer).
     const { same: last, restarted } = this.restarts.reviewer(task, eff, floor);
-    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted);
+    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted, eff.text);
     const role = eff.role;
     const review = this.reviewSettings(task);
     const defaults = this.ctx.settings.get().defaults;
@@ -1064,24 +1064,21 @@ export class Orchestrator {
    * pull requests are in (never the floor's checkout, never the task's worktree), with the review's
    * read-only flags. A Retry reviews them again from the start.
    */
-  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean): Promise<string | NoRoom | undefined> {
+  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean, said?: string): Promise<string | NoRoom | undefined> {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
     const req = via.prReview ?? this.lastPrReview(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
     const review = this.reviewSettings(task);
     const tool: KanbanTool = req.tool ?? review.tool;
     const same = !req.tool || req.tool === review.tool;
-    const model = req.model ?? (same ? review.model : undefined);
-    const effort = req.effort ?? (same ? review.effort : undefined);
+    const model = req.model ?? (same ? review.model : undefined), effort = req.effort ?? (same ? review.effort : undefined);
     const adapter = this.adapters[tool];
     const involved = projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
 
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
-    if (prev) {
-      if (prev.status === 'working' || (prev.status === 'starting' && !restarted)) return `${prev.name} is busy: wait for its turn to end`;
-      await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
-    }
+    if (prev && (prev.status === 'working' || (prev.status === 'starting' && !restarted))) return `${prev.name} is busy: wait for its turn to end`;
+    if (prev) await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
     this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
 
     const attached = req.taskId !== undefined;
@@ -1090,11 +1087,12 @@ export class Orchestrator {
       phase: 'pr-review',
       prs,
       prTask: attached ? `They are kanban task #${task.id}'s: ${task.title}${task.ticket ? ` (${task.ticket})` : ''}` : '',
-      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir),
+      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir), text: said,
     };
     const prompt = typeable(this.compose.build('pr.review', def, task, tool, floor.dir, x));
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase('pr-review'));
-    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args });
+    const addDirs = said ? (grantFiles(this.ctx.filesDir, task.id, this.ctx.repo.listAttachments(task.id)), [grantDir(this.ctx.filesDir, task.id)]) : undefined;
+    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args, ...(addDirs ? { addDirs } : {}) });
 
     const owner = hireOwner(task, via.who);
     const signIn = owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner) ? this.signInMissing(task, owner, via.who) : undefined;

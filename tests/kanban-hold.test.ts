@@ -10,13 +10,13 @@ import path from 'node:path';
 import Database from 'better-sqlite3';
 import { MIGRATIONS, migrate } from '../src/server/kanban/db/migrations.js';
 import { KanbanRepository } from '../src/server/kanban/db/repository.js';
-import { next, type HoldBack, type MachineEvent, type MachineState, type MachineTask } from '../src/server/kanban/engine/machine.js';
+import { next, type HoldBack, type LastRun, type MachineEvent, type MachineState, type MachineTask } from '../src/server/kanban/engine/machine.js';
 import { LoungeSender, loungeFigures, LOUNGE_NEUTRAL_COLOR } from '../src/server/kanban/lounge.js';
 import { createRefsPlugin } from '../src/server/kanban/integrations/refs/index.js';
 import { canFixPrs } from '../src/shared/kanban/prs.js';
 import type { KanbanServerMsg } from '../src/shared/kanban/protocol.js';
 import type { TaskHold } from '../src/shared/kanban/hold.js';
-import type { WaitingReason } from '../src/shared/kanban/types.js';
+import type { RunPhase, WaitingReason } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
 import { def, makeCtx } from './kanban-integrations-ctx.js';
 
@@ -122,9 +122,9 @@ for (const reason of REASONS) {
     assert.equal(off.state.runState, 'idle');
     assert.equal(off.state.retryAt, undefined, 'nothing retries by itself');
     assert.equal(off.state.phase, back.phase);
-    const plain = reason === 'agent_asking' || reason === 'usage_limit';
-    assert.equal(off.state.waitingReason, plain ? 'stopped' : reason, 'only the waits that cannot go on by themselves are told as a stop');
-    if (plain) assert.ok(off.state.waitingText && off.state.waitingText !== back.text);
+    const plain = reason === 'usage_limit';
+    assert.equal(off.state.waitingReason, plain ? 'stopped' : reason, 'only a wait that cannot go on by itself is told as a stop');
+    if (plain || reason === 'agent_asking') assert.ok(off.state.waitingText && off.state.waitingText !== back.text);
     else assert.equal(off.state.waitingText, 'what it said');
     // A comment on the restored state, and one straight from the hold, each start exactly one run.
     const restored = next(off.state, { type: 'comment', text: 'go', busy: false }, TASK, CFG);
@@ -151,11 +151,41 @@ test('machine: held from Review, Resume goes back to Review; a comment straight 
   assert.deepEqual(direct.effects, [{ type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text: 'go' }]);
 });
 
-test('machine: a comment from the hold on an agent that was asking goes on in the phase it asked in', () => {
+test('machine: a comment from the hold on an agent that was asking goes on in the phase it asked in, with or without Resume first', () => {
   const direct = next({ ...HELD, reviewRound: 1 }, { type: 'comment', text: 'yes', busy: false, back: { from: 'waiting', reason: 'agent_asking', phase: 'review' }, last: { phase: 'review', round: 1, role: 'reviewer' } }, TASK, CFG);
   assert.ok(!('error' in direct));
   assert.deepEqual(direct.effects, [{ type: 'run', phase: 'review', role: 'reviewer', prompt: 'resume', text: 'yes', round: 1 }]);
 });
+
+// Every phase an agent can ask in: [hold, comment] and [hold, Resume, comment] start the very same run.
+const ASKED: { phase: RunPhase; last?: LastRun }[] = [
+  { phase: 'plan', last: { phase: 'plan', role: 'implementer' } },
+  { phase: 'implement', last: { phase: 'implement', role: 'implementer' } },
+  { phase: 'resume', last: { phase: 'resume', role: 'implementer' } },
+  { phase: 'review', last: { phase: 'review', round: 1, role: 'reviewer' } },
+  { phase: 'fix', last: { phase: 'fix', round: 1, role: 'implementer' } },
+  { phase: 'pr-review', last: { phase: 'pr-review', role: 'reviewer' } },
+  { phase: 'pr', last: { phase: 'pr', role: 'implementer' } },
+  { phase: 'pr-fix', last: { phase: 'pr-fix', role: 'implementer' } },
+  { phase: 'pr-conflicts', last: { phase: 'pr-conflicts', role: 'implementer' } },
+  { phase: 'implement' },
+];
+for (const [i, a] of ASKED.entries()) {
+  test(`machine: an agent asking in ${a.phase}${a.last ? '' : ' (no run to read)'} (#${i}): a comment straight from the hold and one after Resume start the same run`, () => {
+    const back: HoldBack = { from: 'waiting', reason: 'agent_asking', text: 'Which one?', phase: a.phase };
+    const held: MachineState = { ...HELD, phase: a.phase, reviewRound: 1 };
+    const e = { type: 'comment', text: 'The second.', busy: false, ...(a.last ? { last: a.last } : {}) } as const;
+    const direct = next(held, { ...e, back }, TASK, CFG);
+    const off = next(held, { type: 'unhold', back }, TASK, CFG);
+    assert.ok(!('error' in direct) && !('error' in off));
+    assert.deepEqual(off.effects.filter((x) => x.type === 'run'), []);
+    const later = next(off.state, e, TASK, CFG);
+    assert.ok(!('error' in later));
+    assert.deepEqual(later.effects, direct.effects);
+    assert.equal(later.effects.filter((x) => x.type === 'run').length, 1);
+    assert.deepEqual(later.state, direct.state);
+  });
+}
 
 test('a held task is not fixable and its PR review is refused', () => {
   const held = { status: 'on_hold' as const, runState: 'idle' as const, prs: [{ state: 'OPEN' as const }] };
@@ -332,10 +362,9 @@ for (const reason of ['agent_asking', 'usage_limit', 'stopped'] as const) {
     assert.equal(back.retryAt, undefined);
     assert.equal(back.hold, undefined);
     assert.equal(back.phase, 'implement');
-    const plain = reason !== 'stopped';
-    assert.equal(back.waitingReason, 'stopped');
-    if (plain) assert.ok(back.waitingText && back.waitingText !== `the ${reason} text` && /comment|Retry/.test(back.waitingText), back.waitingText);
-    else assert.equal(back.waitingText, `the ${reason} text`);
+    assert.equal(back.waitingReason, reason === 'usage_limit' ? 'stopped' : reason, 'an asking agent is asking still (its run is over: the answer goes the way it does after an office restart)');
+    if (reason === 'stopped') assert.equal(back.waitingText, `the ${reason} text`);
+    else assert.ok(back.waitingText && back.waitingText !== `the ${reason} text` && /comment/.test(back.waitingText), back.waitingText);
     assert.equal(fx.invocations().length, mark, 'no agent was launched');
     // And a comment then puts it to work like on any waiting task.
     fx.setRules([COMMENTED]);
@@ -379,6 +408,70 @@ test('a task on hold that an old hold knows no reason for (held from Waiting bef
   await fx.engine.commented(r.id, c.id, BOB);
   await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !!x.workerId, 'worked on', 30_000);
 });
+
+/** The prompts the fake agents were given since `mark`, each once (a launch is logged twice: its argument, then the turn). */
+const distinct = (fx: EngineFixture, mark: number) => [...new Set(fx.invocations().slice(mark).map((i) => i.prompt ?? i.args[i.args.length - 1] ?? ''))];
+
+for (const resumeFirst of [false, true]) {
+  test(`a PR reviewer asked something, the task was held ${resumeFirst ? 'and resumed, then' : 'then'} a comment answers it: the new reviewer's prompt has the comment once`, async (t) => {
+    const fx = await engineFixture();
+    t.after(() => fx.close());
+    fx.setRules([IMPLEMENT, { when: 'Review these pull requests', reply: 'Which branch is the base?', ask: 'question' }]);
+    const r = await inReview(fx, { ticket: 'UYT-3' });
+    const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 5, branch: r.branch } as never], taskId: r.id }, ADA);
+    assert.ok(typeof got !== 'string', String(got));
+    await fx.waitTask(r.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking' && x.phase === 'pr-review', 'the reviewer asking', 30_000);
+    assert.equal(await fx.engine.hold!(r.id, ADA, {}), undefined);
+    const held = await fx.waitTask(r.id, (x) => x.status === 'on_hold' && !x.reviewerWorkerId, 'held, the reviewer gone');
+    assert.equal(held.hold?.reason, 'agent_asking');
+    fx.setRules([{ when: 'has since said', reply: 'Thanks.\n\nREVIEW: APPROVED' }, { when: 'Review these pull requests', reply: 'Which branch is the base?', ask: 'question' }]);
+    if (resumeFirst) {
+      assert.equal(await fx.engine.unhold!(r.id, BOB), undefined);
+      const w = fx.task(r.id);
+      assert.equal(w.status, 'waiting');
+      assert.equal(w.waitingReason, 'agent_asking');
+      assert.match(w.waitingText ?? '', /run was stopped/);
+      await new Promise((res) => setTimeout(res, 300));
+      assert.equal(fx.task(r.id).runState, 'idle', 'nothing starts by itself');
+    }
+    const mark = fx.invocations().length;
+    const c = fx.repo.addComment({ taskId: r.id, authorKind: 'user', authorName: 'Bob', text: 'The base is main-2.' }).comment;
+    await fx.engine.commented(r.id, c.id, BOB);
+    await fx.waitTask(r.id, (x) => x.status === 'review' && x.runState === 'idle' && !x.reviewerWorkerId, 'the review answered', 30_000);
+    const prompts = distinct(fx, mark).filter((p) => /Review these pull requests/.test(p));
+    assert.equal(prompts.length, 1, 'one reviewer launched');
+    assert.equal(prompts[0].split('The base is main-2.').length - 1, 1, 'the comment is in its prompt once');
+    assert.match(prompts[0], /The user has since said:/);
+    assert.equal(fx.task(r.id).pendingMessages.length, 0);
+    assert.equal(fx.repo.getComment(c.id)?.pending, false);
+  });
+}
+
+for (const resumeFirst of [false, true]) {
+  test(`a review round's reviewer asked something, the task was held ${resumeFirst ? 'and resumed, then' : 'then'} a comment answers it: the new reviewer gets the comment once, in the review phase`, async (t) => {
+    const fx = await engineFixture();
+    t.after(() => fx.close());
+    fx.setRules([IMPLEMENT, { when: 'This is review round 1 of', reply: 'Which branch is the base?', ask: 'question' }]);
+    const task = fx.newTask({ usePlan: false, useReview: true });
+    assert.equal(await fx.engine.start(task.id, ADA), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'agent_asking' && x.phase === 'review', 'the reviewer asking', 30_000);
+    assert.equal(await fx.engine.hold!(task.id, ADA, {}), undefined);
+    await fx.waitTask(task.id, (x) => x.status === 'on_hold' && !x.reviewerWorkerId, 'held, the reviewer gone');
+    fx.setRules([{ when: 'The base is main-2', reply: 'Fine.\n\nREVIEW: APPROVED' }, { when: 'This is review round 1 of', reply: 'Which branch is the base?', ask: 'question' }]);
+    if (resumeFirst) assert.equal(await fx.engine.unhold!(task.id, BOB), undefined);
+    const mark = fx.invocations().length;
+    const c = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Bob', text: 'The base is main-2.' }).comment;
+    await fx.engine.commented(task.id, c.id, BOB);
+    await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review went on', 30_000);
+    const runs = fx.repo.listRuns(task.id);
+    assert.equal(runs[runs.length - 1].phase, 'review', 'the answer went to the reviewer, not the implementer');
+    assert.equal(runs[runs.length - 1].role, 'reviewer');
+    const prompts = distinct(fx, mark).filter((p) => p.includes('The base is main-2.'));
+    assert.equal(prompts.length, 1);
+    assert.equal(prompts[0].split('The base is main-2.').length - 1, 1, 'the comment is in its prompt once');
+    assert.equal(fx.task(task.id).pendingMessages.length, 0);
+  });
+}
 
 test('a held task whose hold is missing is a hold from Waiting: Resume lands in Waiting as a stop, a comment starts exactly one run', async (t) => {
   const fx = await engineFixture();

@@ -416,8 +416,8 @@ Look at the branch's commits and uncommitted changes (git log, git status, git d
   },
   'kanban.sinceSaid': {
     group: 'kanban',
-    label: 'Plan · what the user said since (fresh session)',
-    used: 'Added after the plan prompt when a fresh session (the old one is gone, or the tool changed) plans again after the user answered or asked for changes.',
+    label: 'What the user said since (fresh session)',
+    used: 'Added after the plan prompt when a fresh session (the old one is gone, or the tool changed) plans again after the user answered or asked for changes, and after the pull-request review prompt when a new reviewer starts again with the answer to its question.',
     vars: { text: "The user's answers or requested changes" },
     needs: ['text'],
     text: `The user has since said:
