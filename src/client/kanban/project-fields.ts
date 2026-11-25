@@ -72,7 +72,8 @@ export function reviewFields(r: Partial<ReviewSettings>, base: ReviewSettings | 
   const reRev = checkbox('Review the last fix too', r.reReviewLastFix ?? base?.reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
   const sandbox = checkbox('Keep the reviewer off the web', r.sandbox ?? base?.sandbox ?? REVIEW_DEFAULTS.sandbox);
   const extra = extraReviewersField(r.extra ?? base?.extra);
-  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), extra.el, field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for'), reRev.el, sandbox.el);
+  // The main reviewer's row keeps Rounds beside it; the additional reviewers take the full width under it.
+  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for'), extra.el, reRev.el, sandbox.el);
   const value = (): { tool?: KanbanTool; model: string | null; effort: KanbanEffort | null; extra: ReviewerSpec[]; rounds: number; reReviewLastFix: boolean; sandbox: boolean } => ({
     ...(tool.value ? { tool: tool.value as KanbanTool } : {}),
     model: optionalModel(model.value),

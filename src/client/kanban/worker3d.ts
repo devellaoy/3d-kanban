@@ -15,7 +15,9 @@ import type { WorkerInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { h, toast } from '../ui/dom';
 import { store } from '../state';
-import { providerLabel } from '../ui/provider';
+import { providerLabel, resolvedProvider } from '../ui/provider';
+import { isKanbanTool } from '../../shared/kanban/types.js';
+import { toolName } from './labels';
 import type { TermSibling } from '../ui/termtabs';
 import { watchTaskSiblings } from './tasktabs';
 import { icon } from '../ui/icons';
@@ -27,6 +29,12 @@ import type { TaskView, TaskViewOptions } from './taskview';
 import type { TaskTab } from './model';
 
 const memory = new TabMemory();
+
+/** A worker's agent as its tab names it: the kanban's short name ("Claude", "Codex") where it has one, as the review settings say it. */
+function toolLabel(provider: WorkerInfo['provider']): string {
+  const p = resolvedProvider(provider, store.project);
+  return isKanbanTool(p) ? toolName(p) : providerLabel(provider, store.project);
+}
 
 /** What the kanban page adds to the task tab's view: its hooks, and that it's on the page itself. */
 export type WorkerTaskHooks = Pick<TaskViewOptions, 'tab' | 'onTab' | 'openTask' | 'edit' | 'moveMenu' | 'onKanban' | 'openTerminal'> & {
@@ -89,7 +97,7 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
     ? watchTaskSiblings(
         w.id,
         {
-          workers: () => [...store.workers.values()].map((o) => ({ id: o.id, name: o.name, kanban: o.kanban, tool: o.kind === 'agent' ? providerLabel(o.provider, store.project) : undefined })),
+          workers: () => [...store.workers.values()].map((o) => ({ id: o.id, name: o.name, kanban: o.kanban, tool: o.kind === 'agent' ? toolLabel(o.provider) : undefined })),
           onChange: (fn) => store.on('workers', fn),
         },
         (list) => opts.siblings!(list, openOther),
