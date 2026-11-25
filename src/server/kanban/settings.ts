@@ -126,9 +126,8 @@ export function sanitizeSkillSelection(raw: unknown): SkillSelection {
   const name = /^[A-Za-z0-9][\w.:-]{0,99}$/;
   for (const phase of SKILL_PHASES) {
     const p = obj(r[phase]);
-    const claude = strings(p.claude, 30, 100, name);
-    const codex = strings(p.codex, 30, 100, name);
-    if (claude.length || codex.length) out[phase] = { ...(claude.length ? { claude } : {}), ...(codex.length ? { codex } : {}) };
+    const picked = Object.fromEntries(KANBAN_TOOLS.map((t) => [t, strings(p[t], 30, 100, name)] as const).filter(([, names]) => names.length));
+    if (Object.keys(picked).length) out[phase] = picked;
   }
   return out;
 }

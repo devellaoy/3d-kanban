@@ -4,7 +4,7 @@
 // copied to its home), and named in the prompts through skillHint ({{skills}}).
 
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
-import type { KanbanTool, RunPhase, SkillInfo, SkillPhase, SkillSelection } from '../../../../shared/kanban/types.js';
+import { KANBAN_TOOLS, type KanbanTool, type RunPhase, type SkillInfo, type SkillPhase, type SkillSelection } from '../../../../shared/kanban/types.js';
 import { isPrPhase } from '../../../../shared/kanban/prs.js';
 import { projectRepos } from '../../projects.js';
 import { fail } from '../util.js';
@@ -41,7 +41,7 @@ export function pickedSkills(project: SkillSelection, task: SkillSelection | und
 export function checkSelection(selection: SkillSelection, skills: SkillInfo[]): string[] {
   const out: string[] = [];
   for (const [phase, tools] of Object.entries(selection)) {
-    for (const tool of ['claude', 'codex'] as const) {
+    for (const tool of KANBAN_TOOLS) {
       for (const name of tools?.[tool] ?? []) if (!skills.some((s) => s.tool === tool && s.name === name)) out.push(`${name} (${tool}, ${phase}) isn't installed anywhere the office looks`);
     }
   }
@@ -110,9 +110,11 @@ export function createSkills(ctx: KanbanContext, opts: SkillsOptions = {}) {
       if (!deliver.length) return [];
       return ['--plugin-dir', pluginDir(ctx.filesDir, deliver)];
     }
-    const bundled = [...ALWAYS_BUNDLED.map((n) => skills.find((s) => s.tool === 'codex' && s.origin === 'bundled' && s.name === n)), ...got.found.filter((s) => s.origin === 'bundled')].filter((s): s is SkillInfo => !!s);
-    for (const r of syncCodexSkills(roots(got.task.project).codexHome, bundled)) {
-      if (r.status === 'update-available' || r.status === 'failed') ctx.toast(got.task.project, `Codex skill ${r.name}: ${r.status === 'failed' ? `couldn't be installed (${r.detail})` : 'a newer version is available, but the installed copy was changed by hand, so it was left as it is'}`, 'warn');
+    if (tool === 'codex') {
+      const bundled = [...ALWAYS_BUNDLED.map((n) => skills.find((s) => s.tool === 'codex' && s.origin === 'bundled' && s.name === n)), ...got.found.filter((s) => s.origin === 'bundled')].filter((s): s is SkillInfo => !!s);
+      for (const r of syncCodexSkills(roots(got.task.project).codexHome, bundled)) {
+        if (r.status === 'update-available' || r.status === 'failed') ctx.toast(got.task.project, `Codex skill ${r.name}: ${r.status === 'failed' ? `couldn't be installed (${r.detail})` : 'a newer version is available, but the installed copy was changed by hand, so it was left as it is'}`, 'warn');
+      }
     }
     return [];
   };

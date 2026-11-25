@@ -18,7 +18,7 @@ import { inlineFiles, unlinkedFiles } from './inlinefiles.js';
 import { kanbanPromptText, resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
 import { closingPr, closingRef, parseGhKey } from '../../../shared/kanban/issuecard.js';
 import { isPrPhase, openPrs } from '../../../shared/kanban/prs.js';
-import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
+import { isKanbanTool, type KanbanPrLink, type KanbanTask, type KanbanTool, type ProjectRepo, type RunPhase, type SkillPhase, type TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
 import { prCommentsGrantFile } from './prcomments.js';
@@ -229,7 +229,7 @@ export class Composer {
   workerPr(floor: Floor, info: WorkerInfo): string {
     const id = floor.id;
     const name = this.ctx.project(id)?.name ?? floor.project.name;
-    const tool = info.provider === 'codex' ? 'codex' : 'claude';
+    const tool = isKanbanTool(info.provider) ? info.provider : 'claude';
     const picked = this.ctx.settings.project(id).skills.pr?.[tool] ?? [];
     const what = info.task?.name ?? info.title;
     const ticket = workerIssueKey(this.ctx, floor, info);

@@ -53,8 +53,8 @@ export function draftHandlers(ctx: KanbanContext, deps: DraftDeps): { ws: NonNul
     if (!compose.text('kanban.issueDraft', m.project, { language: '' }).trim()) return empty();
     if (ctx.hiringPaused?.()) return empty();
     const { tool, model } = ctx.settings.get().defaults;
-    // Codex has no way to run without tools, so with it as the default agent nothing is drafted.
-    if (tool === 'codex') return empty();
+    // Only Claude can run without tools, so with any other default agent nothing is drafted.
+    if (tool !== 'claude') return empty();
     // This request is the browser's newest from here on, before any await: a slow lookup of an older one
     // must not cancel it. The earlier request's run, if it has one, ends now.
     const key = c.clientId;

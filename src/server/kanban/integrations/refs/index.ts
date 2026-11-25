@@ -96,7 +96,8 @@ export function createRefsPlugin(ctx: KanbanContext): KanbanPlugin {
       // The MCP tools that read tasks only look, as list_workers: nobody should be asked about them.
       if (tool === 'claude') return ['--allowedTools', MCP_TASK_TOOLS.join(',')];
       // Codex hands its MCP servers only the variables it's told to: this one says tasks are there.
-      return ['-c', `mcp_servers.${MCP_NAME}.env.AIKANBAN_API_BASE=${JSON.stringify(ctx.hookUrl)}`];
+      if (tool === 'codex') return ['-c', `mcp_servers.${MCP_NAME}.env.AIKANBAN_API_BASE=${JSON.stringify(ctx.hookUrl)}`];
+      return [];
     },
   };
 }

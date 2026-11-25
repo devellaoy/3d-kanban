@@ -1,6 +1,7 @@
 // The words the kanban shows for the shared types (columns, phases, agents…) that several views
 // name, and its times. English, like the rest of the office.
 
+import { KANBAN_TOOL_NAMES } from '../../shared/kanban/tools.js';
 import type { IssueSourceKind, KanbanEffort, KanbanTool, PlanApproval, RunPhase, TaskStatus, WaitingReason } from '../../shared/kanban/types.js';
 
 const COLUMNS: Record<TaskStatus, string> = { todo: 'To do', in_progress: 'In progress', waiting: 'Waiting', review: 'Review', on_hold: 'On hold', done: 'Done', archived: 'Archive' };
@@ -14,12 +15,11 @@ const WAITING: Record<WaitingReason, string> = {
   usage_limit: 'Usage limit: retrying',
   interrupted: 'Interrupted',
 };
-const TOOLS: Record<KanbanTool, string> = { claude: 'Claude', codex: 'Codex' };
 const EFFORTS: Record<KanbanEffort, string> = { minimal: 'Minimal', low: 'Low', medium: 'Medium', high: 'High', xhigh: 'Extra high', max: 'Max' };
 
 export const columnName = (s: TaskStatus) => COLUMNS[s];
 export const phaseName = (p: RunPhase | string) => (Object.prototype.hasOwnProperty.call(PHASES, p) ? PHASES[p as RunPhase] : p);
-export const toolName = (x: KanbanTool) => TOOLS[x];
+export const toolName = (x: KanbanTool) => KANBAN_TOOL_NAMES[x];
 export const effortName = (e: KanbanEffort) => EFFORTS[e];
 export const waitingName = (w: WaitingReason) => WAITING[w];
 

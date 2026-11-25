@@ -111,6 +111,8 @@ export interface TaskAgentAdapter {
   readTurnResult(transcriptPath: string, opts?: ReadOpts): TurnResult | undefined;
   /** Whether the log shows the turn interrupted (an Esc) at or after `since` (ms); only Claude logs that. */
   interruptedSince?(transcriptPath: string, since: number): boolean;
+  /** Whether the log shows a prompt the office typed at or after `at` (ms) carrying `head`; for a CLI whose log names no prompt. Undefined: it can't be told this way. */
+  promptReceived?(transcriptPath: string, at: number, head: string): boolean | undefined;
   /** What upstream's spawn may carry as the worker's model (it validates it); the rest goes in launchArgs. */
   spawnModel(model?: string): string | undefined;
   spawnEffort(effort?: KanbanEffort): 'low' | 'medium' | 'high' | 'xhigh' | 'max' | undefined;

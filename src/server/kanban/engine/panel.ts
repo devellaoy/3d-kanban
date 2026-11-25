@@ -11,6 +11,7 @@
 
 import type { Floor } from '../../floor.js';
 import type { ReviewPanelPart } from '../../../shared/kanban/review.js';
+import { KANBAN_TOOL_NAMES } from '../../../shared/kanban/tools.js';
 import type { DepartureIntent, KanbanRun, KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import type { ComposeExtra } from './compose.js';
@@ -60,7 +61,7 @@ interface Round {
   resumed?: boolean;
 }
 
-const toolName = (tool: KanbanTool) => (tool === 'codex' ? 'Codex' : 'Claude');
+const toolName = (tool: KanbanTool) => KANBAN_TOOL_NAMES[tool];
 
 export class ReviewPanel {
   private timers = new Map<number, NodeJS.Timeout>();

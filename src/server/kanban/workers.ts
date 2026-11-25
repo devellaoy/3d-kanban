@@ -3,7 +3,7 @@
 // worker's status changes and hooks, keep guards keep a task's worktree as its worker goes home,
 // and a worker can be relaunched on its session with other flags.
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
-import type { DepartureIntent } from '../../shared/kanban/types.js';
+import { isKanbanTool, type DepartureIntent } from '../../shared/kanban/types.js';
 import { CARRY_ON_STAGGER_MS, carries, setCarryOn } from '../workers/carryon.js';
 import { waitingOnSomeone } from '../../shared/status.js';
 import { codexHookTrustArgs } from './codex-trust.js';
@@ -254,7 +254,7 @@ export abstract class KanbanWorkers {
     w.owner = owner;
     w.extra = kanbanExtra(extra);
     w.launchTail = extra?.promptTail;
-    if (extra?.readDir && w.extra && (w.info.provider === 'claude' || w.info.provider === 'codex')) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
+    if (extra?.readDir && w.extra && isKanbanTool(w.info.provider)) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
     if (extra?.resumeSessionId) w.info.sessionId = extra.resumeSessionId;
     if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role, ...(extra.kanban.seat ? { seat: extra.kanban.seat } : {}) };
   }

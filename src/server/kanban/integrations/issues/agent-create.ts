@@ -5,7 +5,7 @@
 // can tell who the worker runs as, and the agent is recorded beside them (the `created` event's `via`).
 
 import type { KanbanCaller, KanbanContext, KanbanHookHandler } from '../../registry.js';
-import { KANBAN_EFFORTS, isKanbanTool, type KanbanEffort, type KanbanTool, type TaskType } from '../../../../shared/kanban/types.js';
+import { KANBAN_EFFORTS, KANBAN_TOOLS, isKanbanTool, type KanbanEffort, type KanbanTool, type TaskType } from '../../../../shared/kanban/types.js';
 import { GH_REPO_RE } from '../../../../shared/kanban/protocol.js';
 import { createBoardTask } from '../../create.js';
 import { BODY_MAX, readJson, sendJson } from '../util.js';
@@ -165,7 +165,7 @@ export function readCreateRequest(body: unknown, ctx: KanbanContext, floorId: st
 
   let tool: KanbanTool | undefined;
   if (b.provider !== undefined && b.provider !== null) {
-    if (!isKanbanTool(b.provider)) return `provider must be claude or codex, not ${String(b.provider).slice(0, 40)}`;
+    if (!isKanbanTool(b.provider)) return `provider must be ${KANBAN_TOOLS.join(' or ')}, not ${String(b.provider).slice(0, 40)}`;
     tool = b.provider;
   }
   let effort: KanbanEffort | undefined;

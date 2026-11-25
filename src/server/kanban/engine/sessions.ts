@@ -62,6 +62,9 @@ function findRollout(home: string, id: string, at?: number): string | false | un
   return hit || (found.every((f) => f === undefined) ? undefined : false);
 }
 
+/** The log file known for `tool`'s session, if any. */
+export const logOf = (logs: SessionLogs | undefined, tool: KanbanTool): string | undefined => (tool === 'claude' ? logs?.claude : tool === 'codex' ? logs?.codex : undefined);
+
 /**
  * Whether the agent's log of `sessionId` exists. Claude's: `<claude home>/projects/<cwd slug>/<id>.jsonl`, under the home the task's
  * owner's own sign-in gives, else the office's. Codex's: its rollout under the worker's Codex home (else the sign-in's, else the
@@ -79,7 +82,7 @@ export function sessionLogged(ctx: Pick<KanbanContext, 'runAs'>, task: Pick<Kanb
     return found === undefined ? undefined : !!found;
   }
   if (tool !== 'claude') return undefined;
-  const known = logs?.claude;
+  const known = logOf(logs, tool);
   if (known && path.basename(known) === `${sessionId}.jsonl` && isFile(known)) return true;
   const home = env.CLAUDE_CONFIG_DIR || process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude');
   const projects = path.join(home, 'projects');
