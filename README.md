@@ -95,7 +95,7 @@ A task goes through the same steps whoever made it, and the office sees each ste
    it; Codex in a read-only sandbox) and may ask questions. A finished plan is approved automatically or
    waits for your approval, as you set it.
 3. **Implement**: in a git worktree of its own, on its own branch (one worktree per repository).
-4. **Review rounds**: a reviewer checks the work, the implementer fixes what it finds, for 1 to 10 rounds.
+4. **Review rounds**: a reviewer checks the work, the implementer fixes what it finds, for 1 to 10 rounds. Up to four additional reviewers (each its own agent, model and effort) can review at the same time, and the main reviewer combines their findings into the round's one review.
 5. **Review column**: you read the result, comment, and have the agent open the pull requests.
 6. **Done** when you accept it: you move it there or send its implementer home (leave-on-merge, when it is on,
    does that once every pull request of the task has merged). A task that has to wait for something outside

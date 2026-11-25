@@ -7,6 +7,7 @@ import type { IssueSourceConfig, IssueSourceKind } from './issue-sources.js';
 import type { JiraConnectionStatus } from './jira-connections.js';
 import type { StatusCategory } from './browse.js';
 import type { PrReview } from './prs.js';
+import type { CoReviewer, ReviewPanelPart, ReviewSettings } from './review.js'; export { MAX_EXTRA_REVIEWERS } from './review.js'; export type { CoReviewer, ReviewPanelPart, ReviewSettings, ReviewerSpec } from './review.js';
 import type { ImplementPermission, PlanPermission } from './permissions.js'; export type { ImplementPermission, PlanPermission };
 
 // --- Columns, phases and runs ---------------------------------------------------------------------
@@ -206,6 +207,8 @@ export interface KanbanTask {
   queuedRun?: QueuedRun;
   /** What its workspace held when it last came to the Review column (workspaceFingerprint): a comment's work that leaves it so is not reviewed again. */
   handoffFingerprint?: string;
+  /** The additional reviewers' slots (seats 1..4); unset when none. */
+  coReviewers?: CoReviewer[];
 }
 
 /** A run the engine couldn't hire a worker for yet (KanbanTask.queuedRun): started as it is once there's room. */
@@ -249,6 +252,9 @@ export interface KanbanTaskCard {
   tags: string[];
   workerId?: string;
   reviewerWorkerId?: string;
+  coReviewers?: { seat: number; workerId?: string; tool: KanbanTool }[];
+  /** 1 + the additional reviewers; set only when the task uses review. */
+  reviewerCount?: number;
   commentCount: number;
   /** Comments typed while the worker is busy, not delivered yet. */
   pendingCount: number;
@@ -272,6 +278,9 @@ export interface KanbanRun {
   effort?: KanbanEffort;
   sessionId?: string;
   workerId?: string;
+  /** 0 or absent = the main reviewer (or any non-review run); 1..4 = an additional reviewer. */
+  seat?: number;
+  panel?: ReviewPanelPart;
   status: RunStatus;
   verdict?: ReviewVerdict;
   summary?: string; // the turn's final text, or a summary of it
@@ -385,18 +394,6 @@ export interface KanbanProjectInfo {
 }
 
 // --- Settings -------------------------------------------------------------------------------------
-
-export interface ReviewSettings {
-  tool: KanbanTool;
-  model?: string;
-  effort?: KanbanEffort;
-  /** Review rounds, 1..10. */
-  rounds: number;
-  /** After the last round's fix, review once more (true) or go straight to the review column. */
-  reReviewLastFix: boolean;
-  /** Keep the reviewer off the web too (claude: no WebFetch/WebSearch). */
-  sandbox: boolean;
-}
 
 export type SkillPhase = 'plan' | 'implement' | 'review' | 'pr';
 export const SKILL_PHASES: readonly SkillPhase[] = ['plan', 'implement', 'review', 'pr'];
@@ -580,6 +577,7 @@ export interface KanbanWorkerSummary {
   runState?: RunState;
   /** The review round in progress or last finished, and how many the task has. */
   round?: number; rounds?: number;
+  seat?: number; // 1..4: an additional reviewer's; absent for everyone else
   waitingReason?: WaitingReason; retryAt?: number;
 }
 

@@ -237,11 +237,28 @@ export function planTaskWindow(
 /**
  * Where an open task goes on when the worker whose window showed it leaves the office (a reviewer going
  * home once its review is done): the task's other worker's window on its Task tab, else a task window.
- * The task stays open, since the user didn't close it.
+ * An additional reviewer (neither the implementer nor the main reviewer) hands over to the main
+ * reviewer while it is there, whatever the phase, else to the implementer. The task stays open, since
+ * the user didn't close it.
  */
 export function planAfterWorkerGone(card: Parameters<typeof planTaskWindow>[0], goneId: string, tab?: TaskTab): TaskWindowPlan {
-  const left = card && { ...card, workerId: card.workerId === goneId ? undefined : card.workerId, reviewerWorkerId: card.reviewerWorkerId === goneId ? undefined : card.reviewerWorkerId };
+  const additional = !!card && card.workerId !== goneId && card.reviewerWorkerId !== goneId;
+  const left = card && {
+    ...card,
+    workerId: card.workerId === goneId || (additional && card.reviewerWorkerId) ? undefined : card.workerId,
+    reviewerWorkerId: card.reviewerWorkerId === goneId ? undefined : card.reviewerWorkerId,
+  };
   return planTaskWindow(left, tab === 'terminal' || tab === 'changes' ? undefined : tab);
+}
+
+/**
+ * What a worker's window closing means for the task open in it (ui/terminal.ts says why it closed): the
+ * user closed the task; its worker left the office, so the task is handed to another window
+ * (planAfterWorkerGone); or a worker tab took the window to another worker of the task, whose window
+ * is open already, so nothing more happens.
+ */
+export function workerWindowClosed(why: 'user' | 'gone' | 'switch'): 'close' | 'handover' | 'keep' {
+  return why === 'gone' ? 'handover' : why === 'switch' ? 'keep' : 'close';
 }
 
 /**

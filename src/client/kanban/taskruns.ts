@@ -22,22 +22,26 @@ export function runsPane(c: TaskCtx, d: Detail): HTMLElement[] {
   return out;
 }
 
-function workersOf(task: KanbanTask): { id: string; role: 'implementer' | 'reviewer' }[] {
+/** The task's workers at their desks: the implementer, the main reviewer, the additional reviewers by seat (`seat` is theirs only). */
+function workersOf(task: Pick<KanbanTask, 'workerId' | 'reviewerWorkerId'> & { coReviewers?: readonly { seat: number; workerId?: string }[] }): { id: string; role: KanbanRole; seat?: number }[] {
   return [
     ...(task.workerId ? [{ id: task.workerId, role: 'implementer' as const }] : []),
     ...(task.reviewerWorkerId ? [{ id: task.reviewerWorkerId, role: 'reviewer' as const }] : []),
+    ...[...(task.coReviewers ?? [])].sort((a, b) => a.seat - b.seat).flatMap((r) => (r.workerId ? [{ id: r.workerId, role: 'reviewer' as const, seat: r.seat }] : [])),
   ];
 }
 
 /** A worker's line: its name and state when the page knows it (it's on the floor the page is on). */
-function workerLabel(id: string, role: KanbanRole, project: string): HTMLElement {
+function workerLabel(id: string, role: KanbanRole, project: string, seat?: number): HTMLElement {
   const w = store.workers.get(id);
+  // An additional reviewer is numbered from 2, as on its tab (tasktabs.ts).
+  const roleName = seat ? `${ROLE_NAMES[role]} ${seat + 1}` : ROLE_NAMES[role];
   return h(
     'div.kb-worker',
     {},
     h('span.dot', { style: w?.color ? `background:${w.color}` : undefined }),
-    h('b', {}, w?.name ?? ROLE_NAMES[role]),
-    h('small.kb-muted', {}, w ? `${ROLE_NAMES[role]} · ${w.status}` : store.floor === project ? 'That worker isn’t here any more' : 'on the project’s floor'),
+    h('b', {}, w?.name ?? roleName),
+    h('small.kb-muted', {}, w ? `${roleName} · ${w.status}` : store.floor === project ? 'That worker isn’t here any more' : 'on the project’s floor'),
   );
 }
 
@@ -50,7 +54,7 @@ export function terminalPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
       h(
         'div.kb-worker-row',
         {},
-        workerLabel(w.id, w.role, task.project),
+        workerLabel(w.id, w.role, task.project, w.seat),
         c.o.openTerminal ? btn('Open the terminal', { icon: 'square-terminal', attrs: { 'data-focus': `term-${w.id}`, title: 'Open this worker’s live terminal in a window of its own: you can type in it', onclick: () => c.o.openTerminal?.(w.id, task.project) } }) : null,
       ),
     ),

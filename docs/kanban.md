@@ -142,7 +142,7 @@ heading and a line of help on the left. Its footer has the key hint (**Ctrl/⌘ 
 - **How**: type **Implement** or **Investigate** (read-only: writes a report instead of changing code;
   no plan, review or PRs), **Plan first** and **Plan approval** (implement straight away, or wait for
   your approval), **Review rounds** on/off, **Choose the reviewer** (agent, model, effort, 1–10
-  rounds, review the last fix too), **UI testing** (before and after screenshots when the task changes
+  rounds, review the last fix too; the additional reviewers are not in the form, they come from the settings), **UI testing** (before and after screenshots when the task changes
   the UI, see [UI testing](#ui-testing); ticked or not by the project's default until you touch it, and
   not there for an investigation) and **Acceptance criteria** (the agents check the work against
   them).
@@ -191,6 +191,28 @@ is long) and a line saying which meeting it came from.
    implementer's chair, looking over its shoulder at its screen (E there opens the reviewer's terminal),
    so a review round never needs a free desk. Only when the task has no desk yet (its implementer never
    sat down) does the reviewer take the next free seat.
+
+   With **additional reviewers** set (see [Settings](#settings)) the round has several reviewers. They all
+   review the change at the same time: the main reviewer, and each additional one as a worker of its own
+   (its own agent, model and effort) in the task's worktree. When the main reviewer has finished its own
+   review, the others' results are handed to it and it **combines** them: it checks what is disputed
+   against the code, drops duplicates and wrong findings and ends with the one verdict of the round. That
+   combined review is the one that lands on the task as its review comment, and the fix works from it; an
+   additional reviewer's own result is not a comment but stays on its run (the **Runs** tab). An additional
+   reviewer is hired like any worker: it takes a free desk (not a spot behind the implementer's chair) and
+   counts against the office's worker limit. One that can't be hired, can't start, crashes or loses its
+   connection, hits a usage limit, asks a question (nobody answers it), never gives a verdict, or is sent
+   home by a person is left out of the round, with a line in the conversation, and the combining names it as
+   not finished. The main reviewer waits for the others for 15 minutes after its own review; one still
+   working then is left out too. When none of them has a result, the main reviewer's own review is the
+   result and nothing is combined. If the combining cannot start, nothing is published: the task waits and
+   *Retry* combines the reviews that were finished. The reviewers of a round are the ones it started with:
+   changing the list in the settings takes effect from the next round. The additional reviewers go home as the round's result is ready (the
+   worktree stays) and come back for the next round of the same review on their own sessions (a new review starts them afresh). The task counts as running
+   from the first review to the result, including the moments between the main reviewer's review and the
+   combining. Stopping the task, putting it on hold or moving it to Done ends the whole round; **Retry**
+   after a stop runs the round again from the start. This holds for review rounds and for **Run a review
+   round**; a pull-request review and a meeting room's review panel are not affected.
 4. **Review column**: read the result. **Run a review round** runs one more round by hand (it ends
    in Review). A comment or answer doesn't start a review round when the agent changed nothing since the
    task came to Review (the task goes back to Review with a note); the button still runs one by hand.
@@ -276,8 +298,8 @@ did:
   out a usage limit no longer carries on by itself (Retry when it should).
 - **The implementer mid-run**: the run is stopped and the task waits with **Retry** (or goes to Done
   with *the task is done*).
-- **The reviewer**: its review round is dropped. Comments that came in while it reviewed go to the
-  agent now; otherwise the task goes to Review.
+- **The reviewer**: its review round is dropped (the additional reviewers' runs end with it). Comments that came in while it reviewed go to the
+  agent now; otherwise the task goes to Review. Sending an *additional* reviewer home only leaves it out of the round: the round goes on without it.
 - **Leave-on-merge** never picks a worker of a task in In progress or with a run going. When it sends
   one home, the task goes to Done only if every pull request linked to it has merged (none open or a
   draft); it also waits for the pull requests of the project's other repositories.
@@ -296,7 +318,8 @@ worker limit (`--max-workers`, Settings): when there's none, the start or the ph
 hire, say) is **queued** too, with a line saying why, and starts by itself as soon as a worker goes
 home anywhere in the office (or at the next minute's look). A task counts once against the worker
 limit: its reviewer never waits for the place its own implementer (still at its desk for the fixes)
-holds, though it counts while it's there, so other hires still find the office full. A queued run
+holds, though it counts while it's there, so other hires still find the office full. A review round's additional reviewers are not
+reviewers of that kind: each needs a free desk and its own place under the limit, and one that finds none is not queued but left out of the round. A queued run
 keeps its task's slot of *tasks at once*, so more tasks don't start meanwhile and take the desks it's
 waiting for. A queued start keeps the desk it was
 started at; when that desk is taken by then, its worker sits at the next free one and the conversation
@@ -375,7 +398,8 @@ over it, and the task's own over both.
 | UI testing | Kanban → New tasks; Projects → Project; per task | on | Implementers save before and after screenshots of the UI they change (see [UI testing](#ui-testing)). A project chooses *Default*, *On* or *Off*; a task's own choice (the create form's tick box) goes over both, and a task without one follows its project. |
 | Plan phase runs | Kanban → New tasks; Projects | plan mode | How the plan phase runs. *Plan mode* (the default): Claude's own plan mode, which cannot change files. *Auto mode*: Claude runs in auto mode with its file editing tools (and the plan-mode tools) off, and the office blocks the end of a plan turn that left uncommitted changes in the worktree. Codex plans in a read-only sandbox either way. |
 | Implementation runs | Kanban → New tasks; Projects | auto mode | How implement, fix, resume and PR phases run. *Auto mode*: Claude's auto mode, where a classifier reviews risky actions (Codex has no auto mode and runs without permission prompts, as *without permission prompts* does). *Without permission prompts*: Claude's bypass mode; Codex with no approvals and no sandbox. *In Codex's workspace sandbox* (`-s workspace-write -a never`) changes Codex; Claude then runs in bypass mode. Reviews are not affected: they always run in bypass mode with the editing tools off. |
-| Reviewer: agent, model, effort | Kanban → Reviews; Projects; per task | Claude | Who reviews. |
+| Reviewer: agent, model, effort | Kanban → Reviews; Projects; per task | Claude | Who reviews (the main reviewer). |
+| Additional reviewers | Kanban → Reviews; Projects | none | Up to 4 more reviewers, each with its own agent, model and effort (*Add a reviewer*). On a review round they all review at the same time and the main reviewer combines their results (see [The process](#the-process)). A project's own review settings replace the office's list, an empty list included; a task has no list of its own. |
 | Rounds | Kanban → Reviews; Projects; per task | 2 | 1–10 review rounds. |
 | Review the last fix too | Kanban → Reviews; Projects; per task | off | One more review after the last round's fix. |
 | Keep the reviewer off the web | Kanban → Reviews; Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
@@ -440,7 +464,11 @@ Click a card (or Enter on it, or follow a `#123` link). A task with a worker ope
 terminal window, the one **E** opens in the 3D office: tabs **Terminal** and **Task #N**, and in
 the header Esc, **Changes**, **VSCode** and the close button (a task on another project's floor takes you to that
 floor first). The worker is the one at work: the reviewer while the task is in a review, else the
-implementer; the task's **Open its terminal** switches to the other worker's window. **Changes**
+implementer; the task's **Open its terminal** switches to the other worker's window, and so do the
+worker tabs in the terminal's tab row, one for each worker of the task (**Terminal** for the implementer,
+**Reviewer · Claude** for the main reviewer, **Reviewer 2 · Codex** and so on for the additional reviewers).
+When the window's worker goes home the task stays open in another worker's window (an additional
+reviewer hands over to the main reviewer, else to the implementer). **Changes**
 opens the task's Changes window and its **Terminal** comes back; all of these stay the same open
 task, so `?task=` stays in the link. `&tab=terminal` opens the Terminal tab and `&tab=changes` the
 Changes window (any other tab, `&tab=images` say, opens on the Task tab); the link's `&tab=` follows the window's tabs. A task without a worker, or whose worker
@@ -484,7 +512,7 @@ the Pull requests tab. Its tabs:
 - **Conversation**: see *Comments*.
 - **Plan**: every version (draft, accepted, superseded), and on a draft that waits for you the box
   that asks for changes (text and files, **Send**); approving it is the footer's button.
-- **Runs**: each phase run (phase, round, role, agent, status, verdict), and the task's history.
+- **Runs**: each phase run (phase, round, role, agent, status, verdict), and the task's history. In a review round with additional reviewers the list has a reviewer run for each of them, with its own agent, status and verdict, and two for the main reviewer: its own review and the combining.
 - **Terminal**: the task worker's live terminal, as at its desk (you can type in it). A task on
   another project's floor takes you to that floor first.
 - **Changes**: the task's **Changes view**, the same one **C** (or Changes in the worker's window)

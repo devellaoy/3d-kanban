@@ -30,6 +30,8 @@ import type { DepartureIntent, KanbanTask } from '../src/shared/kanban/types.js'
 /** How a fake agent answers a prompt: the first rule whose `when` (a regex) matches it. */
 export interface Rule {
   when: string;
+  /** Only this fake CLI answers by the rule (claude or codex), so two reviewers of different tools can be told apart. */
+  kind?: 'claude' | 'codex';
   reply: string;
   /** Claude only: end the turn in ExitPlanMode with this plan (PermissionRequest, no Stop). */
   exitPlan?: string;
@@ -209,7 +211,7 @@ async function typedAfter(rule, msgId) {
 }
 async function turn(prompt, answered) {
   record({ prompt });
-  const rule = rules().find((r) => new RegExp(r.when).test(prompt)) || { reply: 'OK' };
+  const rule = rules().find((r) => new RegExp(r.when).test(prompt) && (!r.kind || r.kind === kind)) || { reply: 'OK' };
   // Once a prompt of the session has asked for the WORK DONE line, the agent gives it, as one that finished its work does (a rule's noMarker leaves its reply as it is).
   if (/WORK DONE/.test(prompt)) fs.writeFileSync(transcript + '.marker', '');
   if (!rule.noMarker && fs.existsSync(transcript + '.marker') && !/^\s*WORK DONE\s*$/m.test(rule.reply)) rule.reply = rule.reply + '\nWORK DONE';

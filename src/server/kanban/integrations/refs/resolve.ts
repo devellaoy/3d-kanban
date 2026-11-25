@@ -112,7 +112,7 @@ export function taskBundle(ctx: KanbanContext, t: KanbanTask): TaskRefBundle {
   const branches = ctx.repo.repoBranches(t.id);
   const repos = def ? projectRepos(def).filter((r) => !t.repoIds || t.repoIds.includes(r.id) || branches[r.id]) : [];
   const plan = ctx.repo.acceptedPlan(t.id);
-  const runs = ctx.repo.listRuns(t.id).slice(-REF_LIMITS.runs);
+  const runs = ctx.repo.listRuns(t.id).filter((r) => !r.seat).slice(-REF_LIMITS.runs); // the combined round, not each additional reviewer's own
   const comments = ctx.repo
     .listComments(t.id, { limit: 200 })
     .comments.filter((c) => c.authorKind !== 'system')

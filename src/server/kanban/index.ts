@@ -242,7 +242,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     card: (taskId: number) =>
       repo.card(taskId, (t) => {
         const r = settings.effectiveReview(t.project, t.overrides);
-        return { rounds: r.rounds, tool: r.tool };
+        return { rounds: r.rounds, tool: r.tool, extra: r.extra?.length ?? 0 };
       }),
     taskChanged: (taskId: number) => {
       const card = ctx.card(taskId);

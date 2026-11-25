@@ -249,6 +249,15 @@ ALTER TABLE pr_links ADD COLUMN unresolved INTEGER;`),
   verified_at INTEGER NOT NULL
 );`),
   },
+  {
+    version: 11,
+    name: 'co-reviewers',
+    // runs.seat: 0 for the main reviewer (and any run that is not a review), 1..4 for an additional reviewer; runs.panel: solo, co or combine (NULL: not a review of a panel);
+    // tasks.co_reviewers: the additional reviewers' slots (JSON, a CoReviewer list; NULL when there are none).
+    up: (db) => db.exec(`ALTER TABLE runs ADD COLUMN seat INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE runs ADD COLUMN panel TEXT;
+ALTER TABLE tasks ADD COLUMN co_reviewers TEXT;`),
+  },
 ];
 
 /** The schema version this build expects. */

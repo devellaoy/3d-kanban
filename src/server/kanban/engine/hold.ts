@@ -25,6 +25,8 @@ export interface Holding {
   /** The task's workers at rest (and `also`) go home with the reason 'hold'. */
   sendHome(taskId: number, by: string, also?: string): Promise<number>;
   drain(floorId: string): Promise<unknown>;
+  /** The task's review round with several reviewers is cut off: its additional reviewers' runs end and their workers go. */
+  closePanel(task: KanbanTask, why: string): Promise<unknown>;
   commentText(project: string, taskId: number, text: string, files: { id: string; name: string; stored: string }[]): string;
   finishRun(runId: number, floorId: string, patch: Parameters<KanbanContext['repo']['finishRun']>[1]): unknown;
   /** Carries out a run effect (a launch, with what a failed or queued one does). */
@@ -56,8 +58,10 @@ export class Holds {
     // A plan waiting for the user's say leaves its worker at the plan's exit prompt (needs_input): it may go home, the session carries on after.
     const planWait = task.status === 'waiting' && (task.waitingReason === 'plan_approval' || task.waitingReason === 'plan_questions');
     const atPlan = planWait ? mine.find((w) => w.id === task.workerId && w.status === 'needs_input' && w.id !== live?.workerId) : undefined;
-    const busy = mine.find((w) => isBusy(w.status) && w.id !== live?.workerId && w.id !== atPlan?.id);
+    const co = new Set(task.coReviewers?.map((c) => c.workerId)); // an additional reviewer's worker is the round's to end
+    const busy = mine.find((w) => isBusy(w.status) && w.id !== live?.workerId && w.id !== atPlan?.id && !co.has(w.id));
     if (busy) return `${busy.name} is still working: stop it or send it home first`;
+    await this.d.closePanel(task, `${who.name} put the task on hold`);
     // An agent that only asks in its terminal is idle but its run goes on: it ends as stopped, as it does when the task is moved to Done.
     if (live) {
       this.d.stopLive(live, `${who.name} put the task on hold`);

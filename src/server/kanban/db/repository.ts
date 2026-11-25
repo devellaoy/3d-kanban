@@ -6,6 +6,7 @@
 import type Database from 'better-sqlite3';
 import type {
   AskingKind,
+  CoReviewer,
   CommentAuthorKind,
   CommentKind,
   KanbanAttachment,
@@ -28,7 +29,10 @@ import type {
 } from '../../../shared/kanban/types.js';
 import type { PrReview } from '../../../shared/kanban/prs.js';
 import { TASK_COLUMNS, clean, json, opt, toDb } from './columns.js';
+import { toCard, type CardReview } from './card.js';
 import { prLink, setPrLinkMarks } from './prlinks.js';
+
+export { toCard, type CardReview };
 
 /** The most history lines a task keeps; older ones go as new ones come. */
 export const TASK_EVENTS_CAP = 2000;
@@ -104,6 +108,9 @@ export interface NewRun {
   startedAt?: number;
   /** What the run was launched with, until an agent has it (see runLaunch). */
   launch?: QueuedRun;
+  /** 0 or unset: the main reviewer (or a run that is not a review); 1..4: an additional reviewer. */
+  seat?: number;
+  panel?: KanbanRun['panel'];
 }
 
 export type RunUpdate = Partial<Pick<KanbanRun, 'status' | 'verdict' | 'summary' | 'error' | 'sessionId' | 'workerId' | 'finishedAt' | 'model' | 'effort' | 'promptedAt'>>;
@@ -112,9 +119,6 @@ export type RunUpdate = Partial<Pick<KanbanRun, 'status' | 'verdict' | 'summary'
 export interface AttachmentRow extends KanbanAttachment {
   stored: string;
 }
-
-/** What the card needs from the settings: the review rounds and tool that apply to the task. */
-export type CardReview = (task: Pick<KanbanTask, 'project' | 'overrides'>) => { rounds: number; tool: KanbanTool };
 
 type Row = Record<string, unknown>;
 
@@ -433,8 +437,8 @@ export class KanbanRepository {
 
   createRun(r: NewRun): KanbanRun {
     const res = this.db
-      .prepare('INSERT INTO runs (task_id, phase, round, role, tool, model, effort, session_id, worker_id, status, started_at, launch) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
-      .run(r.taskId, r.phase, r.round ?? null, r.role ?? 'implementer', r.tool, r.model ?? null, r.effort ?? null, r.sessionId ?? null, r.workerId ?? null, r.status ?? 'running', r.startedAt ?? Date.now(), r.launch ? JSON.stringify(r.launch) : null);
+      .prepare('INSERT INTO runs (task_id, phase, round, role, tool, model, effort, session_id, worker_id, status, started_at, launch, seat, panel) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(r.taskId, r.phase, r.round ?? null, r.role ?? 'implementer', r.tool, r.model ?? null, r.effort ?? null, r.sessionId ?? null, r.workerId ?? null, r.status ?? 'running', r.startedAt ?? Date.now(), r.launch ? JSON.stringify(r.launch) : null, r.seat ?? 0, r.panel ?? null);
     return this.getRun(Number(res.lastInsertRowid))!;
   }
 
@@ -501,9 +505,9 @@ export class KanbanRepository {
     return row ? run(row as Row) : undefined;
   }
 
-  /** The id of the task's latest run, if it has one. */
+  /** The id of the task's latest run (not an additional reviewer's), if it has one. */
   latestRunId(taskId: number): number | undefined {
-    return (this.db.prepare('SELECT id FROM runs WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId) as Row | undefined)?.id as number | undefined;
+    return (this.db.prepare('SELECT id FROM runs WHERE task_id = ? AND seat = 0 ORDER BY id DESC LIMIT 1').get(taskId) as Row | undefined)?.id as number | undefined;
   }
 
   /** The task's run still going, if any (the latest one). */
@@ -767,6 +771,7 @@ export class KanbanRepository {
       // A resume that was queued for a desk before a comment put a held task to work ('unhold') is an ordinary resume now, and the hold is over.
       queuedRun: queuedOld ? { ...queuedOld, prompt: 'resume' } : queued,
       handoffFingerprint: opt(r.handoff_fingerprint),
+      coReviewers: coReviewersOf(r.co_reviewers),
       hold: queuedOld ? undefined : json<KanbanTask['hold']>(r.hold, undefined),
       askingKind: r.waiting_reason === 'agent_asking' ? this.askingKinds.get(id) : undefined,
     };
@@ -796,6 +801,13 @@ export class KanbanRepository {
   }
 }
 
+/** The co-reviewers column: a list of valid slots, or undefined for none or a column that can't be read. */
+function coReviewersOf(v: unknown): KanbanTask['coReviewers'] {
+  const list = json<unknown>(v, undefined);
+  const ok = Array.isArray(list) ? list.filter((c): c is CoReviewer => !!c && typeof c === 'object' && typeof c.seat === 'number' && typeof c.tool === 'string') : [];
+  return ok.length ? ok : undefined;
+}
+
 function run(r: Row): KanbanRun {
   return clean({
     id: r.id as number,
@@ -808,6 +820,8 @@ function run(r: Row): KanbanRun {
     effort: opt<KanbanRun['effort']>(r.effort),
     sessionId: opt<string>(r.session_id),
     workerId: opt<string>(r.worker_id),
+    seat: r.seat ? (r.seat as number) : undefined,
+    panel: opt<KanbanRun['panel']>(r.panel),
     status: r.status as RunStatus,
     verdict: opt<KanbanRun['verdict']>(r.verdict),
     summary: opt<string>(r.summary),
@@ -851,42 +865,4 @@ function attachment(r: Row): AttachmentRow {
 export function publicAttachment(a: AttachmentRow): KanbanAttachment {
   const { stored: _, ...rest } = a;
   return rest;
-}
-
-/** A task's card. `review` gives the rounds and tool that apply (from the settings); without it, 0 and the task's tool. */
-export function toCard(t: KanbanTask, commentCount: number, review?: CardReview): KanbanTaskCard {
-  const r = review?.(t);
-  return clean({
-    id: t.id,
-    project: t.project,
-    title: t.title,
-    type: t.type,
-    status: t.status,
-    ticket: t.ticket,
-    ticketUrl: t.ticketUrl,
-    repoIds: t.repoIds,
-    phase: t.phase,
-    runState: t.runState,
-    reviewRound: t.reviewRound,
-    reviewRounds: t.useReview ? (r?.rounds ?? 0) : 0,
-    useReview: t.useReview,
-    tool: t.tool,
-    model: t.model,
-    reviewTool: t.useReview ? r?.tool : undefined,
-    waitingReason: t.waitingReason,
-    waitingText: t.waitingText,
-    askingKind: t.askingKind,
-    hold: t.hold,
-    retryAt: t.retryAt,
-    prs: t.prs.map((p) => clean({ repoId: p.repoId, repo: p.repo, number: p.number, url: p.url, state: p.state, review: p.review, unresolved: p.unresolved })),
-    tags: t.tags,
-    workerId: t.workerId,
-    reviewerWorkerId: t.reviewerWorkerId,
-    commentCount,
-    pendingCount: t.pendingMessages.length,
-    createdBy: t.createdBy,
-    createdAt: t.createdAt,
-    updatedAt: t.updatedAt,
-    legacy: t.legacy ? true : undefined,
-  });
 }

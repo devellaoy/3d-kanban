@@ -68,6 +68,8 @@ async function uploadDrop(workerId: string, f: File): Promise<string> {
   return r.path;
 }
 
+export type TerminalClosed = 'user' | 'gone' | 'switch';
+
 export interface TerminalOptions {
   /**
    * The keys a phone's keyboard hasn't got (1 2 3 for a menu, arrows, Enter, Tab, Esc, Ctrl+C) and a
@@ -79,8 +81,11 @@ export interface TerminalOptions {
   tab?: WorkerTab;
   /** The kanban page's hooks for the task tab's view (the page opens its tasks in this window). */
   task?: WorkerTaskHooks;
-  /** The window closed: by the user, or because the worker left the office ('gone'). */
-  onClosed?: (why: 'user' | 'gone') => void;
+  /**
+   * The window closed: by the user, because the worker left the office ('gone'), or because one of its
+   * worker tabs took the window to another worker ('switch': that worker's window is already open).
+   */
+  onClosed?: (why: TerminalClosed) => void;
 }
 
 /** The keypad's keys: what each types, or a function of the terminal for the ones that depend on its mode. */
@@ -96,7 +101,16 @@ const KEYPAD: { label: string; title: string; keys: string | ((term: Terminal) =
   { label: '^C', title: 'Ctrl+C', keys: '\x03' },
 ];
 
-let current: { workerId: string; modal: Modal; find(f: TerminalFind): void } | null = null;
+type OpenTerminal = { workerId: string; modal: Modal; find(f: TerminalFind): void; leave(why: TerminalClosed): void };
+let current: OpenTerminal | null = null;
+/** The window a worker tab is leaving, while the tab's opener runs: the next window opens before it closes. */
+let leaving: OpenTerminal | null = null;
+let switcher: ((workerId: string) => void) | undefined;
+
+/** How this page opens another worker's window from a worker tab (ui/termtabs.ts setSiblings): as it opens any worker's terminal. */
+export function setTerminalSwitcher(open: (workerId: string) => void) {
+  switcher = open;
+}
 const listeners = new Set<(msg: ServerMsg) => void>();
 
 /** Main feeds every server message through here so open terminals can pick theirs. */
@@ -113,7 +127,10 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
     if (find) current.find(find);
     return;
   }
-  current?.modal.close();
+  // A worker tab's switch keeps the window it leaves until this one is open, so there is never a
+  // moment without a window (when the office would take the mouse back).
+  const old: OpenTerminal | null = current && current === leaving ? current : null;
+  if (!old) current?.modal.close();
   const info = findWorker(workerId);
   if (!info) return;
 
@@ -252,6 +269,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   };
 
   let gone = false;
+  let closedBy: TerminalClosed | undefined;
   const refresh = () => {
     const w = findWorker(workerId);
     if (!w) {
@@ -356,7 +374,7 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       net.send({ t: 'worker.detach', workerId });
       kanbanTabs?.destroy();
       tabs.destroy();
-      opts.onClosed?.(gone ? 'gone' : 'user');
+      opts.onClosed?.(closedBy ?? (gone ? 'gone' : 'user'));
       term.dispose();
       if (current?.modal === modal) current = null;
     },
@@ -368,7 +386,12 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
       if (ready) jumpTo(f);
       else pendingFind = f;
     },
+    leave: (why) => {
+      closedBy = why;
+      modal.close();
+    },
   };
+  old?.leave('switch');
   closeBtn.addEventListener('click', () => modal.close());
   changesBtn.addEventListener('click', () => {
     onChanges?.();
@@ -528,7 +551,22 @@ export function openTerminal(net: Net, workerId: string, onChanges?: () => void,
   // The tabs, once the terminal is open (xterm measures its cells as it opens).
   // The terminal's side of the window (its own tab or a shell tab) is hidden while the task tab shows.
   const terminalSideHidden = () => termHidden() && tabs.pages.getClientRects().length === 0;
-  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, { tab: opts.tab, task: opts.task, focusTerminal: () => void (terminalSideHidden() || tabs.focusActive()) });
+  /** Another worker's window in place of this one: the page's opener runs with this window marked as the one being left. */
+  const switchTo = (id: string) => {
+    leaving = current?.modal === modal ? current : null;
+    try {
+      switcher?.(id);
+    } finally {
+      leaving = null;
+    }
+  };
+  const kanbanTabs: WorkerTabs | null = mountWorkerTabs(net, info, el, host, {
+    tab: opts.tab,
+    task: opts.task,
+    focusTerminal: () => void (terminalSideHidden() || tabs.focusActive()),
+    siblings: tabs.setSiblings,
+    openWorker: switcher && switchTo,
+  });
   ro.observe(host);
   refresh();
   net.send({ t: 'worker.attach', workerId });

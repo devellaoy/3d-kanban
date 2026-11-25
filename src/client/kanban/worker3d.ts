@@ -14,6 +14,12 @@
 import type { WorkerInfo } from '../../shared/protocol';
 import type { Net } from '../net';
 import { h, toast } from '../ui/dom';
+import { store } from '../state';
+import { providerLabel, resolvedProvider } from '../ui/provider';
+import { isKanbanTool } from '../../shared/kanban/types.js';
+import { toolName } from './labels';
+import type { TermSibling } from '../ui/termtabs';
+import { watchTaskSiblings } from './tasktabs';
 import { icon } from '../ui/icons';
 import { tabStrip } from '../ui/tabs';
 import './worker3d.css';
@@ -23,6 +29,12 @@ import type { TaskView, TaskViewOptions } from './taskview';
 import type { TaskTab } from './model';
 
 const memory = new TabMemory();
+
+/** A worker's agent as its tab names it: the kanban's short name ("Claude", "Codex") where it has one, as the review settings say it. */
+function toolLabel(provider: WorkerInfo['provider']): string {
+  const p = resolvedProvider(provider, store.project);
+  return isKanbanTool(p) ? toolName(p) : providerLabel(provider, store.project);
+}
 
 /** What the kanban page adds to the task tab's view: its hooks, and that it's on the page itself. */
 export type WorkerTaskHooks = Pick<TaskViewOptions, 'tab' | 'onTab' | 'openTask' | 'edit' | 'moveMenu' | 'onKanban' | 'openTerminal'> & {
@@ -36,6 +48,10 @@ export interface WorkerTabsOptions {
   /** The tab to open on (the kanban's Show in 3D asks for the task). */
   tab?: WorkerTab;
   focusTerminal(): void;
+  /** The window's tab row takes the task's workers, and how to get to one (ui/termtabs.ts setSiblings). */
+  siblings?(list: TermSibling[], open: (workerId: string) => void): void;
+  /** Another worker's window in place of this one, where the kanban page's hooks are absent (the 3D office, the 2D view). */
+  openWorker?(workerId: string): void;
 }
 
 export interface WorkerTabs {
@@ -66,6 +82,27 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
 
   // The page's hooks, less the two this window answers itself: the strip's switch is reported, and "Open its terminal" of this worker is the strip's.
   const { onWorkerTab, openTerminal: pageOpenTerminal, ...taskHooks } = opts.task ?? {};
+  /**
+   * The task's other worker (a reviewer, the implementer): its window on its Terminal tab. On the kanban
+   * page the page opens it (the open task goes with it); in the office it opens as E at its desk does.
+   */
+  const openOther = (id: string) => {
+    if (pageOpenTerminal) return pageOpenTerminal(id, store.floor ?? '');
+    if (!opts.openWorker) return void toast('That is the task’s other worker: open its terminal at its desk', 'info');
+    memory.chose(id, 'terminal');
+    opts.openWorker(id);
+  };
+  // One tab per worker of the task in the terminal's tab row, kept up as reviewers come and go.
+  const unwatch = opts.siblings
+    ? watchTaskSiblings(
+        w.id,
+        {
+          workers: () => [...store.workers.values()].map((o) => ({ id: o.id, name: o.name, kanban: o.kanban, tool: o.kind === 'agent' ? toolLabel(o.provider) : undefined })),
+          onChange: (fn) => store.on('workers', fn),
+        },
+        (list) => opts.siblings!(list, openOther),
+      )
+    : undefined;
   let view: TaskView | null = null;
   let destroyed = false;
   let current: WorkerTab = 'terminal';
@@ -82,10 +119,9 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
     if (!view) {
       void import('./taskview').then((m) => {
         if (destroyed || view) return;
-        // "Open its terminal" (an agent asking there) is this window's other tab; another worker's (the
-        // reviewer's) is the page's to open, else it can only be told where to find it.
-        const openTerminal = (id: string, project: string) =>
-          id === w.id ? show('terminal') : pageOpenTerminal ? pageOpenTerminal(id, project) : toast('That is the task’s other worker: open its terminal at its desk', 'info');
+        // "Open its terminal" (an agent asking there) is this window's other tab; another worker's (a
+        // reviewer's) opens that worker's window.
+        const openTerminal = (id: string, project: string) => (id === w.id ? show('terminal') : pageOpenTerminal ? pageOpenTerminal(id, project) : openOther(id));
         // No Changes tab: the window's header has Changes, which opens the task's Changes window.
         view = m.mountTaskView(pane, { ...taskHooks, net, taskId, embedded: true, changesTab: false, openTerminal });
         if (current === 'task') pane.querySelector<HTMLElement>('[role=tab][aria-selected=true]')?.focus({ preventScroll: true });
@@ -96,6 +132,7 @@ export function mountWorkerTabs(net: Net, w: WorkerInfo, el: HTMLElement, anchor
   return {
     destroy() {
       destroyed = true;
+      unwatch?.();
       view?.destroy();
       view = null;
     },

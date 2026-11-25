@@ -12,7 +12,7 @@ import { randomLook } from '../shared/avatar';
 import { ROOF } from '../shared/rooftop';
 import type { FloorInfo } from '../shared/protocol';
 import { $, doingNow, h, onDoingChange, onModalChange, openModal, readingNow, toast } from './ui/dom';
-import { openTerminalFor, routeTerminalMessage } from './ui/terminal';
+import { openTerminalFor, routeTerminalMessage, setTerminalSwitcher } from './ui/terminal';
 import { openChangesFor, routeChangesMessage } from './ui/changes';
 import { openPrompt, routeWorktreeMessage } from './ui/prompt';
 import { openBoard } from './ui/boards';
@@ -46,6 +46,8 @@ const net = new Net(() => store.profile, () => null, true);
 const settings = loadSettings();
 // Its terminal has the keypad, which a phone's keyboard hasn't got the keys for.
 const { openWorker } = workerOpener(net, { keypad: () => true });
+// A worker tab of a task worker's window (kanban/tasktabs.ts) opens that worker's window as its card does.
+setTerminalSwitcher((id) => openWorker(id));
 const notifier = new DesktopNotifier(() => settings.notify, (id) => openWorker(id));
 
 /** The server version this page was loaded with. */

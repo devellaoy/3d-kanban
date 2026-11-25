@@ -256,7 +256,7 @@ export abstract class KanbanWorkers {
     w.launchTail = extra?.promptTail;
     if (extra?.readDir && w.extra && (w.info.provider === 'claude' || w.info.provider === 'codex')) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
     if (extra?.resumeSessionId) w.info.sessionId = extra.resumeSessionId;
-    if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role };
+    if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role, ...(extra.kanban.seat ? { seat: extra.kanban.seat } : {}) };
   }
 
   protected observe(w: Worker, o: Observed) {

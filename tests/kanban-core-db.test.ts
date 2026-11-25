@@ -316,3 +316,49 @@ test('a run launch that cannot be read launches nothing, and the latest run is r
   assert.equal(repo.lastRun(1, 'plan'), undefined);
   assert.equal(repo.lastRun(2), undefined);
 });
+
+test('migration 11 adds the review seat and panel to runs and the co-reviewers to tasks, and old rows read as before', (t) => {
+  const db = new Database(':memory:');
+  t.after(() => db.close());
+  assert.deepEqual(migrate(db, MIGRATIONS.filter((m) => m.version < 11)).at(-1), 10);
+  db.prepare("INSERT INTO tasks (project, title, tool, plan_approval, created_by, created_at, updated_at) VALUES ('web', 'Old', 'claude', 'auto', 'Ada', 1, 1)").run();
+  db.prepare("INSERT INTO runs (task_id, phase, role, tool, status, started_at) VALUES (1, 'review', 'reviewer', 'claude', 'done', 1)").run();
+  assert.deepEqual(migrate(db), [11]);
+  const cols = (table: string) => (db.prepare(`PRAGMA table_info(${table})`).all() as { name: string; notnull: number; dflt_value: string | null }[]).find((c) => ['seat', 'panel', 'co_reviewers'].includes(c.name));
+  assert.equal(cols('runs')?.name, 'seat');
+  assert.equal(cols('tasks')?.name, 'co_reviewers');
+  const repo = new KanbanRepository(db);
+  assert.equal(repo.getTask(1)?.coReviewers, undefined);
+  const old = repo.getRun(1)!;
+  assert.ok(!('seat' in old) && !('panel' in old), 'an old run is the main reviewer, with no panel');
+});
+
+test('a run keeps its seat and panel, and a task its co-reviewers; null or an empty list clears them, a broken column reads as none', (t) => {
+  const repo = repoOn(t);
+  repo.createTask(task());
+  const main = repo.createRun({ taskId: 1, phase: 'review', role: 'reviewer', tool: 'claude', round: 1 });
+  assert.ok(!('seat' in main) && !('panel' in main));
+  const co = repo.createRun({ taskId: 1, phase: 'review', role: 'reviewer', tool: 'codex', round: 1, seat: 2, panel: 'co' });
+  assert.equal(co.seat, 2);
+  assert.equal(co.panel, 'co');
+  const combine = repo.createRun({ taskId: 1, phase: 'review', role: 'reviewer', tool: 'claude', round: 1, seat: 0, panel: 'combine' });
+  assert.equal(combine.seat, undefined);
+  assert.equal(repo.getRun(combine.id)?.panel, 'combine');
+  assert.equal(repo.getRun(co.id)?.seat, 2);
+
+  const slots = [{ seat: 1, tool: 'codex' as const, workerId: 'w1', sessionId: 's1', model: 'gpt-5', effort: 'high' as const }, { seat: 2, tool: 'claude' as const }];
+  assert.deepEqual(repo.updateTask(1, { coReviewers: slots })?.coReviewers, slots);
+  assert.deepEqual(repo.getTask(1)?.coReviewers, slots);
+  assert.deepEqual(repo.card(1, () => ({ rounds: 2, tool: 'claude', extra: 2 }))?.coReviewers, [{ seat: 1, workerId: 'w1', tool: 'codex' }, { seat: 2, tool: 'claude' }]);
+  assert.equal(repo.card(1, () => ({ rounds: 2, tool: 'claude', extra: 2 }))?.reviewerCount, 3);
+  assert.equal(repo.card(1, () => ({ rounds: 2, tool: 'claude' }))?.reviewerCount, 1);
+  assert.equal(repo.card(1)?.reviewerCount, undefined);
+  assert.equal(repo.updateTask(1, { coReviewers: [] })?.coReviewers, undefined);
+  assert.equal(repo.db.prepare('SELECT co_reviewers AS c FROM tasks WHERE id = 1').get() && (repo.db.prepare('SELECT co_reviewers AS c FROM tasks WHERE id = 1').get() as { c: unknown }).c, null);
+  repo.updateTask(1, { coReviewers: slots });
+  assert.equal(repo.updateTask(1, { coReviewers: null })?.coReviewers, undefined);
+  repo.db.prepare("UPDATE tasks SET co_reviewers = '{oops'").run();
+  assert.equal(repo.getTask(1)?.coReviewers, undefined, 'bad JSON reads as no list');
+  repo.db.prepare("UPDATE tasks SET co_reviewers = '[1, {\"seat\": 3, \"tool\": \"codex\"}]'").run();
+  assert.deepEqual(repo.getTask(1)?.coReviewers, [{ seat: 3, tool: 'codex' }], 'unsound entries are dropped');
+});

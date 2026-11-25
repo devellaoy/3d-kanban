@@ -16,6 +16,8 @@ export interface DepartingRun {
   runId: number;
   phase: RunPhase;
   role: KanbanRole;
+  /** An additional reviewer's run (see ReviewPanel). */
+  seat?: number;
   floorId: string;
   ended: boolean;
   stopping?: unknown;
@@ -42,6 +44,12 @@ export interface Departing<L extends DepartingRun> {
   markDone(task: KanbanTask, by: string): Promise<unknown>;
   /** Fills the floor's free desks. */
   drain(floorId: string): Promise<unknown>;
+  /** An additional reviewer's worker left (see ReviewPanel.left): its seat did not finish. */
+  coLeft(workerId: string, taskId: number, own: L | undefined, by: string): Promise<unknown>;
+  /** The task's review round with several reviewers is cut off: its additional reviewers' runs end. */
+  closePanel(task: KanbanTask, why: string): Promise<unknown>;
+  /** The task's review round is between its main reviewer's own review and its combine: no run of the main worker, the round still counts as running. */
+  gap(taskId: number): boolean;
 }
 
 export class Departures<L extends DepartingRun> {
@@ -61,6 +69,12 @@ export class Departures<L extends DepartingRun> {
     if (own) {
       own.ended = true;
       this.d.forget(own);
+    }
+    // An additional reviewer's worker: a person sending it home only makes its seat unfinished, never the task's review round abandoned.
+    if (own?.seat || info.kanban?.seat) {
+      await this.d.coLeft(workerId, taskId, own, (departure ?? { by: 'Someone' }).by);
+      if (own) void this.d.drain(own.floorId);
+      return;
     }
     const before = this.d.task(taskId);
     if (before) {
@@ -129,7 +143,7 @@ export class Departures<L extends DepartingRun> {
       } else if (role === 'reviewer') {
         const pending = task.pendingMessages.some((m) => !m.parked);
         line += pending ? `: its ${what} was dropped, and the comments that came in meanwhile go to the agent now` : `: its ${what} was dropped, and the task is in Review`;
-        then = () => this.d.apply(task.id, { type: 'reviewAbandoned', pending });
+        then = async () => (await this.d.closePanel(task, `${line} mid-run`), this.d.apply(task.id, { type: 'reviewAbandoned', pending }));
       } else {
         line += `: its ${what} was stopped. Retry to carry on.`;
         then = () => this.d.apply(task.id, { type: 'stopped', by: intent.by, text: `${this.departureLine(intent, info.name)} mid-run: Retry to carry on` });
@@ -137,9 +151,14 @@ export class Departures<L extends DepartingRun> {
     } else if (done) {
       line += ', and the task is done';
       then = () => this.d.markDone(task, intent.by);
+    } else if (role === 'reviewer' && !info.kanban?.seat && this.d.gap(task.id)) {
+      // The main reviewer leaves between its own review and the combine: as when it leaves mid-review, the round is dropped.
+      const pending = task.pendingMessages.some((m) => !m.parked);
+      line += pending ? ': its review round was dropped, and the comments that came in meanwhile go to the agent now' : ': its review round was dropped, and the task is in Review';
+      then = async () => (await this.d.closePanel(task, `${line} mid-round`), this.d.apply(task.id, { type: 'reviewAbandoned', pending }));
     } else if (role === 'implementer' && task.status === 'in_progress' && task.runState !== 'queued' && !this.d.liveOf(task.id)) {
       line += ': Retry to carry on';
-      then = () => this.d.apply(task.id, { type: 'interrupted', text: `${line}` });
+      then = async () => (await this.d.closePanel(task, `${line}`), this.d.apply(task.id, { type: 'interrupted', text: `${line}` }));
     } else if (role === 'implementer' && task.retryAt && intent.reason === 'sent-home') {
       // Only X stops the auto-resume: a release (a move to done) or the office's own recycling leaves it due.
       line += ": it doesn't carry on by itself after the usage limit any more, Retry when it should";

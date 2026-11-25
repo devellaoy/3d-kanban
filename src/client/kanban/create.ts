@@ -10,8 +10,7 @@
 import './create.css';
 import { h, toast } from '../ui/dom';
 import { icon, iconButton } from '../ui/icons';
-import { CLAUDE_MODELS } from '../../shared/protocol';
-import { KANBAN_EFFORTS, KANBAN_TOOLS, type KanbanEffort, type KanbanTask, type KanbanTool, type NormalizedIssue, type PlanApproval, type ReviewSettings, type TaskType } from '../../shared/kanban/types.js';
+import { KANBAN_TOOLS, type KanbanEffort, type KanbanTask, type KanbanTool, type NormalizedIssue, type PlanApproval, type ReviewSettings, type TaskType } from '../../shared/kanban/types.js';
 import { KANBAN_LIMITS, type KanbanTaskInput, type KanbanTaskPatch } from '../../shared/kanban/protocol.js';
 import type { KanbanApi, KanbanOk } from './api';
 import { attachBox } from './attachbox';
@@ -24,7 +23,8 @@ import { openIssuePicker } from './issues';
 import { orderedProjects, sameRepoPick } from './model';
 import { projectUiTesting, taskUiTesting, uiTestingPatch } from './taskimagesmodel';
 import { kstore } from './store';
-import { APPROVAL_NAMES, effortName, toolName } from './labels';
+import { APPROVAL_NAMES, toolName } from './labels';
+import { effortSelect, modelInput } from './agentfields';
 import { isSendKey } from './sendkey';
 import { numberInput, numberValue, projectSelect, run, select, textArea, textInput } from './ui';
 import { btn, checkLine, formField, segmented, sendKeyHint } from '../ui/kit';
@@ -39,20 +39,7 @@ export interface CreateOptions {
   created?(id: number): void;
 }
 
-let listSeq = 0;
-/** A model box with the usual names to pick from (any id can be typed). */
-export function modelInput(value: string, tool: () => KanbanTool): { el: HTMLElement; input: HTMLInputElement; refresh(): void } {
-  const id = `kb-models-${++listSeq}`;
-  const list = h('datalist', { id });
-  const input = textInput(value, { list: id, maxlength: KANBAN_LIMITS.model, placeholder: 'Default', 'aria-label': 'Model' });
-  const refresh = () => list.replaceChildren(...(tool() === 'claude' ? CLAUDE_MODELS : []).map((m) => h('option', { value: m })));
-  refresh();
-  return { el: h('span.kb-model', {}, input, list), input, refresh };
-}
-
-export function effortSelect(value: KanbanEffort | undefined, defaultLabel: string): HTMLSelectElement {
-  return select<KanbanEffort | ''>([['', defaultLabel], ...KANBAN_EFFORTS.map((e) => [e, effortName(e)] as const)], value ?? '', { 'aria-label': 'Effort' });
-}
+export { effortSelect, modelInput };
 
 export function openCreate(api: KanbanApi, o: CreateOptions = {}) {
   const editing = o.task;

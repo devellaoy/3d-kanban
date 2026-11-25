@@ -28,6 +28,14 @@ export interface TermTabsOptions {
   onActiveChange?(): void;
 }
 
+/** Another worker whose window this one's tab row leads to (the window's own worker is in the list too, in its place). */
+export interface TermSibling {
+  workerId: string;
+  label: string;
+  /** The tab's tooltip. */
+  title?: string;
+}
+
 export interface TermTabs {
   /** The tab bar (above the terminal) and where the shell tabs show (beside it). */
   bar: HTMLElement;
@@ -38,6 +46,12 @@ export interface TermTabs {
   inputActive(data: string): boolean;
   /** A shell tab is showing (not the terminal's own). */
   onShell(): boolean;
+  /**
+   * The workers that belong with this one, in the order of their tabs. When the window's own worker is
+   * among them they are drawn in place of the "Terminal" tab: its own entry is that tab, the others
+   * call `open` to take the window to their worker. An empty list (or one without it) is the plain row.
+   */
+  setSiblings(list: TermSibling[], open: (workerId: string) => void): void;
   /** The window closed: stops watching the tabs (they keep running) and lets their terminals go. */
   destroy(): void;
 }
@@ -68,11 +82,25 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
   const views = new Map<string, ShellView>();
   /** The shell tab showing; null for the terminal's own. */
   let active: string | null = null;
+  let siblings: TermSibling[] = [];
+  let openSibling: (workerId: string) => void = () => {};
 
   const render = () => {
     const tab = (on: boolean, label: HTMLElement, close?: HTMLElement) => h('div.term-tab', { class: on ? 'on' : '' }, label, close ?? null);
+    /** The terminal's own tab; a sibling's entry for this worker gives it its words. */
+    const own = (s?: TermSibling) =>
+      tab(active === null, h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === null), title: s?.title, onclick: () => show(null) }, ...withIcon('square-terminal', s?.label ?? 'Terminal', 14)));
+    /** Another worker's terminal: its tab takes the window there. */
+    const other = (s: TermSibling) => {
+      const el = tab(false, h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': 'false', title: s.title, onclick: () => openSibling(s.workerId) }, ...withIcon('square-terminal', s.label, 14)));
+      el.classList.add('sibling');
+      return el;
+    };
+    const workers = siblings.some((s) => s.workerId === workerId) ? siblings.map((s) => (s.workerId === workerId ? own(s) : other(s))) : [own()];
     tabsBar.replaceChildren(
-      tab(active === null, h('button.term-tab-label', { type: 'button', role: 'tab', 'aria-selected': String(active === null), onclick: () => show(null) }, ...withIcon('square-terminal', 'Terminal', 14))),
+      ...workers,
+      // The workers' tabs and the shell tabs are two kinds: a rule between them.
+      ...(workers.length > 1 && tabs.length ? [h('span.term-tab-sep', { 'aria-hidden': 'true' })] : []),
       ...tabs.map((t) =>
         tab(
           active === t.id,
@@ -93,6 +121,8 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
         ),
       ),
     );
+    // A long row scrolls sideways: the tab showing stays in sight.
+    tabsBar.querySelector<HTMLElement>('.term-tab.on')?.scrollIntoView?.({ block: 'nearest', inline: 'nearest' });
   };
 
   /**
@@ -252,6 +282,11 @@ export function termTabs(workerId: string, opts: TermTabsOptions): TermTabs {
     pages,
     focusActive,
     onShell: () => active !== null,
+    setSiblings: (list, open) => {
+      siblings = list;
+      openSibling = open;
+      render();
+    },
     inputActive: (data) => {
       const v = active === null ? undefined : views.get(active);
       if (!v) return false;

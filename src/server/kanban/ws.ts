@@ -127,7 +127,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       ...(includeArchived ? { includeArchived: true } : {}),
       tasks: ctx.repo.listCards(project, { includeArchived }, (t) => {
         const r = ctx.settings.effectiveReview(t.project, t.overrides);
-        return { rounds: r.rounds, tool: r.tool };
+        return { rounds: r.rounds, tool: r.tool, extra: r.extra?.length ?? 0 };
       }),
       projects: projectInfos(ctx),
       settings: ctx.settings.get(),

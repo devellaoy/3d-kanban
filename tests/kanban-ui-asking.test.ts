@@ -70,3 +70,18 @@ test('the waiting banner and the card draw an asking task from asking.ts, the ba
   assert.doesNotMatch(banner, /askingKind|in its terminal/, 'what an asking task says is decided in asking.ts only');
   assert.match(read('card.ts'), /askingView\(c\)\.title/);
 });
+
+test('a review round with additional reviewers: the terminal is a reviewer whose run is going, the main one first', () => {
+  const round = { phase: 'review' as const, workerId: 'w1', reviewerWorkerId: 'r1', coReviewers: [{ seat: 2, workerId: 'r3' }, { seat: 1, workerId: 'r2' }, { seat: 3 }], askingKind: 'question' as const };
+  const run = (workerId: string, status: 'running' | 'succeeded' = 'running') => ({ status, workerId });
+  assert.equal(askingView(round, [run('r1'), run('r2'), run('r3')]).terminalOf, 'r1');
+  // The main reviewer's run is over (or it has none yet): the lowest seat still running.
+  assert.equal(askingView(round, [run('r1', 'succeeded'), run('r3'), run('r2')]).terminalOf, 'r2');
+  assert.equal(askingView(round, [run('r3')]).terminalOf, 'r3');
+  // Runs that name no worker: the first reviewer at a desk.
+  assert.equal(askingView(round, [{ status: 'running' }]).terminalOf, 'r1');
+  assert.equal(askingView({ ...round, reviewerWorkerId: undefined }, [{ status: 'running' }]).terminalOf, 'r2');
+  // A card (no runs): an additional reviewer at its desk stands for a live run too.
+  assert.equal(askingLive({ phase: 'review', coReviewers: [{ seat: 1, workerId: 'r2' }] }), true);
+  assert.equal(askingLive({ phase: 'review', coReviewers: [{ seat: 1 }] }), false);
+});

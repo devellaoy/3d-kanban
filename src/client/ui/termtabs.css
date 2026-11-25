@@ -1,10 +1,15 @@
 /* Tabs on a terminal: the terminal itself, plus the worker's shell tabs (a login shell in its folder each). */
 .term-tabbar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; padding: 6px 10px; background: var(--paper); border-bottom: var(--bw) solid var(--ink); }
-.term-tabs { display: flex; gap: 6px; overflow-x: auto; flex: 1; min-width: 0; }
+.term-tabs { display: flex; gap: 6px; overflow-x: auto; scrollbar-width: thin; flex: 1; min-width: 0; }
 .term-tab { display: flex; align-items: center; border: var(--bw-sm) solid transparent; border-radius: var(--radius-md); flex: none; }
 .term-tab.on { background: var(--field); border-color: var(--ink); box-shadow: var(--shadow-sm); }
 .term-tab-label { display: inline-flex; align-items: center; gap: 6px; padding: 6px 10px; font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); background: none; border: none; cursor: pointer; white-space: nowrap; }
 .term-tab-close { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; margin-right: 3px; padding: 0; border: none; background: none; border-radius: 50%; font-size: var(--fs-lg); line-height: 1; color: var(--muted); cursor: pointer; }
+/* The task's other workers (ui/termtabs.ts setSiblings): tabs like "Terminal", each leading to its worker's window. A rule parts them from the shell tabs. */
+.term-tab.sibling:hover { background: var(--field-hover); }
+.term-tab.sibling .term-tab-label { color: var(--muted); }
+.term-tab.sibling:hover .term-tab-label { color: var(--text); }
+.term-tab-sep { flex: none; align-self: stretch; width: var(--bw-sm); margin: 4px 2px; background: var(--muted); }
 .term-tab-close:hover { background: var(--field-hover); color: var(--text); }
 .term-tab-add { flex: none; padding: 6px 10px; font: inherit; font-size: var(--fs-sm); font-weight: var(--fw-bold); color: var(--text); background: none; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-md); cursor: pointer; white-space: nowrap; }
 /* Where the shell tabs show: one terminal each, sized as the worker's own (.term-host in terminal.css). */

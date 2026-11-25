@@ -1,7 +1,7 @@
 // How a task opens on the kanban page: in its worker's window (Task tab, or Terminal when asked), else a task window.
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { CloseGuard, planAfterWorkerGone, planTaskWindow } from '../src/client/kanban/model.js';
+import { CloseGuard, planAfterWorkerGone, planTaskWindow, workerWindowClosed } from '../src/client/kanban/model.js';
 
 test('a task with a worker opens in the worker window on the Task tab', () => {
   assert.deepEqual(planTaskWindow({ workerId: 'w1', project: 'api' }), { kind: 'worker', workerId: 'w1', project: 'api', tab: 'task' });
@@ -68,4 +68,36 @@ test('the worker of the window going home leaves the task open: the other worker
   assert.equal((planAfterWorkerGone(reviewing, 'rev', 'terminal') as { tab: string }).tab, 'task');
   assert.deepEqual(planAfterWorkerGone({ workerId: 'impl', project: 'api' }, 'impl'), { kind: 'plain' });
   assert.deepEqual(planAfterWorkerGone(undefined, 'impl'), { kind: 'plain' });
+});
+
+test('an additional reviewer going home hands the task to the main reviewer while it is there, else to the implementer', () => {
+  // The card's coReviewers may or may not still list the one that left: neither the implementer nor the main reviewer is what tells.
+  const round = { workerId: 'impl', reviewerWorkerId: 'rev', project: 'api' };
+  for (const phase of ['review', 'pr-review', 'fix', 'implement', undefined]) {
+    assert.deepEqual(planAfterWorkerGone({ ...round, phase }, 'rev2', 'conversation'), { kind: 'worker', workerId: 'rev', project: 'api', tab: 'task' }, String(phase));
+  }
+  // The main reviewer has gone already: the implementer.
+  assert.deepEqual(planAfterWorkerGone({ workerId: 'impl', phase: 'review', project: 'api' }, 'rev2'), { kind: 'worker', workerId: 'impl', project: 'api', tab: 'task' });
+  // Only the main reviewer is left, or nobody.
+  assert.deepEqual(planAfterWorkerGone({ reviewerWorkerId: 'rev', phase: 'review', project: 'api' }, 'rev2', 'terminal'), { kind: 'worker', workerId: 'rev', project: 'api', tab: 'task' });
+  assert.deepEqual(planAfterWorkerGone({ phase: 'review', project: 'api' }, 'rev2'), { kind: 'plain' });
+  // The main reviewer and the implementer going home are as before.
+  assert.equal((planAfterWorkerGone({ ...round, phase: 'review' }, 'rev') as { workerId: string }).workerId, 'impl');
+  assert.equal((planAfterWorkerGone({ ...round, phase: 'implement' }, 'impl') as { workerId: string }).workerId, 'rev');
+});
+
+test('a worker window closing: the user closes the task, a worker gone hands it over, a switch to another worker tab leaves it be', () => {
+  assert.equal(workerWindowClosed('user'), 'close');
+  assert.equal(workerWindowClosed('gone'), 'handover');
+  // The other worker's window is open already and is the task's now (ui/terminal.ts closes the old one after).
+  assert.equal(workerWindowClosed('switch'), 'keep');
+});
+
+test('a switch between worker windows takes a generation: the old window closing after it says nothing', () => {
+  const g = new CloseGuard();
+  const reviewer = g.bump();
+  // A worker tab: the additional reviewer's window opens, the reviewer's closes after it.
+  const second = g.bump();
+  assert.equal(g.latest(reviewer), false, 'neither its close nor its worker leaving counts any more');
+  assert.equal(g.latest(second), true);
 });

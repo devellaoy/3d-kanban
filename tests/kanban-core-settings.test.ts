@@ -394,3 +394,55 @@ test('plan and implement permissions: the task over the project over the office,
   store.setProject('web', { planPermission: 'bypass' } as never);
   assert.equal(store.project('web').planPermission, undefined);
 });
+
+test('additional reviewers: valid rows only, each with only its valid fields, at most four, none = no key', () => {
+  const rows = [
+    { tool: 'codex', model: 'gpt-5', effort: 'high' },
+    { tool: 'claude', model: 'bad model!', effort: 'nope' },
+    { tool: 'gemini' },
+    'claude',
+    null,
+    { model: 'claude-opus-4' },
+    { tool: 'claude' },
+    { tool: 'codex' },
+    { tool: 'claude' },
+  ];
+  const r = sanitizeReview({ extra: rows });
+  assert.deepEqual(r.extra, [{ tool: 'codex', model: 'gpt-5', effort: 'high' }, { tool: 'claude' }, { tool: 'claude' }, { tool: 'codex' }], 'invalid rows dropped, the first four valid ones kept');
+  assert.ok(!('extra' in sanitizeReview({ extra: [] })), 'an empty list is no key');
+  assert.ok(!('extra' in sanitizeReview({ extra: 'claude' })), 'not an array: no key');
+  assert.ok(!('extra' in sanitizeReview({ extra: [{ tool: 'gemini' }] })), 'only invalid rows: no key');
+  assert.deepEqual(sanitizeReview({}, { ...DEFAULT_REVIEW, extra: [{ tool: 'codex' }] }).extra, [{ tool: 'codex' }], 'not given: the base list');
+  assert.ok(!('extra' in sanitizeReview({ extra: [] }, { ...DEFAULT_REVIEW, extra: [{ tool: 'codex' }] })), 'given empty: cleared over the base');
+  assert.deepEqual(sanitizePartialReview({ extra: [{ tool: 'codex' }, { tool: 'x' }] }), { extra: [{ tool: 'codex' }] });
+  assert.deepEqual(sanitizePartialReview({ extra: [] }), { extra: [] }, 'a project can say none, with an empty list');
+  assert.equal(sanitizePartialReview({ extra: 'x' }), undefined);
+});
+
+test('additional reviewers: the office list is replaced on save and removed by an empty one; a project list replaces the office list', (t) => {
+  const dir = scratch(t);
+  const store = new KanbanSettingsStore(dir);
+  assert.equal(store.get().review.extra, undefined);
+  store.set({ review: { extra: [{ tool: 'codex', effort: 'high' }, { tool: 'claude', model: 'claude-opus-4' }] } as never });
+  assert.equal(store.get().review.extra?.length, 2);
+  store.set({ review: { extra: [{ tool: 'codex' }] } as never });
+  assert.deepEqual(store.get().review.extra, [{ tool: 'codex' }], 'replaced wholesale, not merged');
+  store.set({ review: { rounds: 3 } as never });
+  assert.deepEqual(store.get().review.extra, [{ tool: 'codex' }], 'kept across other changes');
+  assert.deepEqual(new KanbanSettingsStore(dir).get().review.extra, [{ tool: 'codex' }], 'reloaded from disk');
+  assert.deepEqual(store.effectiveReview('web').extra, [{ tool: 'codex' }]);
+  store.setProject('web', { review: { extra: [{ tool: 'claude' }, { tool: 'claude', effort: 'low' }] } });
+  assert.deepEqual(store.effectiveReview('web').extra, [{ tool: 'claude' }, { tool: 'claude', effort: 'low' }], 'the project list over the office list');
+  assert.deepEqual(store.effectiveReview('api').extra, [{ tool: 'codex' }], 'another project follows the office');
+  assert.deepEqual(new KanbanSettingsStore(dir).project('web').review?.extra, [{ tool: 'claude' }, { tool: 'claude', effort: 'low' }], 'saved with the file');
+  store.setProject('web', { review: { extra: [] } });
+  assert.equal(store.effectiveReview('web').extra, undefined, 'an empty project list: no additional reviewers over the office list');
+  assert.deepEqual(new KanbanSettingsStore(dir).project('web').review, { extra: [] });
+  store.setProject('web', { review: null } as never);
+  assert.deepEqual(store.effectiveReview('web').extra, [{ tool: 'codex' }], 'override cleared: the office list again');
+  store.set({ review: { extra: [] } as never });
+  assert.equal('extra' in store.get().review, false, 'an empty office list removes the key');
+  assert.equal(store.effectiveReview('web').extra, undefined);
+  assert.ok(!('extra' in readSettings(dir).review), 'and it is gone from the file');
+  assert.equal(readSettings(dir).schemaVersion, 2, 'no schema bump');
+});

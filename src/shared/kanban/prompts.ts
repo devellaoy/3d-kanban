@@ -200,6 +200,7 @@ export const PROMPT_CONTRACT: Partial<Record<KanbanPromptId, KanbanContractId>> 
   'kanban.investigate': 'investigateSafety',
   'kanban.review': 'review',
   'kanban.rereview': 'review',
+  'kanban.review.combine': 'review',
   'kanban.pr.create': 'pr',
   'kanban.pr.fix': 'pr',
   'kanban.pr.conflicts': 'pr',

@@ -1,6 +1,7 @@
 // What the orchestrator follows of a run it started (`Live`), and what an operation carries into the effects it causes (`Via`).
 
 import type { PendingMessage, AskingKind, KanbanPrReviewRequest, KanbanRole, KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
+import type { ReviewPanelPart } from '../../../shared/kanban/review.js';
 import type { KanbanCaller } from '../registry.js';
 import type { RunEffect } from './machine.js';
 import type { HeldRun } from './turnhold.js';
@@ -9,6 +10,10 @@ import type { HeldRun } from './turnhold.js';
 export interface Live extends HeldRun {
   round?: number;
   role: KanbanRole;
+  /** 1..4: an additional reviewer's run (its events go to the review panel, never to the state machine); absent for every other. */
+  seat?: number;
+  /** The part of a review round with several reviewers this run is (absent: an ordinary run). */
+  panel?: ReviewPanelPart;
   tool: KanbanTool;
   /** Claude asked to leave plan mode (ExitPlanMode): its needs_input is the finished plan. */
   exitPlan: boolean;
