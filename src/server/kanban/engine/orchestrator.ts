@@ -12,15 +12,15 @@ import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
 import type { WorkerManager, WorkerObservation } from '../../workers.js';
-import { DESK_BY_ID, deskBuilt, nextFreeSeat, watchSpotOf } from '../../../shared/layout.js';
+import { DESK_BY_ID, nextFreeSeat } from '../../../shared/layout.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import { isBusy } from '../../../shared/status.js';
 import { withContract } from '../../../shared/kanban/prompts.js';
 import type { TurnSignal } from '../../../shared/kanban/signals.js';
-import type { DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
-import { BRANCH_PREFIX, Worktrees } from '../../worktrees.js';
+import type { DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
+import { BRANCH_PREFIX } from '../../worktrees.js';
 import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js';
-import { launchDirs, prReviewDirs, prReviewRepoIds } from './launchdirs.js';
+import { launchDirs, prReviewRepoIds } from './launchdirs.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
 import { sameRepo } from '../../../shared/floors.js';
@@ -28,7 +28,7 @@ import { prOwners } from '../integrations/pulls/bundle.js';
 import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { ReadOpts, TaskAgentAdapter, TurnResult } from './adapters/types.js';
-import { Composer, isFolderProject, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
+import { Composer, isFolderProject, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
 import { canFixPrs, isPrPhase, onPrBranches, type PrMode } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
 import { next, prPrompt, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
@@ -45,6 +45,10 @@ import { agentHook, newTurn, acceptSignal, QUESTION_TOOL, StopGate, stopMessage 
 import type { Live, Via } from './live.js';
 import { lostText, stopFallback, TurnEnd, typedSettled, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
+import { slot, slotPatch } from './slot.js';
+import { Seating, baseBranches } from './seating.js';
+export { baseBranches };
+import { PrReviews } from './prreview-launch.js';
 import { RestWaits } from './restwait.js';
 import { sessionLogged } from './sessions.js'; import { observeLeadHook, planFromHook, planModeOf } from './automode.js';
 
@@ -86,19 +90,6 @@ interface NoRoom {
   queued: string;
 }
 
-/** A pull request as a review request may name it: the pulls plugin hands on what it looked up. */
-type ReviewedPr = PrRef & { title?: string; url?: string; branch?: string };
-
-/**
- * The configured base branch of each git repository a task's worktree is cut in (the primary always,
- * the others as `repoIds` says), by checkout folder, for SpawnExtra.bases and the fetch before a hire.
- */
-export function baseBranches(def: FloorDef, repoIds: string[] | null): Record<string, string> {
-  const out: Record<string, string> = {};
-  for (const r of projectRepos(def)) if (r.kind === 'git' && r.baseBranch && (r.primary || !repoIds || repoIds.includes(r.id))) out[path.resolve(r.dir)] = r.baseBranch;
-  return out;
-}
-
 const OFFICE: KanbanCaller = { name: 'Kanban', admin: true };
 /** How the engine sends its own workers home: nothing for removed() to act on, it has seen to the task itself. */
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
@@ -132,8 +123,6 @@ export class Orchestrator {
   private sweepTimer?: NodeJS.Timeout;
   /** A drain of every project is due (a worker went home somewhere: a desk or room under the worker limit freed). */
   private drainDue = false;
-  /** Each repository's worktree plumbing, for fetching its base before a hire (see freshBase). */
-  private trees = new Map<string, Worktrees>();
   private adapters: Record<KanbanTool, TaskAgentAdapter>;
   private compose: Composer;
   private handoffs: Handoffs;
@@ -144,6 +133,8 @@ export class Orchestrator {
   private gate: StopGate<Live>;
   private comments: Comments<Live>;
   private restarts: Restarts<Live>;
+  private prReviews: PrReviews;
+  private seats: Seating;
   private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs'>>;
   private disposed = false;
 
@@ -249,6 +240,23 @@ export class Orchestrator {
       turnEnded: (live, planExit) => this.turnEnded(live, planExit),
       hiringPaused: () => this.ctx.hiringPaused?.(),
       staggerMs: options.restartStaggerMs ?? 5000,
+    });
+    this.seats = new Seating(ctx);
+    this.prReviews = new PrReviews({
+      ctx, adapters: this.adapters, compose: this.compose, comments: this.comments,
+      reviewSettings: (task) => this.reviewSettings(task),
+      sharesLimit: (task, role, floor) => this.seats.sharesLimit(task, role, floor),
+      signInMissing: (task, owner, who) => this.seats.signInMissing(task, owner, who),
+      noRoom: (floor, preferred, countsWith, role) => this.seats.noRoom(floor, preferred, countsWith, role),
+      freshBase: (floor, def, repoIds) => this.seats.freshBase(floor, def, repoIds),
+      hireOwner, baseBranches,
+      finishRun: (id, project, patch) => this.finishRun(id, project, patch),
+      update: (id, patch) => this.update(id, patch),
+      note: (task, text, runId) => this.note(task, text, runId),
+      pushTask: (task) => this.pushTask(task),
+      follow: (live, prompt) => { this.live.set(live.workerId, live); this.prompted(live, prompt); },
+      exitedAtHire: (live) => this.exitedAtHire(live),
+      now: () => this.opts.now(),
     });
     this.opts = {
       sweepMs: options.sweepMs ?? 60_000,
@@ -508,7 +516,7 @@ export class Orchestrator {
    */
   private queuedStopped(task: KanbanTask, q: QueuedRun, error: string) {
     const review = this.reviewSettings(task);
-    const tool: KanbanTool = q.phase === 'pr-review' ? (this.lastPrReview(task.id)?.tool ?? review.tool) : q.role === 'reviewer' ? review.tool : task.tool;
+    const tool: KanbanTool = q.phase === 'pr-review' ? (this.prReviews.last(task.id)?.tool ?? review.tool) : q.role === 'reviewer' ? review.tool : task.tool;
     const run = this.ctx.repo.createRun({ taskId: task.id, phase: q.phase, ...(q.round !== undefined ? { round: q.round } : {}), role: q.role, tool, status: 'stopped' });
     this.finishRun(run.id, task.project, { status: 'stopped', error });
   }
@@ -545,9 +553,9 @@ export class Orchestrator {
       if (!floor || this.disposed) return;
       // No room for this one; a reviewer whose implementer is still at its desk may have it (see sharesLimit),
       // and needs no desk of its own when it can stand behind its implementer's (see watchSpotFor).
-      const watch = t.queuedRun?.role === 'reviewer' ? this.watchSpotFor(t, floor) : undefined;
+      const watch = t.queuedRun?.role === 'reviewer' ? this.seats.watchSpotFor(t, floor) : undefined;
       const restarted = Restarts.queued(t.queuedRun);
-      if (!(restarted && this.restarts.reuses(t, floor)) && this.noRoom(floor, watch, t.queuedRun && this.sharesLimit(t, t.queuedRun.role, floor), t.queuedRun?.role)) continue;
+      if (!(restarted && this.restarts.reuses(t, floor)) && this.seats.noRoom(floor, watch, t.queuedRun && this.seats.sharesLimit(t, t.queuedRun.role, floor), t.queuedRun?.role)) continue;
       if (restarted && !(await this.restarts.admit(t, floor))) continue;
       if (!t.queuedRun && this.busyCount(project) >= max) return;
       await this.serial(t.id, async () => {
@@ -580,78 +588,6 @@ export class Orchestrator {
       if (this.disposed) return;
       for (const def of this.ctx.projects()) void this.drain(def.id);
     });
-  }
-
-  /** Upstream's why-message when `owner` (see hireOwner) has no Claude sign-in, saying whose it is when it isn't the caller's. */
-  private signInMissing(task: Pick<KanbanTask, 'id' | 'createdBy' | 'createdByAccount'>, owner: string, who?: KanbanCaller): string {
-    const why = this.ctx.runAs!.why('claude');
-    if (owner !== task.createdByAccount || owner === who?.accountId) return why;
-    return `Task #${task.id} runs as its creator, ${task.createdBy}, whose Claude sign-in is missing. ${why}`;
-  }
-
-  /**
-   * Why a new hire can't be made now, as the queued task's conversation says it: no free desk (the
-   * `preferred` one or any other), or the office at its worker limit. Undefined when there's room.
-   * `countsWith` (see sharesLimit): the worker limit isn't this hire's to wait for. `role`: a reviewer's
-   * `preferred` is the spot behind its implementer's seat (see watchSpotFor), anyone else's a seat.
-   */
-  private noRoom(floor: Floor, preferred?: string, countsWith?: string, role?: KanbanRole): string | undefined {
-    const desk = (preferred && !this.deskRefusal(floor, preferred, role === 'reviewer')) || nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.());
-    if (!desk) return "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees.";
-    if (countsWith) return undefined;
-    const full = this.ctx.capacity?.();
-    return full ? `Queued: ${full.replace(/[.\s]+$/, '')}. It starts by itself when the office has room.` : undefined;
-  }
-
-  /**
-   * Where a task's reviewer goes: the spot behind its implementer's chair, over its shoulder, watching
-   * its screen, so a review takes no desk. The implementer's desk while it's there, else the desk the
-   * task last sat at (it comes back there for the fixes), but only while nobody else sits there: never
-   * behind another task's or a person's worker. Undefined otherwise (the reviewer then takes the next
-   * free seat, as any hire does).
-   */
-  private watchSpotFor(task: Pick<KanbanTask, 'id' | 'workerId' | 'deskId'>, floor: Floor): string | undefined {
-    const implementer = task.workerId ? floor.workers.get(task.workerId) : undefined;
-    let deskId = implementer?.deskId;
-    if (!deskId && task.deskId) {
-      const there = floor.workers.list().find((w) => w.deskId === task.deskId);
-      if (!there || there.kanban?.taskId === task.id) deskId = task.deskId;
-    }
-    const desk = deskId ? DESK_BY_ID.get(deskId) : undefined;
-    if (!desk || desk.station || desk.room || desk.watch) return undefined;
-    return watchSpotOf(desk.id);
-  }
-
-  /**
-   * A task counts once against the office's worker limit: its reviewer's hire doesn't wait for the
-   * place its own implementer holds, which nothing would ever free (the implementer stays at its desk
-   * for the fixes). The implementer's worker id while it is at its desk, for SpawnExtra.countsWith;
-   * once it's gone, a reviewer is held to the limit like any hire.
-   */
-  private sharesLimit(task: Pick<KanbanTask, 'workerId'>, role: KanbanRole, floor: Floor): string | undefined {
-    return role === 'reviewer' && task.workerId && floor.workers.get(task.workerId) ? task.workerId : undefined;
-  }
-
-  /**
-   * A worktree cut next starts from what's on GitHub now, as upstream's hires do (withFreshBase, the
-   * queue): the floor's base and each other repository's, the configured base branch where there is one.
-   */
-  private async freshBase(floor: Floor, def: FloorDef, repoIds: string[] | null) {
-    const fetching: Promise<void>[] = [];
-    const bases = baseBranches(def, repoIds);
-    const own = floor.workers.fetchBase?.(bases[path.resolve(def.dir)]);
-    if (own) fetching.push(own);
-    for (const r of repoSources(def, repoIds)) {
-      try {
-        let trees = this.trees.get(r.dir);
-        if (!trees) this.trees.set(r.dir, (trees = new Worktrees(r.dir)));
-        const f = trees.fetch(bases[path.resolve(r.dir)]);
-        if (f) fetching.push(f);
-      } catch {
-        // not a checkout git can fetch in: its worktree starts from what's there
-      }
-    }
-    await Promise.all(fetching);
   }
 
   /** Tells the office's team notifications, once per transition, that a task waits on a person. */
@@ -766,7 +702,7 @@ export class Orchestrator {
 
   /** The session a role carries on, if it's one of the tool it runs now. */
   private sessionFor(task: KanbanTask, role: KanbanRole, tool: KanbanTool): string | undefined {
-    const id = role === 'implementer' ? task.sessionId : task.reviewerSessionId;
+    const id = slot(task, role).sessionId;
     if (!id) return undefined;
     const run = [...this.ctx.repo.listRuns(task.id)].reverse().find((r) => r.role === role && r.sessionId === id);
     return !run || run.tool === tool ? id : undefined;
@@ -794,7 +730,7 @@ export class Orchestrator {
     if (!def || !floor) return "The project's floor isn't open";
     // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer (see Restarts.reviewer).
     const { same: last, restarted } = this.restarts.reviewer(task, eff, floor);
-    if (eff.phase === 'pr-review' && !last) return this.launchPrReview(task, def, floor, via, restarted, eff);
+    if (eff.phase === 'pr-review' && !last) return this.prReviews.launch(task, def, floor, via, restarted, eff);
     const role = eff.role;
     const review = this.reviewSettings(task);
     const defaults = this.ctx.settings.get().defaults;
@@ -839,7 +775,7 @@ export class Orchestrator {
       findings: eff.prompt === 'fix' ? reviewFindings(this.latestSummary(task.id, 'review') ?? '') : undefined,
       fixSummary: eff.prompt === 'rereview' ? this.latestSummary(task.id, 'fix') : undefined,
       refsFile,
-      fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.lastPrReview(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
+      fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.prReviews.last(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
       held,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
@@ -852,26 +788,26 @@ export class Orchestrator {
     };
 
     // The role's worker, when it's still at its desk.
-    const workerId = role === 'implementer' ? fresh.workerId : fresh.reviewerWorkerId;
+    const workerId = slot(fresh, role).workerId;
     let info = workerId ? floor.workers.get(workerId) : undefined;
     if (info && info.provider !== tool && info.status !== 'working') {
       // The task's tool was changed: the worker at the desk runs the other CLI. A new hire takes over.
       await floor.sendHome(info.id, 'keep', ENGINE);
-      this.update(task.id, role === 'implementer' ? { workerId: null } : { reviewerWorkerId: null });
+      this.update(task.id, slotPatch(role, { workerId: null }));
       info = undefined;
     }
     const owner = hireOwner(fresh, via.who);
     // A reviewer stands behind its implementer's chair rather than taking a desk of its own (see watchSpotFor).
-    const preferred = role === 'implementer' ? (via.deskId ?? fresh.deskId) : this.watchSpotFor(fresh, floor);
-    const countsWith = this.sharesLimit(fresh, role, floor);
+    const preferred = role === 'implementer' ? (via.deskId ?? fresh.deskId) : this.seats.watchSpotFor(fresh, floor);
+    const countsWith = this.seats.sharesLimit(fresh, role, floor);
     if (!info) {
       // A new hire runs on its owner's own Claude sign-in (upstream's rule), never on the office's
       // instead; it needs a free desk and room under the office's worker limit (a reviewer shares its
       // implementer's), else it's queued; and a worktree it gets starts from what's on GitHub now.
-      if (owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner)) return this.signInMissing(fresh, owner, via.who);
-      const full = this.noRoom(floor, preferred, countsWith, role);
+      if (owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner)) return this.seats.signInMissing(fresh, owner, via.who);
+      const full = this.seats.noRoom(floor, preferred, countsWith, role);
       if (full) return { queued: full };
-      if (!folder && !fresh.workspace) await this.freshBase(floor, def, fresh.repoIds);
+      if (!folder && !fresh.workspace) await this.seats.freshBase(floor, def, fresh.repoIds);
     }
 
     // How it launches.
@@ -950,18 +886,18 @@ export class Orchestrator {
       this.forget(live);
       // It can't carry on in place (no session yet, say): a new hire in the same worktree takes over.
       await floor.sendHome(info.id, 'keep', ENGINE);
-      this.update(task.id, role === 'implementer' ? { workerId: null } : { reviewerWorkerId: null });
+      this.update(task.id, slotPatch(role, { workerId: null }));
     } else if (info && (info.status === 'working' || info.status === 'starting')) {
       return fail(`${info.name} is busy: wait for its turn to end`);
     }
 
     // A new hire.
     // The task's desk (the one it was started at, or where it last sat) when it's free, else the next free one.
-    const desk = (preferred && !this.deskRefusal(floor, preferred, role === 'reviewer') ? preferred : undefined) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.())?.id;
+    const desk = (preferred && !this.seats.deskRefusal(floor, preferred, role === 'reviewer') ? preferred : undefined) ?? nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.())?.id;
     if (!desk) {
       // Taken while its base was fetched: back to the queue.
       this.finishRun(run.id, task.project, { status: 'interrupted', error: 'There was no free desk for its worker' });
-      return { queued: this.noRoom(floor, preferred, countsWith, role) ?? "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees." };
+      return { queued: this.seats.noRoom(floor, preferred, countsWith, role) ?? "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees." };
     }
     const now = this.ctx.repo.getTask(task.id) ?? fresh;
     const session = this.sessionFor(now, role, tool);
@@ -989,10 +925,10 @@ export class Orchestrator {
       env: extras.env,
       settingsFile: 'kanban',
     });
-    if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, preferred, countsWith, role) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired); // a desk taken out while it was being set up: back to the queue
+    if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.seats.noRoom(floor, preferred, countsWith, role) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired); // a desk taken out while it was being set up: back to the queue
     const live = follow(hired.id, prompt);
     this.ctx.repo.updateRun(run.id, { workerId: hired.id, ...(session ? { sessionId: session } : {}) });
-    const patch: TaskUpdate = role === 'implementer' ? { workerId: hired.id, deskId: desk } : { reviewerWorkerId: hired.id };
+    const patch: TaskUpdate = { ...slotPatch(role, { workerId: hired.id }), ...(role === 'implementer' ? { deskId: desk } : {}) };
     if (preferred && desk !== preferred) this.note(task, `${DESK_BY_ID.get(preferred)?.label ?? preferred} is taken, so ${hired.name} sits at ${DESK_BY_ID.get(desk)?.label ?? desk}.`);
     if (role === 'implementer' && !now.workspace && hired.worktree) {
       patch.workspace = { worktree: hired.worktree, ...(hired.repos?.length ? { repos: hired.repos } : {}) };
@@ -1039,89 +975,6 @@ export class Orchestrator {
     for (const id of ids) if (floor.workers.get(id)) await floor.sendHome(id, 'keep', ENGINE);
     const where = gone.map((d) => path.relative(floor.dir, d) || d).join(', ');
     this.note(task, `Its worktree is gone (${where}): a fresh worktree takes over${task.branch ? `, and the agent checks out the task's branch ${task.branch} there first` : ''}.`);
-  }
-
-  /** The request of the task's latest pull-request review (for a Retry), as reviewPrs recorded it. */
-  private lastPrReview(taskId: number): KanbanPrReviewRequest | undefined {
-    const e = [...this.ctx.repo.listEvents(taskId)].reverse().find((x) => x.kind === 'pr.review');
-    const req = (e?.data as { request?: KanbanPrReviewRequest } | undefined)?.request;
-    return req && Array.isArray(req.prs) ? req : undefined;
-  }
-
-  /**
-   * A pull-request review's run: its own reviewer, hired fresh in a worktree of each repository the
-   * pull requests are in (never the floor's checkout, never the task's worktree), with the review's
-   * read-only flags. A Retry reviews them again from the start.
-   */
-  private async launchPrReview(task: KanbanTask, def: FloorDef, floor: Floor, via: Via, restarted: boolean, asked: RunEffect): Promise<string | NoRoom | undefined> {
-    if (isFolderProject(def)) return 'A folder project has no pull requests to review';
-    const kept = !asked.text ? this.comments.take(task, via.pendingSince, (m) => !!m.answer) : undefined;
-    const eff: RunEffect = { ...asked, pending: undefined, ...(kept ? { text: kept.text } : {}) };
-    if (kept) via.taken = kept.msgs; // what the user said to a reviewer that asked: the comment that answered it, or (a Retry, whichever prompt it picks) that answer given back; the rest of the queue is the implementer's
-    const req = via.prReview ?? this.lastPrReview(task.id);
-    if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
-    const review = this.reviewSettings(task), tool: KanbanTool = req.tool ?? review.tool, same = !req.tool || req.tool === review.tool;
-    const model = req.model ?? (same ? review.model : undefined), effort = req.effort ?? (same ? review.effort : undefined);
-    const adapter = this.adapters[tool], involved = prReviewRepoIds(def, req.prs);
-
-    // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
-    const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
-    if (prev && (prev.status === 'working' || (prev.status === 'starting' && !restarted))) return `${prev.name} is busy: wait for its turn to end`;
-    if (prev) await floor.sendHome(prev.id, homeCleanup(task, prev), ENGINE);
-    this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
-
-    const attached = req.taskId !== undefined;
-    const prs = (req.prs as ReviewedPr[]).map((p) => `- ${p.repo}#${p.number}${p.title ? ` “${p.title}”` : ''}${p.branch ? ` (branch ${p.branch})` : ''} ${p.url ?? `https://github.com/${p.repo}/pull/${p.number}`}`).join('\n');
-    const x: ComposeExtra = {
-      phase: 'pr-review',
-      prs,
-      prTask: attached ? `They are kanban task #${task.id}'s: ${task.title}${task.ticket ? ` (${task.ticket})` : ''}` : '',
-      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir), prRepoIds: involved, text: eff.text,
-    };
-    const prompt = typeable(this.compose.build('pr.review', def, task, tool, floor.dir, x));
-    const extras = this.ctx.workerExtras(task.id, tool, skillPhase('pr-review'));
-    const dirs = prReviewDirs(this.ctx, task, !!eff.text);
-    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args, ...dirs });
-
-    const owner = hireOwner(task, via.who);
-    const signIn = owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner) ? this.signInMissing(task, owner, via.who) : undefined;
-    const countsWith = this.sharesLimit(this.ctx.repo.getTask(task.id) ?? task, 'reviewer', floor);
-    // No desk, or the office's worker limit: queued as any hire is (the drain runs it again, the
-    // pull requests from its pr.review event).
-    const full = signIn ? undefined : this.noRoom(floor, undefined, countsWith);
-    if (full) return { queued: full };
-
-    const run = this.ctx.repo.createRun({ taskId: task.id, phase: 'pr-review', role: 'reviewer', tool, model, effort, launch: { ...queuedOf({ ...eff, phase: 'pr-review', role: 'reviewer' }), prompt: eff.text ? eff.prompt : 'pr.review', ...(via.taken?.length ? { taken: via.taken } : {}), ...(via.commentId !== undefined ? { commentId: via.commentId } : {}) } });
-    this.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
-    const fail = (err: string) => {
-      this.finishRun(run.id, task.project, { status: 'failed', error: err });
-      return err;
-    };
-    if (signIn) return fail(signIn);
-    await this.freshBase(floor, def, involved);
-    const desk = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.())?.id;
-    if (!desk) {
-      // Taken while its bases were fetched: back to the queue.
-      this.finishRun(run.id, task.project, { status: 'interrupted', error: 'There was no free desk for its reviewer' });
-      return { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees." };
-    }
-    const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
-    const hired = floor.workers.spawn(desk, by, prompt, true, 'agent', tool, adapter.spawnModel(model), adapter.spawnEffort(effort), undefined, owner, repoSources(def, involved), undefined, {
-      launchArgs,
-      bases: baseBranches(def, involved),
-      ...(countsWith ? { countsWith } : {}),
-      kanban: { taskId: task.id, role: 'reviewer' },
-      env: extras.env,
-      settingsFile: 'kanban',
-    });
-    if (typeof hired === 'string') return /taken out of the floor/.test(hired) ? (this.finishRun(run.id, task.project, { status: 'interrupted', error: hired }), { queued: this.noRoom(floor, undefined, countsWith) ?? "Queued: its desk was taken out of the floor. It starts by itself when a desk frees." }) : fail(hired);
-    const live: Live = { taskId: task.id, runId: run.id, phase: 'pr-review', role: 'reviewer', tool, workerId: hired.id, floorId: task.project, exitPlan: false, ended: false, eff, via, ack: () => this.ctx.repo.clearRunLaunch(run.id) };
-    this.live.set(hired.id, live);
-    this.prompted(live, prompt);
-    this.ctx.repo.updateRun(run.id, { workerId: hired.id });
-    this.update(task.id, { reviewerWorkerId: hired.id, runState: 'running' });
-    this.exitedAtHire(live);
-    return undefined;
   }
 
   // --- Following workers --------------------------------------------------------------------------
@@ -1267,7 +1120,7 @@ export class Orchestrator {
     const lost = !!this.ctx.floor(live.floorId)?.workers.get(live.workerId)?.lost;
     // Its agent exited before it was heard from, resuming a stored session: the session is gone (a month on hold, a cleaned-up home). The run
     // starts once more in a fresh session, with the handoff; its messages are still the task's (nothing was acknowledged).
-    const session = live.role === 'implementer' ? task?.sessionId : task?.reviewerSessionId;
+    const session = task ? slot(task, live.role).sessionId : undefined;
     if (live.resumed && !live.started && !lost && live.eff && task && session && sessionLogged(this.ctx, task, live.tool, session, this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)) === false) return this.holds.freshSession(live, task, session);
     if (task && live.ack) this.comments.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
     const why = lost ? "Its worktree is gone, so its agent couldn't start" : 'The agent exited before its turn was done';
@@ -1446,7 +1299,7 @@ export class Orchestrator {
     let task = this.ctx.repo.getTask(live.taskId);
     if (!task) return;
     // Sessions and branches, as they are now.
-    if (info?.sessionId) this.update(task.id, live.role === 'implementer' ? { sessionId: info.sessionId } : { reviewerSessionId: info.sessionId });
+    if (info?.sessionId) this.update(task.id, slotPatch(live.role, { sessionId: info.sessionId }));
     if (live.role === 'implementer') await this.syncBranch(task, info);
     task = this.ctx.repo.getTask(live.taskId) ?? task;
     const sessionId = info?.sessionId;
@@ -1664,9 +1517,9 @@ export class Orchestrator {
   }
 
   private async reviewerHome(task: KanbanTask) {
-    const id = task.reviewerWorkerId;
+    const id = slot(task, 'reviewer').workerId;
     const floor = this.ctx.floor(task.project);
-    this.update(task.id, { reviewerWorkerId: null, reviewerSessionId: null });
+    this.update(task.id, slotPatch('reviewer', { workerId: null, sessionId: null }));
     const info = id ? floor?.workers.get(id) : undefined;
     if (id && info) await floor!.sendHome(id, homeCleanup(task, info), ENGINE);
   }
@@ -1687,7 +1540,7 @@ export class Orchestrator {
       if (task.status !== 'todo') return 'Only a task in To do can be started';
       const floor = this.ctx.floor(task.project);
       if (!floor) return "The project's floor isn't open";
-      const why = opts.deskId ? this.deskRefusal(floor, opts.deskId) : undefined;
+      const why = opts.deskId ? this.seats.deskRefusal(floor, opts.deskId) : undefined;
       if (why) return why;
       const slot = this.busyCount(task.project, task.id) < this.ctx.settings.project(task.project).maxConcurrent;
       if (!task.startedAt) this.update(task.id, { startedAt: this.opts.now(), flags: { ...task.flags, descriptionLocked: true } });
@@ -1695,15 +1548,6 @@ export class Orchestrator {
       if (opts.deskId) this.update(task.id, { deskId: opts.deskId });
       return this.apply(task.id, { type: 'start', slot }, { who, ...(opts.deskId ? { deskId: opts.deskId } : {}) });
     });
-  }
-
-  /** Why a task's worker can't be hired at `deskId` now, if it can't: a desk or bean bag that's built and free. */
-  private deskRefusal(floor: Floor, deskId: string, watch = false): string | undefined {
-    const desk = DESK_BY_ID.get(deskId);
-    if (!desk || desk.station || desk.room || !!desk.watch !== watch) return `${deskId} isn't a desk a task's worker can be hired at`;
-    if (!deskBuilt(desk, floor.workers.wing?.() ?? 0) || floor.workers.removed?.().has(desk.watch ?? desk.id)) return desk.beanbag ? `${desk.label} isn't on this floor: put a bean bag down in build mode (U)` : `${desk.label} isn't built on this floor yet, or was taken out of it`;
-    if (floor.workers.deskOccupied(deskId)) return `${desk.label} is taken: pick a free desk`;
-    return undefined;
   }
 
   stop(taskId: number, who: KanbanCaller): Promise<string | void> {
@@ -1897,49 +1741,9 @@ export class Orchestrator {
     if (isFolderProject(def)) return 'A folder project has no pull requests to review';
     if (!req.prs.length) return 'Pick at least one pull request';
     const labels = req.prs.map((p) => `${p.repo}#${p.number}`);
-    let created: KanbanTask | undefined;
-    // The review goes into the named task only when every PR is that task's; PRs of several tasks, or
-    // of none the kanban knows, are a review task of their own, so one task's findings and column
-    // aren't another's.
-    let named = req.taskId;
-    let mixed: string | undefined;
-    if (named !== undefined) {
-      const t = this.ctx.repo.getTask(named);
-      if (!t || t.project !== req.project) return `There's no task #${named} in this project`;
-      const theirs = (req.prs as ReviewedPr[]).filter((p) => !this.prOfTask(t, def, p));
-      if (theirs.length) {
-        const whose = theirs.map((p) => {
-          const ids = this.ctx.repo.tasksOfPr(p.repo, p.number).filter((id) => id !== t.id);
-          return `${p.repo}#${p.number} ${ids.length ? `is ${ids.map((id) => `#${id}`).join(', ')}'s` : 'belongs to no task the kanban knows'}`;
-        });
-        mixed = `This review was asked for on task #${t.id}, but not every pull request is its (${whose.join('; ')}), so it is a review task of its own.`;
-        named = undefined;
-      }
-    }
-    if (named === undefined) {
-      const review = this.ctx.settings.effectiveReview(req.project);
-      const involved = projectRepos(def).filter((r) => r.primary || (r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))));
-      const ticket = this.commonTicket(req.prs as ReviewedPr[]);
-      created = this.ctx.repo.createTask({
-        project: req.project,
-        title: clip(`PR review: ${labels.join(', ')}`, 100),
-        description: `A review of these pull requests together:\n${(req.prs as ReviewedPr[]).map((p) => `- ${p.repo}#${p.number}${p.title ? ` ${p.title}` : ''}${p.url ? ` (${p.url})` : ''}`).join('\n')}`,
-        type: 'investigate',
-        ...(ticket ? { ticket } : {}),
-        repoIds: involved.map((r) => r.id),
-        tool: req.tool ?? review.tool,
-        usePlan: false,
-        planApproval: 'auto',
-        useReview: false,
-        createdBy: who.name,
-        ...(who.accountId ? { createdByAccount: who.accountId } : {}),
-        startedAt: this.opts.now(),
-        flags: { descriptionLocked: true },
-      });
-      this.pushTask(created);
-      if (mixed) this.note(created, mixed);
-    }
-    const taskId = created?.id ?? named!;
+    const target = this.prReviews.taskFor(req, def, who);
+    if (typeof target === 'string') return target;
+    const { taskId, named, created } = target;
     const request: KanbanPrReviewRequest = { project: req.project, prs: req.prs, ...(named !== undefined ? { taskId: named } : {}), ...(req.tool ? { tool: req.tool } : {}), ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}) };
     const err = await this.op(taskId, async (task) => {
       if (this.liveOf(task.id)) return 'Stop it first: it is running';
@@ -1964,28 +1768,6 @@ export class Orchestrator {
     }
     this.note(task, `${who.name} asked ${info.name} to review ${labels.join(', ')}`);
     return { taskId, workerId };
-  }
-
-  /** Whether a pull request is the task's: linked to it (pr_links), or opened from its branch in that repository. */
-  private prOfTask(task: KanbanTask, def: FloorDef, p: ReviewedPr): boolean {
-    const r = projectRepos(def).find((x) => x.kind === 'git' && !!x.remote && sameRepo(x.remote, p.repo));
-    if (task.prs.some((k) => k.number === p.number && (k.repo ? sameRepo(k.repo, p.repo) : k.repoId === r?.id))) return true;
-    if (!r || !p.branch) return false;
-    return (this.ctx.repo.repoBranches(task.id)[r.id] ?? task.branch) === p.branch;
-  }
-
-  /** The ticket every one of the pull requests belongs to (their tasks', or named in their titles or branches), if there's one. */
-  private commonTicket(prs: ReviewedPr[]): string | undefined {
-    const sets = prs.map((p) => {
-      const out = new Set<string>();
-      for (const id of this.ctx.repo.tasksOfPr(p.repo, p.number)) {
-        const t = this.ctx.repo.getTask(id)?.ticket;
-        if (t) out.add(t);
-      }
-      for (const m of `${p.title ?? ''} ${p.branch ?? ''}`.toUpperCase().matchAll(/(?:^|[^A-Z0-9])([A-Z][A-Z0-9]{1,9}-\d+)(?![0-9])/g)) out.add(m[1]);
-      return out;
-    });
-    return [...(sets[0] ?? [])].find((t) => sets.every((x) => x.has(t)));
   }
 
   /**
