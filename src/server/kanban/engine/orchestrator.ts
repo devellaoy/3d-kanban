@@ -725,7 +725,7 @@ export class Orchestrator {
         return err;
       }
       case 'acceptPlan': {
-        const plan = this.ctx.repo.acceptPlan(taskId, via.who?.name ?? 'Kanban');
+        const plan = this.compose.acceptPlan(taskId, via.who?.name ?? 'Kanban');
         if (plan) this.ctx.broadcast({ t: 'kanban.plan', plan, project: task.project }, task.project);
         this.update(taskId, { flags: { ...task.flags, planAccepted: true } });
         return undefined;

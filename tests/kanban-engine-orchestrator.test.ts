@@ -11,6 +11,7 @@ import type { KanbanTask } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, makeRepo, type Invocation } from './kanban-engine-fixture.js';
 import { readClaudeTurn } from '../src/server/kanban/engine/adapters/claude.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
+import { conversationFilePath, planFilePath } from '../src/server/kanban/taskfiles.js';
 
 const hasArgs = (inv: Invocation, ...args: string[]) => args.every((a) => inv.args.includes(a));
 /** Polls until `pred` holds (what the test stands waiting for), failing with `what` after `timeout` ms. */
@@ -55,6 +56,46 @@ test('claude, the plan phase set to auto mode: the plan ends on PLAN READY (no E
   assert.ok(!implement.args.includes('--disallowedTools'));
   assert.equal(after(reviewer, '--permission-mode'), 'bypassPermissions');
   assert.ok(hasArgs(reviewer, '--disallowedTools', 'Edit', 'Write', 'NotebookEdit'));
+});
+
+test('the reviewer reads the conversation file: round 2 and a new cycle after a comment carry the earlier findings, replies and comments', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([
+    { when: 'Implement kanban task', reply: 'Changed the redirect.', commit: 'Fix the redirect' },
+    { when: 'asks for changes', reply: 'Fixed the missing null check.', commit: 'Null check' },
+    { when: 'This is review round 1 of', reply: '1. src/login.ts:12 misses a null check.\n\nREVIEW: CHANGES_REQUESTED' },
+    { when: 'round 2 of', reply: 'The fix is right.\n\nREVIEW: APPROVED' },
+  ]);
+  const task = fx.newTask({ usePlan: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).length === 4, 'the review column', 30_000);
+  const file = conversationFilePath(fx.ctx.filesDir, task.id);
+  const grant = grantDir(fx.ctx.filesDir, task.id);
+  const text = readFileSync(file, 'utf8');
+  assert.match(text, /src\/login\.ts:12 misses a null check/, 'the round-1 findings');
+  assert.match(text, /Fixed the missing null check/, "the implementer's reply");
+  const reviewer = fx.invocations().filter((i) => i.kind === 'claude' && !i.prompt && !i.args.includes('--output-format'))[1];
+  assert.ok(reviewer.args.includes('--add-dir') && reviewer.args.includes(grant), 'the reviewer can read the grant folder');
+  assert.ok(path.dirname(file) === grant);
+  const round2 = fx.invocations().find((i) => i.prompt && /round 2 of/.test(i.prompt));
+  assert.ok(round2?.prompt?.includes(`\`${file}\``), 'the round-2 prompt names the file');
+
+  // A comment, then a new cycle: its first round names the file, which now also holds the comment and the earlier cycle.
+  const comment = fx.repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'Please rename it to returnTo.' }).comment;
+  fx.setRules([
+    { when: 'commented on task', reply: 'Renamed it as asked.', commit: 'Rename' },
+    { when: 'This is review round 1 of', reply: 'Good.\nREVIEW: APPROVED' },
+  ]);
+  await fx.engine.commented(task.id, comment.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).length === 6, 'the review after the comment', 30_000);
+  const again = readFileSync(file, 'utf8');
+  for (const part of ['src/login.ts:12 misses a null check', 'Fixed the missing null check', 'Please rename it to returnTo.']) assert.ok(again.includes(part), part);
+  const firsts = fx.invocations().filter((i) => (i.prompt ?? i.args[i.args.length - 1] ?? '').includes('This is review round 1 of'));
+  assert.ok(firsts.length >= 2);
+  const promptOf = (i: Invocation) => i.prompt ?? i.args[i.args.length - 1];
+  assert.ok(!promptOf(firsts[0]).includes(file), 'a first review of a task nobody has written to has no conversation');
+  assert.ok(promptOf(firsts[firsts.length - 1]).includes(file), 'the next cycle names the file');
 });
 
 test('claude: plan → implement → review CHANGES_REQUESTED → fix → review APPROVED → review column, then a comment and a PR', async (t) => {
@@ -102,7 +143,10 @@ test('claude: plan → implement → review CHANGES_REQUESTED → fix → review
   assert.equal(after(implement, '--permission-mode'), 'bypassPermissions');
   assert.equal(after(implement, '--resume'), done.sessionId);
   assert.match(implement.args[implement.args.length - 1], /^Implement kanban task #\d+/);
-  assert.match(implement.args[implement.args.length - 1], /The accepted plan:\n\n1\. Change the redirect/);
+  const planFile = planFilePath(fx.ctx.filesDir, task.id);
+  assert.ok(implement.args[implement.args.length - 1].includes(`\`${planFile}\``), 'the plan is a reference to its file');
+  assert.doesNotMatch(implement.args[implement.args.length - 1], /1\. Change the redirect/);
+  assert.equal(readFileSync(planFile, 'utf8').trim(), '1. Change the redirect\n2. Test it');
   const reviewer = agents[2];
   assert.ok(hasArgs(reviewer, '--disallowedTools', 'Edit', 'Write', 'NotebookEdit', 'WebFetch', 'WebSearch'));
   assert.equal(reviewer.cwd, implement.cwd, 'the reviewer sits in the task worktree');
