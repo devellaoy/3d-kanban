@@ -62,6 +62,7 @@ export function tags(v: unknown): string[] | undefined {
   if (v === undefined) return undefined;
   return list(v, 'tags', KANBAN_LIMITS.tags, (x) => text(x, 'A tag', KANBAN_LIMITS.tag).trim()).filter(Boolean);
 }
+/** A task's review override. It has no `extra`: the additional reviewers are set for the office or a project, and a key not read here is dropped like any other. */
 export function review(v: unknown): Partial<ReviewSettings> | undefined {
   if (v === undefined) return undefined;
   if (!isObj(v)) bad('review must be an object');

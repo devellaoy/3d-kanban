@@ -46,8 +46,9 @@ export const TASK_COLUMNS: Record<string, string> = {
   queuedRun: 'queued_run',
   handoffFingerprint: 'handoff_fingerprint',
   hold: 'hold',
+  coReviewers: 'co_reviewers',
 };
-const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags', 'queuedRun', 'hold']);
+const JSON_FIELDS = new Set(['overrides', 'workspace', 'pendingMessages', 'flags', 'tags', 'queuedRun', 'hold', 'coReviewers']);
 const BOOL_FIELDS = new Set(['usePlan', 'useReview']);
 
 export function json<T>(v: unknown, fallback: T): T {
@@ -66,7 +67,8 @@ export function clean<T extends object>(o: T): T {
 }
 export const opt = <T>(v: unknown): T | undefined => (v === null || v === undefined ? undefined : (v as T));
 export const toDb = (field: string, v: unknown): unknown => {
-  if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' && field !== 'queuedRun' && field !== 'hold' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;
+  if (v === undefined || v === null) return JSON_FIELDS.has(field) && field !== 'workspace' && field !== 'queuedRun' && field !== 'hold' && field !== 'coReviewers' ? (field === 'tags' || field === 'pendingMessages' ? '[]' : '{}') : null;
+  if (field === 'coReviewers' && Array.isArray(v) && !v.length) return null;
   if (JSON_FIELDS.has(field)) return JSON.stringify(v);
   if (BOOL_FIELDS.has(field)) return v ? 1 : 0;
   return v;

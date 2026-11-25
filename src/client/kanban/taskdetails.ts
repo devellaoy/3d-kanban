@@ -74,7 +74,7 @@ export function detailsPane(c: TaskCtx, d: Detail): HTMLElement[] {
       ? h('a.kb-rail-mono', { href: task.ticketUrl, target: '_blank', rel: 'noopener noreferrer', title: 'Open the ticket' }, task.ticket, icon('external-link', { size: 12 }))
       : h('span.kb-rail-mono', {}, task.ticket);
   const reviewText = task.useReview
-    ? ['On', [review.tool ? toolName(review.tool) : '', review.model ?? ''].filter(Boolean).join(' '), `${review.rounds} rounds`, task.reviewRound ? `round ${task.reviewRound}` : ''].filter(Boolean).join(' · ')
+    ? ['On', [review.tool ? toolName(review.tool) : '', review.model ?? '', ...(review.extra?.length ? [`+ ${review.extra.map((x) => toolName(x.tool)).join(', ')}`] : [])].filter(Boolean).join(' '), `${review.rounds} rounds`, task.reviewRound ? `round ${task.reviewRound}` : ''].filter(Boolean).join(' · ')
     : 'Off';
   const main = detailsRail([
     { label: 'Project', value: withIcon('building-2', project?.name ?? task.project) },

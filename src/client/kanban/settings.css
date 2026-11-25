@@ -35,7 +35,9 @@
 .kb-set .kb-perms > .kb-hint { margin: 0; }
 .kb-set .kb-two > .kb-check, .kb-set .kb-three > .kb-check { align-self: center; }
 .kb-set .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper); }
-.kb-set .kb-subfields .kb-check { grid-column: 1 / -1; }
+.kb-set .kb-subfields .kb-check, .kb-set .kb-subfields .kb-extra-reviewers { grid-column: 1 / -1; }
+.kb-set .kb-extra-reviewers { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+.kb-set .kb-extra-reviewers .kb-repos { align-self: stretch; }
 /* ⚙️ Project's name: the box grows, its Rename button sits level with it */
 .kb-set .kb-rename { align-items: flex-end; }
 .kb-set .kb-rename > .kb-field { flex: 1 1 16em; }

@@ -331,3 +331,96 @@ test('⚙️ Project overrides how the phases run, or leaves them to the office:
   assert.equal(settings.implementPermission, 'bypass');
   cleanups.run();
 });
+
+/** The additional-reviewers rows: each row's Reviewer, Model and Effort controls, in order; and the buttons. */
+function reviewerRows(all: FakeEl[]) {
+  const rows = all.filter((el) => el.className === 'kb-repo' && el.all().next() && [...el.all()].some((c) => c.getAttribute('aria-label') === 'Remove this reviewer'));
+  const control = (row: FakeEl, label: string) => [...row.all()].find((c) => c.getAttribute('aria-label') === label)!;
+  const add = all.find((el) => el.tagName === 'button' && el.textContent === 'Add a reviewer')!;
+  return { rows, control, add };
+}
+
+test('🗂️ Kanban lists the additional reviewers: add rows, fill them, remove one, and Save sends the list', async () => {
+  const { kstore } = await projectPaneFixture(true);
+  const { generalPane } = await import('../src/client/kanban/settings.js');
+  const { KANBAN_DEFAULTS } = await import('../src/client/kanban/defaults.js');
+  kstore.me = { admin: true, name: 'me' };
+  const sent: { settings: { review: Record<string, unknown> } }[] = [];
+  const api = { request: async (msg: never) => void sent.push(msg) };
+  const pane = generalPane(api as never, { ...KANBAN_DEFAULTS, projects: {} } as never, false) as unknown as FakeEl;
+  const all = [...pane.all()];
+  assert.ok(all.some((el) => el.tagName === 'b' && el.textContent === 'Additional reviewers'));
+  assert.ok(all.some((el) => el.className === 'kb-hint' && el.textContent === 'All reviewers review the change at the same time; the main reviewer then combines their results.'));
+  const { rows, add } = reviewerRows(all);
+  assert.equal(rows.length, 0);
+  assert.ok(add.className.includes('kb-admin'));
+  const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
+  await click();
+  assert.deepEqual(sent.pop()!.settings.review.extra, [], 'no rows: an empty list, which clears it on the server');
+
+  // The window draws its rows into the same tree: look again after each click.
+  add.fire('click');
+  add.fire('click');
+  add.fire('click');
+  let now = reviewerRows([...pane.all()]);
+  assert.equal(now.rows.length, 3);
+  const [a, b] = now.rows;
+  const toolOf = (r: FakeEl) => now.control(r, 'Reviewer');
+  assert.deepEqual([...toolOf(a).children].map((o) => (o as FakeEl).getAttribute('value')), ['claude', 'codex'], 'every agent is a choice');
+  toolOf(a).value = 'codex';
+  toolOf(a).fire('change');
+  now.control(a, 'Model').value = ' gpt-5 ';
+  now.control(a, 'Effort').value = 'high';
+  now.control(b, 'Effort').value = 'low';
+  await click();
+  assert.deepEqual(sent.pop()!.settings.review.extra, [{ tool: 'codex', model: 'gpt-5', effort: 'high' }, { tool: 'claude', effort: 'low' }, { tool: 'claude' }]);
+
+  // Removing a row takes its settings out of the list.
+  now.control(b, 'Remove this reviewer').fire('click');
+  await click();
+  assert.deepEqual(sent.pop()!.settings.review.extra, [{ tool: 'codex', model: 'gpt-5', effort: 'high' }, { tool: 'claude' }]);
+});
+
+test('the add button hides at four additional reviewers and comes back when one is removed', async () => {
+  const { kstore } = await projectPaneFixture(true);
+  const { extraReviewersField } = await import('../src/client/kanban/reviewers-field.js');
+  kstore.me = { admin: true, name: 'me' };
+  const field = extraReviewersField([{ tool: 'codex' }]);
+  const root = field.el as unknown as FakeEl;
+  const { add } = reviewerRows([...root.all()]);
+  const hidden: boolean[] = [];
+  add.classList.toggle = ((_: string, on?: boolean) => void hidden.push(!!on)) as never;
+  for (let i = 0; i < 3; i++) add.fire('click');
+  assert.deepEqual(hidden, [false, false, true], 'hidden once there are four');
+  add.fire('click');
+  assert.equal(field.value().length, 4, 'a click while hidden adds nothing');
+  const { rows, control } = reviewerRows([...root.all()]);
+  control(rows[0], 'Remove this reviewer').fire('click');
+  assert.equal(hidden.at(-1), false);
+  assert.equal(field.value().length, 3);
+  assert.equal(extraReviewersField([{ tool: 'claude' }, { tool: 'claude' }, { tool: 'claude' }, { tool: 'claude' }, { tool: 'claude' }]).value().length, 4, 'a longer list is cut to four');
+});
+
+test('⚙️ Project sends its own additional reviewers with its own review settings, and nothing without them', async () => {
+  const { pane, all, sent, cleanups } = await projectPaneFixture(true);
+  const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
+  const saved = () => (sent.pop() as { settings: { review: { extra?: unknown } | null } }).settings;
+  await click();
+  assert.equal(saved().review, null, 'the override box is off: no review settings, so no list either');
+  const own = all.find((el) => el.className === 'kb-check' && el.textContent === 'Its own review settings')!;
+  const box = [...own.all()].find((el) => el.tagName === 'input')!;
+  box.checked = true;
+  box.fire('change');
+  const { rows, add, control } = reviewerRows(all);
+  assert.equal(rows.length, 0);
+  add.fire('click');
+  const now = reviewerRows([...pane.all()]);
+  assert.equal(now.rows.length, 1);
+  control(now.rows[0], 'Reviewer').value = 'codex';
+  control(now.rows[0], 'Effort').value = 'medium';
+  await click();
+  assert.deepEqual(saved().review?.extra, [{ tool: 'codex', effort: 'medium' }]);
+  cleanups.run();
+});

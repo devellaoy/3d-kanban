@@ -12,12 +12,14 @@ import {
   type PlanApproval,
   type ProjectSettings,
   type ReviewSettings,
+  type ReviewerSpec,
 } from '../../shared/kanban/types.js';
 import { IMPLEMENT_PERMISSIONS, IMPLEMENT_PERMISSION_INFO, PLAN_PERMISSIONS, PLAN_PERMISSION_INFO, type ImplementPermission, type PlanPermission } from '../../shared/kanban/permissions.js';
 import { projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { commentLanguageField, publicLanguageField } from './language-field';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
 import { kstore } from './store';
+import { extraReviewersField } from './reviewers-field';
 import { checkbox, field, numberInput, numberValue, select, textInput } from './ui';
 
 type PermissionInfo = { name: string; claude: string; codex: string };
@@ -69,11 +71,13 @@ export function reviewFields(r: Partial<ReviewSettings>, base: ReviewSettings | 
   const rounds = numberInput(r.rounds ?? base?.rounds ?? REVIEW_DEFAULTS.rounds, 1, 10);
   const reRev = checkbox('Review the last fix too', r.reReviewLastFix ?? base?.reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
   const sandbox = checkbox('Keep the reviewer off the web', r.sandbox ?? base?.sandbox ?? REVIEW_DEFAULTS.sandbox);
-  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for'), reRev.el, sandbox.el);
-  const value = (): { tool?: KanbanTool; model: string | null; effort: KanbanEffort | null; rounds: number; reReviewLastFix: boolean; sandbox: boolean } => ({
+  const extra = extraReviewersField(r.extra ?? base?.extra);
+  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), extra.el, field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for'), reRev.el, sandbox.el);
+  const value = (): { tool?: KanbanTool; model: string | null; effort: KanbanEffort | null; extra: ReviewerSpec[]; rounds: number; reReviewLastFix: boolean; sandbox: boolean } => ({
     ...(tool.value ? { tool: tool.value as KanbanTool } : {}),
     model: optionalModel(model.value),
     effort: (effort.value as KanbanEffort) || null,
+    extra: extra.value(),
     rounds: numberValue(rounds, 1, 10, REVIEW_DEFAULTS.rounds),
     reReviewLastFix: reRev.box.checked,
     sandbox: sandbox.box.checked,
