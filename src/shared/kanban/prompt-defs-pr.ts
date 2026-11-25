@@ -139,7 +139,7 @@ Write the result as JSON into {{file}} (create the file, overwrite it if it exis
     }
   ]
 }
-Write {"items": []} when nothing is left to answer. Write the analysis text (meaning and the three reasons) in the language below; leave the comment's own text as it is.
+Write {"items": []} when nothing is left to answer. The analysis text (meaning and the three reasons) is shown to the user in the office and is posted nowhere: write it in the language you talk to the user in (the conversation language below), never in the language of what leaves the office or of the comment itself. Leave the comment's own text (body) as it was written, and keep the fixed values (kind, valid, causedByTask, recommend) exactly as spelled above.
 
 {{instructions}}
 
