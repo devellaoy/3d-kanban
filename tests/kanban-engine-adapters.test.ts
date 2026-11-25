@@ -620,12 +620,24 @@ test('claude transcript: a tool call in the message of an ExitPlanMode (report_t
   assert.equal(earlier?.exitPlan, true);
   const answered = readClaudeTurn(write('answered2.jsonl', [cUser('Plan'), cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm1'), cUser([{ type: 'tool_result', tool_use_id: 'p1', content: 'No' }])]));
   assert.equal(answered?.exitPlan, undefined);
-  // In a typed turn (a prompt typed over the office's) the same holds.
-  const typed = readClaudeTurn(write('typed.jsonl', [cUser('Plan'), cAssistant([text('PLAN READY')], {}, 'm0'), cUser('typed by the user'), cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm1')]));
-  assert.equal(typed?.exitPlan, true);
-  assert.equal(typed?.plan, 'The plan');
-  const typedLater = readClaudeTurn(write('typed2.jsonl', [cUser('Plan'), cAssistant([text('PLAN READY')], {}, 'm0'), cUser('typed by the user'), cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm2')]));
-  assert.equal(typedLater?.exitPlan, undefined);
+  // In a typed turn (a prompt typed over the office's: the reader's second loop) the same holds. The lines are timed and `promptAt` points at the
+  // office's prompt, so the user's prompt after it is the typed one (`typed`), and the plan comes from the loop that follows it.
+  const T0 = Date.UTC(2026, 9, 1, 8, 0, 0);
+  const typedTurn = (name: string, after: object[]) => {
+    const lines = [cUser('Plan'), cAssistant([text('Reading.')], {}, 'm0'), cUser('typed by the user'), ...after];
+    return readClaudeTurn(write(`${name}.jsonl`, lines.map((l, i) => ({ ...l, timestamp: new Date(T0 + (i + 1) * 1000).toISOString() }))), { runStart: T0, promptAt: T0 });
+  };
+  for (const [name, blocks] of [['after', [exit, report]], ['before', [report, exit]]] as const) {
+    const r = typedTurn(`typed-${name}`, blocks.map((b) => cAssistant([b], {}, 'm1')));
+    assert.deepEqual([r?.typed, r?.exitPlan, r?.plan, r?.complete], [true, true, 'The plan', true], name);
+    const one = typedTurn(`typed-${name}-one`, [cAssistant([...blocks], {}, 'm1')]);
+    assert.deepEqual([one?.typed, one?.exitPlan, one?.plan], [true, true, 'The plan'], name);
+  }
+  // A later message's tool is going on there too, and so is the plan call's own answer.
+  const typedLater = typedTurn('typed-later', [cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm2')]);
+  assert.deepEqual([typedLater?.typed, typedLater?.exitPlan], [true, undefined]);
+  const typedAnswered = typedTurn('typed-answered', [cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm1'), cUser([{ type: 'tool_result', tool_use_id: 'p1', content: 'No' }])]);
+  assert.deepEqual([typedAnswered?.typed, typedAnswered?.exitPlan], [true, undefined]);
 });
 
 test('codex rollout: the last task_complete of the last turn, else the last assistant message', (t) => {
