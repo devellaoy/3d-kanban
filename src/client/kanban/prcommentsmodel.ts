@@ -29,7 +29,7 @@ export const RECOMMEND_MARK: Record<PrCommentItem['recommend'], Mark> = {
 };
 
 export const KIND_LABEL: Record<PrCommentItem['kind'], string> = { line: 'Line comment', conversation: 'Conversation', review: 'Review' };
-export const DECISION_LABEL: Record<PrCommentDecision, string> = { fix: 'Fix', skip: 'Don’t fix', custom: 'Custom' };
+export const DECISION_LABEL: Record<PrCommentDecision, string> = { fix: 'Fix', skip: 'Don’t fix', custom: 'Other' };
 
 export const RUNNING_TEXT = 'The implementer is reading the review comments…';
 export const EMPTY_TEXT = 'No open review comments.';
@@ -111,7 +111,7 @@ export function draftAnswers(items: readonly PrCommentItem[], drafts: Drafts): P
   return out;
 }
 
-/** How many comments have an answer that can go: a decision, and for Custom its text. */
+/** How many comments have an answer that can go: a decision, and for Other its text. */
 export function answeredCount(items: readonly PrCommentItem[], drafts: Drafts): number {
   return draftAnswers(items, drafts).filter((a) => a.decision !== 'custom' || !!a.text).length;
 }
@@ -132,7 +132,7 @@ export function sendState(items: readonly PrCommentItem[], drafts: Drafts, can: 
   if (!answersComplete(items, draftAnswers(items, drafts))) {
     const custom = items.some((i) => drafts.get(i.id)?.decision === 'custom' && !drafts.get(i.id)?.text?.trim());
     const undecided = items.some((i) => !drafts.get(i.id)?.decision);
-    return { enabled: false, title: undecided ? 'Pick Fix, Don’t fix or Custom for every comment first' : custom ? 'A Custom answer needs its text' : 'Answer every comment first' };
+    return { enabled: false, title: undecided ? 'Pick Fix, Don’t fix or Other for every comment first' : custom ? 'An Other answer needs its text' : 'Answer every comment first' };
   }
   if (!can.ok) return { enabled: false, title: can.reason ?? 'The task can’t take this now' };
   return { enabled: true, title: SEND_TITLE };

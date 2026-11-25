@@ -1,6 +1,6 @@
 // The review comments on the task view's Pull requests tab, under the table of pull requests (taskprs.ts): the list the
 // implementer made of the open PRs' unresolved comments with its analysis of each (what it means, whether it is valid,
-// whether this task caused it, whether it is worth fixing), a decision per comment (Fix, Don't fix or Custom, with a
+// whether this task caused it, whether it is worth fixing), a decision per comment (Fix, Don't fix or Other, with a
 // text box) and Send to the implementer. The list comes over REST and is read again when the task moves on, like the
 // reports (taskreports.ts); the decisions being filled in are kept outside the view (prcommentsmodel.ts), and the section
 // is built once per fetched state, so a redraw of the tab puts the same boxes back. Every text of the agent and of the

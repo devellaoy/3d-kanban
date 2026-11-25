@@ -71,15 +71,15 @@ test('the drafts become the answers: only decided comments, the text trimmed, ca
   assert.equal(a[1].text?.length, PR_ANSWER_TEXT_MAX);
 });
 
-test('the count and Send: every comment needs a decision, Custom its text, and the task must be able to take it', () => {
+test('the count and Send: every comment needs a decision, Other its text, and the task must be able to take it', () => {
   const d: Drafts = new Map();
   assert.equal(countText(answeredCount(ITEMS, d), ITEMS.length), '0 of 3 answered');
-  assert.deepEqual(sendState(ITEMS, d, OK), { enabled: false, title: 'Pick Fix, Don’t fix or Custom for every comment first' });
+  assert.deepEqual(sendState(ITEMS, d, OK), { enabled: false, title: 'Pick Fix, Don’t fix or Other for every comment first' });
   d.set('a', { decision: 'fix' });
   d.set('b', { decision: 'skip', text: 'tell them why' });
   d.set('c', { decision: 'custom' });
-  assert.equal(answeredCount(ITEMS, d), 2, 'a Custom without text is not answered yet');
-  assert.deepEqual(sendState(ITEMS, d, OK), { enabled: false, title: 'A Custom answer needs its text' });
+  assert.equal(answeredCount(ITEMS, d), 2, 'an Other without text is not answered yet');
+  assert.deepEqual(sendState(ITEMS, d, OK), { enabled: false, title: 'An Other answer needs its text' });
   d.set('c', { decision: 'custom', text: '  \n ' });
   assert.equal(sendState(ITEMS, d, OK).enabled, false, 'blank text is no text');
   d.set('c', { decision: 'custom', text: 'only the test' });
