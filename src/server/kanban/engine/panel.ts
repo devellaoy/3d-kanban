@@ -82,14 +82,15 @@ export class ReviewPanel {
   /** What a launch of the main reviewer's review is in a round with several reviewers (none when the task has no additional reviewers, or it is another run). */
   plan(task: KanbanTask, eff: RunEffect): { part: ReviewPanelPart; eff: RunEffect; more?: Partial<ComposeExtra> } | undefined {
     if (eff.role !== 'reviewer' || eff.phase !== 'review' || !this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra?.length) return undefined;
-    if (eff.prompt === 'restarted') {
-      // The combine run an office restart cut off goes on as a combine, not as a round of its own.
-      const last = this.d.ctx.repo.listRuns(task.id).filter((r) => !r.seat).at(-1);
-      const round = last?.panel === 'combine' ? this.view(task.id) : undefined;
-      if (round) return { part: 'combine', eff: { ...eff, prompt: 'rereview' }, more: { panel: 'combine', reviews: this.reviews(task, round) } };
-      return { part: 'solo', eff };
+    if (eff.prompt === 'restarted' || eff.prompt === 'continue') {
+      // A combine run that did not end (a usage limit, a crash, an office restart: failed or interrupted, not stopped by a person) goes again as a combine
+      // from the round's results, not as a round of its own. A Stop followed by Retry runs the whole round again.
+      const last = this.d.ctx.repo.listRuns(task.id).filter((r) => !r.seat && r.phase !== 'compact').at(-1);
+      const round = last?.panel === 'combine' && (last.status === 'failed' || last.status === 'interrupted') ? this.view(task.id) : undefined;
+      if (round && [...round.co.values()].some((r) => r.status === 'succeeded' && r.summary)) return { part: 'combine', eff: { ...eff, prompt: 'rereview' }, more: { panel: 'combine', reviews: this.reviews(task, round) } };
+      return eff.prompt === 'continue' || eff.prompt === 'restarted' ? { part: 'solo', eff } : undefined;
     }
-    return ['review', 'rereview', 'continue'].includes(eff.prompt) ? { part: 'solo', eff } : undefined;
+    return ['review', 'rereview'].includes(eff.prompt) ? { part: 'solo', eff } : undefined;
   }
 
   /** The round of the task's latest main-reviewer run that began one (a 'solo' run), from the run rows. */
@@ -100,9 +101,16 @@ export class ReviewPanel {
       if (r.panel === 'solo' && !r.seat) at = i;
     });
     if (at < 0) return undefined;
+    // A solo run the office relaunched after a restart (the earlier one is interrupted) is the same round: the seats' runs since the first count.
+    let first = at;
+    for (;;) {
+      const before = runs.slice(0, first).reverse().find((r) => !r.seat);
+      if (before?.panel !== 'solo' || before.status !== 'interrupted' || before.round !== runs[at].round) break;
+      first = runs.indexOf(before);
+    }
     const co = new Map<number, KanbanRun>();
     let combine: KanbanRun | undefined;
-    for (const r of runs.slice(at + 1)) {
+    for (const r of runs.slice(first + 1)) {
       if (r.seat && r.panel === 'co') co.set(r.seat, r);
       else if (!r.seat && r.panel === 'combine') combine = r;
     }
@@ -122,9 +130,13 @@ export class ReviewPanel {
   /** The main reviewer's solo run has started: every additional reviewer starts its own. A seat that can't start is noted and left out. */
   async open(task: KanbanTask, eff: RunEffect, via: Via) {
     const extra = this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra ?? [];
-    this.expired.delete(task.id);
+    this.clear(task.id);
+    // A solo run the office relaunched after a restart keeps the seats the round already has (running here, or with their result in).
+    const kept = eff.prompt === 'restarted' ? this.view(task.id)?.co : undefined;
     for (let i = 0; i < extra.length; i++) {
       const seat = i + 1;
+      const had = kept?.get(seat);
+      if (had && (had.status === 'succeeded' || (had.status === 'running' && this.d.livesOf(task.id).some((l) => l.runId === had.id)))) continue;
       const label = this.label(seat, extra[i].tool, extra[i].model);
       const paused = this.d.ctx.hiringPaused?.();
       const err = paused ? `hiring is paused: ${paused}` : await this.d.launch(this.d.ctx.repo.getTask(task.id) ?? task, { type: 'run', phase: 'review', role: 'reviewer', prompt: (eff.round ?? 1) > 1 ? 'rereview' : 'review', ...(eff.round !== undefined ? { round: eff.round } : {}) }, { ...(via.who ? { who: via.who } : {}) }, seat, 'co');
@@ -152,7 +164,7 @@ export class ReviewPanel {
   }
 
   /** An additional reviewer's run is over without a result (its agent exited or asks in its terminal, it was sent home): the seat did not finish. */
-  async coGone(live: Live, why: string, status: 'interrupted' | 'stopped' = 'interrupted') {
+  async coGone(live: Live, why: string, status: 'interrupted' | 'stopped' = 'interrupted', settle = true) {
     live.ended = true;
     this.d.forget(live);
     const task = this.d.ctx.repo.getTask(live.taskId);
@@ -160,15 +172,16 @@ export class ReviewPanel {
     if (!task) return;
     const info = this.spec(task, live.seat ?? 0);
     this.d.note(task, `${this.label(live.seat ?? 0, info.tool, info.model)} did not finish: ${why}`, live.runId);
-    await this.settle(task.id);
+    if (settle) await this.settle(task.id);
   }
 
   /** A person sent an additional reviewer's worker home: its seat did not finish (never `reviewAbandoned`), and the seat forgets the worker. */
   async left(workerId: string, taskId: number, own: Live | undefined, by: string) {
     const task = this.d.ctx.repo.getTask(taskId);
-    const seat = own?.seat ?? task?.coReviewers?.find((c) => c.workerId === workerId)?.seat;
-    if (!task || !seat) return;
-    this.d.update(task.id, slotPatch('reviewer', { workerId: null }, seat, task));
+    const entry = task?.coReviewers?.find((c) => (own ? c.seat === own.seat : c.workerId === workerId));
+    if (!task || !(own?.seat ?? entry?.seat)) return;
+    // Only the seat's own worker is forgotten: an older worker leaving after the seat was given to a new one leaves the new one's id alone.
+    if (entry?.workerId === workerId) this.d.update(task.id, slotPatch('reviewer', { workerId: null }, entry.seat, task));
     if (own) await this.coGone(own, `${by} sent it home`);
   }
 
@@ -186,7 +199,9 @@ export class ReviewPanel {
   async settle(taskId: number): Promise<void> {
     const task = this.d.ctx.repo.getTask(taskId);
     const round = task && this.view(taskId);
-    if (!task || !round || round.combine || round.solo.status !== 'succeeded' || task.status !== 'in_progress' || task.phase !== 'review') return this.clear(taskId);
+    // The task left its review (stopped, moved on) with the round's seats still about: they end, and their workers go home.
+    if (task && round && !round.combine && (task.status !== 'in_progress' || task.phase !== 'review')) return this.close(task, 'The review round is over');
+    if (!task || !round || round.combine || round.solo.status !== 'succeeded') return this.clear(taskId);
     const live = this.d.livesOf(taskId);
     if (live.some((l) => !l.seat)) return; // the main reviewer's run is still going
     const running = [...round.co.values()].filter((r) => r.status === 'running');
@@ -194,9 +209,10 @@ export class ReviewPanel {
       if (!this.expired.has(taskId) && !this.late(round)) return this.arm(taskId, round);
       for (const r of running) {
         const l = live.find((x) => x.runId === r.id);
-        if (l) await this.coGone(l, 'it was still working when the wait for the reviewers ran out');
+        if (l) await this.coGone(l, 'it was still working when the wait for the reviewers ran out', 'interrupted', false);
         else this.d.finishRun(r.id, task.project, { status: 'interrupted', error: 'It was still working when the wait for the reviewers ran out' });
       }
+      return this.settle(taskId); // once, with the seats dropped: coGone settling by itself here would publish the round twice
     }
     this.clear(taskId);
     const fresh = this.view(taskId) ?? round;
@@ -221,8 +237,10 @@ export class ReviewPanel {
   private arm(taskId: number, round: Round) {
     if (this.timers.has(taskId)) return;
     const ms = Math.max(0, (round.solo.finishedAt ?? this.d.now()) + this.d.waitMs() - this.d.now());
+    const soloId = round.solo.id;
     const timer = setTimeout(() => {
       this.timers.delete(taskId);
+      if (this.view(taskId)?.solo.id !== soloId) return; // a timer of an earlier round
       this.expired.add(taskId);
       void this.d.serial(taskId, () => this.settle(taskId));
     }, ms);
@@ -275,15 +293,19 @@ export class ReviewPanel {
     await this.home(task.id);
   }
 
-  /** The additional reviewers' workers go home, and their seats forget them (the sessions stay). */
-  private async home(taskId: number) {
+  /**
+   * The additional reviewers' workers go home, and their seats forget them (the sessions stay). Every worker on the floor that is one of
+   * this task's additional reviewers goes, listed in `coReviewers` or not (a seat's id may have been lost).
+   */
+  async home(taskId: number) {
     const task = this.d.ctx.repo.getTask(taskId);
     const floor: Floor | undefined = task && this.d.ctx.floor(task.project);
-    const seated = task?.coReviewers?.filter((c) => c.workerId) ?? [];
-    if (!task || !seated.length) return;
-    this.d.update(task.id, { coReviewers: task.coReviewers!.map((c) => ({ ...c, workerId: undefined })) });
-    for (const c of seated) {
-      const info = floor?.workers.get(c.workerId!);
+    if (!task) return;
+    const ids = new Set(task.coReviewers?.flatMap((c) => (c.workerId ? [c.workerId] : [])));
+    for (const w of floor?.workers.list() ?? []) if (w.kanban?.taskId === taskId && w.kanban.role === 'reviewer' && (w.kanban.seat ?? 0) >= 1) ids.add(w.id);
+    if (task.coReviewers?.some((c) => c.workerId)) this.d.update(task.id, { coReviewers: task.coReviewers.map((c) => ({ ...c, workerId: undefined })) });
+    for (const id of ids) {
+      const info = floor?.workers.get(id);
       if (info) await floor!.sendHome(info.id, homeCleanup(task, info), ENGINE);
     }
   }

@@ -156,7 +156,7 @@ export class Orchestrator {
       finishRun: (id, project, patch) => this.finishRun(id, project, patch),
       finishStopped: (live) => this.finishStopped(live),
       markDone: (task, by) => this.markDone(task, by), drain: (floorId) => this.drain(floorId), giveBack: (task, live) => this.comments.giveBack(task, live),
-      coLeft: (workerId, taskId, own, by) => this.panel.left(workerId, taskId, own, by), closePanel: (task, why) => this.panel.close(task, why, 'stopped'),
+      coLeft: (workerId, taskId, own, by) => this.panel.left(workerId, taskId, own, by), closePanel: (task, why) => this.panel.close(task, why, 'stopped'), gap: (taskId) => this.panel.gap(taskId),
     });
     this.holds = new Holds(ctx, {
       liveOf: (taskId) => this.liveOf(taskId),
@@ -1168,7 +1168,7 @@ export class Orchestrator {
     }
     if (kind === live.asks) return;
     live.asks = kind;
-    this.ctx.repo.setAskingKind(live.taskId, kind);
+    if (!live.seat) this.ctx.repo.setAskingKind(live.taskId, kind); // an additional reviewer's asking is not the task's
     const task = this.ctx.repo.getTask(live.taskId);
     if (task?.status === 'waiting' && task.waitingReason === 'agent_asking') this.pushTask(task);
   }
@@ -1259,7 +1259,7 @@ export class Orchestrator {
       const dirs = def ? taskRepos(def, task).filter((r) => r.kind === 'git').map((r) => r.dir) : [floor.dir];
       for (const dir of dirs.length ? dirs : [floor.dir]) if (!stays) stays = await branchExists(dir, branch);
     }
-    this.update(task.id, { workspace: null, sessionId: null, reviewerSessionId: null, ...(task.coReviewers ? { coReviewers: null } : {}), ...(branch && !stays ? { branch: null } : {}) });
+    await this.panel.home(task.id); this.update(task.id, { workspace: null, sessionId: null, reviewerSessionId: null, ...(task.coReviewers ? { coReviewers: null } : {}), ...(branch && !stays ? { branch: null } : {}) });
   }
 
   /**
@@ -1281,7 +1281,7 @@ export class Orchestrator {
   private forget(live: Live) {
     if (this.live.get(live.workerId) === live) this.live.delete(live.workerId);
     this.ctx.floor(live.floorId)?.workers.follows(live.workerId, false);
-    if (live.asks) this.ctx.repo.setAskingKind(live.taskId, undefined);
+    if (live.asks && !live.seat) this.ctx.repo.setAskingKind(live.taskId, undefined); // an additional reviewer's asking is not the task's
     this.comments.giveBackUnheard(live, () => this.readNow(live));
     clearTimeout(live.holdTimer);
     clearTimeout(live.nudgeTimer);

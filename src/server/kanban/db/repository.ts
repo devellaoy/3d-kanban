@@ -505,9 +505,9 @@ export class KanbanRepository {
     return row ? run(row as Row) : undefined;
   }
 
-  /** The id of the task's latest run, if it has one. */
+  /** The id of the task's latest run (not an additional reviewer's), if it has one. */
   latestRunId(taskId: number): number | undefined {
-    return (this.db.prepare('SELECT id FROM runs WHERE task_id = ? ORDER BY id DESC LIMIT 1').get(taskId) as Row | undefined)?.id as number | undefined;
+    return (this.db.prepare('SELECT id FROM runs WHERE task_id = ? AND seat = 0 ORDER BY id DESC LIMIT 1').get(taskId) as Row | undefined)?.id as number | undefined;
   }
 
   /** The task's run still going, if any (the latest one). */

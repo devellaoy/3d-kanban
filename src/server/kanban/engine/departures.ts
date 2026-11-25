@@ -48,6 +48,8 @@ export interface Departing<L extends DepartingRun> {
   coLeft(workerId: string, taskId: number, own: L | undefined, by: string): Promise<unknown>;
   /** The task's review round with several reviewers is cut off: its additional reviewers' runs end. */
   closePanel(task: KanbanTask, why: string): Promise<unknown>;
+  /** The task's review round is between its main reviewer's own review and its combine: no run of the main worker, the round still counts as running. */
+  gap(taskId: number): boolean;
 }
 
 export class Departures<L extends DepartingRun> {
@@ -149,9 +151,14 @@ export class Departures<L extends DepartingRun> {
     } else if (done) {
       line += ', and the task is done';
       then = () => this.d.markDone(task, intent.by);
+    } else if (role === 'reviewer' && !info.kanban?.seat && this.d.gap(task.id)) {
+      // The main reviewer leaves between its own review and the combine: as when it leaves mid-review, the round is dropped.
+      const pending = task.pendingMessages.some((m) => !m.parked);
+      line += pending ? ': its review round was dropped, and the comments that came in meanwhile go to the agent now' : ': its review round was dropped, and the task is in Review';
+      then = async () => (await this.d.closePanel(task, `${line} mid-round`), this.d.apply(task.id, { type: 'reviewAbandoned', pending }));
     } else if (role === 'implementer' && task.status === 'in_progress' && task.runState !== 'queued' && !this.d.liveOf(task.id)) {
       line += ': Retry to carry on';
-      then = () => this.d.apply(task.id, { type: 'interrupted', text: `${line}` });
+      then = async () => (await this.d.closePanel(task, `${line}`), this.d.apply(task.id, { type: 'interrupted', text: `${line}` }));
     } else if (role === 'implementer' && task.retryAt && intent.reason === 'sent-home') {
       // Only X stops the auto-resume: a release (a move to done) or the office's own recycling leaves it due.
       line += ": it doesn't carry on by itself after the usage limit any more, Retry when it should";

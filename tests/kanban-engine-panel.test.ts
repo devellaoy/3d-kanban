@@ -385,3 +385,130 @@ test('the engine restarts in the gap, the co-reviewer`s terminal still there: it
   assert.equal(reviewComments(fx, id).length, 1);
   assert.equal(reviewed(fx, id), 1);
 });
+
+// --- Result-review fixes ---------------------------------------------------------------------------
+
+const inGap = (fx: EngineFixture, id: number) => runs(fx, id).some((r) => r.panel === 'solo' && r.status === 'succeeded') && fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status === 'running') && !!coWorker(fx);
+
+test('the implementer sent home in the gap: the task waits interrupted, the co-reviewer`s run is stopped and its worker goes home', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, co(CHANGES('Slow.'), { delayMs: 30_000 }), MAIN1(APPROVED)]);
+  const id = await start(fx);
+  await until('the gap', () => inGap(fx, id));
+  await fx.workers.kill(fx.task(id).workerId!, 'keep', undefined, undefined, { by: 'Ada', reason: 'sent-home' });
+  await fx.waitTask(id, (x) => x.status === 'waiting' && x.runState === 'idle', 'the task waiting', 20_000);
+  await until('every run over', () => runs(fx, id).every((r) => r.status !== 'running'));
+  assert.equal(runs(fx, id).find((r) => r.seat === 1)?.status, 'stopped');
+  await until('the co-reviewer sent home', () => !coWorker(fx));
+});
+
+test('the main reviewer sent home in the gap: the round is dropped as when it leaves mid-review, the task goes to review, no combine', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, co(CHANGES('Slow.'), { delayMs: 30_000 }), MAIN1(APPROVED)]);
+  const id = await start(fx);
+  await until('the gap', () => inGap(fx, id));
+  await fx.workers.kill(fx.task(id).reviewerWorkerId!, 'keep', undefined, undefined, { by: 'Ada', reason: 'sent-home' });
+  await fx.waitTask(id, (x) => x.status === 'review', 'the review column', 20_000);
+  await until('every run over', () => runs(fx, id).every((r) => r.status !== 'running'));
+  assert.ok(!runs(fx, id).some((r) => r.panel === 'combine'));
+  assert.equal(runs(fx, id).find((r) => r.seat === 1)?.status, 'stopped');
+  assert.ok(notes(fx, id).some((n) => /Ada sent .* home: its review round was dropped/.test(n)), notes(fx, id).join(' | '));
+  await until('the co-reviewer sent home', () => !coWorker(fx));
+  assert.equal(reviewComments(fx, id).length, 0);
+});
+
+test('an old co-reviewer worker leaving after its seat was given to a new one does not wipe the new worker`s id', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, co(CHANGES('Slow.'), { delayMs: 30_000 }), MAIN1(APPROVED, { delayMs: 30_000 })]);
+  const id = await start(fx);
+  await until('the co-reviewer at work', () => !!coWorker(fx));
+  const old = coWorker(fx)!.id;
+  const task = fx.task(id);
+  fx.repo.updateTask(id, { coReviewers: task.coReviewers!.map((c) => ({ ...c, workerId: 'a-newer-worker' })) });
+  await fx.workers.kill(old, 'keep', undefined, undefined, { by: 'Ada', reason: 'sent-home' });
+  await until('the old run over', () => fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status !== 'running'));
+  assert.equal(fx.task(id).coReviewers?.[0]?.workerId, 'a-newer-worker');
+});
+
+test('a co-reviewer worker the task no longer lists is still sent home when the round ends', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 1500 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
+  const id = await start(fx);
+  await until('the co-reviewer at work', () => !!coWorker(fx));
+  fx.repo.updateTask(id, { coReviewers: fx.task(id).coReviewers!.map((c) => ({ ...c, workerId: undefined })) });
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  await until('no co-reviewer worker left', () => !coWorker(fx));
+});
+
+test('a combine run that fails or is interrupted is run again by Retry as a combine: the round`s solo and co results are kept', async (t) => {
+  const fx = await setup(t, { engine: { maxNudges: 0 } });
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: k.ts:4.')), MAIN1(APPROVED), COMBINE('I did not decide.')]);
+  const id = await start(fx);
+  await fx.waitTask(id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the combine failing', 40_000);
+  assert.deepEqual(shape(runs(fx, id)), ['0:solo:succeeded', '1:co:succeeded', '0:combine:failed']);
+  fx.setRules([IMPLEMENT, FIX, COMBINE(CHANGES('Confirmed: k.ts:4.')), { when: 'was cut short before you finished', reply: CHANGES('Confirmed: k.ts:4.') }]);
+  assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.deepEqual(shape(runs(fx, id)), ['0:solo:succeeded', '1:co:succeeded', '0:combine:failed', '0:combine:succeeded']);
+  assert.equal(reviewComments(fx, id).length, 1);
+  assert.equal(reviewed(fx, id), 1);
+});
+
+test('the main reviewer exiting during the combine: Retry combines again, not a new round', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: k.ts:4.')), MAIN1(APPROVED), COMBINE('x', { exit: true })]);
+  const id = await start(fx);
+  await fx.waitTask(id, (x) => x.status === 'waiting', 'the combine ending', 40_000);
+  await until('the combine over', () => runs(fx, id).some((r) => r.panel === 'combine' && r.status === 'interrupted'));
+  fx.setRules([IMPLEMENT, FIX, COMBINE(CHANGES('Confirmed: k.ts:4.')), co(CHANGES('Co again.')), MAIN1(APPROVED)]);
+  assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.deepEqual(shape(runs(fx, id)), ['0:solo:succeeded', '1:co:succeeded', '0:combine:interrupted', '0:combine:succeeded']);
+});
+
+test('the office restarts during the main reviewer`s own review with the co-reviewer already done: its result is kept, not hired again, and the combine uses it', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: m.ts:7.')), MAIN1(APPROVED, { delayMs: 30_000 })]);
+  const id = await start(fx);
+  await until('the co-reviewer done, the main reviewer working', () => fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status === 'succeeded') && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
+  fx.setRules([IMPLEMENT, FIX, { when: 'office was restarted', reply: APPROVED }, COMBINE(CHANGES('Confirmed: m.ts:7.'))]);
+  await fx.restartOffice();
+  await fx.waitTask(id, inReview, 'the review column', 60_000);
+  assert.equal(fx.repo.listRuns(id).filter((r) => r.seat === 1).length, 1, 'the seat was not hired again');
+  assert.equal(prompts(fx).filter((p) => p.kind === 'codex').length, 1, 'one prompt to a codex agent');
+  const r = shape(runs(fx, id)).filter((x) => x.startsWith('0'));
+  assert.deepEqual(r, ['0:solo:interrupted', '0:solo:succeeded', '0:combine:succeeded']);
+  assert.match(prompts(fx).find((p) => /Combine them into the review/.test(p.prompt))!.prompt, /Co: m\.ts:7\./);
+  assert.equal(reviewComments(fx, id).length, 1);
+});
+
+test('the engine restarts during the main reviewer`s own review with the co-reviewer working: it is followed again, one set of co-reviewers', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: n.ts:1.'), { delayMs: 2500 }), MAIN1(APPROVED, { delayMs: 1500 }), COMBINE(APPROVED)]);
+  const id = await start(fx);
+  await until('both working', () => !!coWorker(fx) && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
+  fx.restartEngine();
+  await fx.waitTask(id, inReview, 'the review column', 60_000);
+  assert.equal(fx.repo.listRuns(id).filter((r) => r.seat === 1).length, 1);
+  assert.equal(prompts(fx).filter((p) => p.kind === 'codex').length, 1);
+});
+
+test('a co-reviewer`s hooks never touch the task`s asking state', async (t) => {
+  const fx = await setup(t, { extra: [{ tool: 'claude' }] });
+  fx.setRules([IMPLEMENT, co('May I run rm -rf build?', { ask: true, delayMs: 600 }), MAIN1(APPROVED, { delayMs: 4000 })]);
+  const id = await start(fx);
+  await until('the co-reviewer at work', () => !!coWorker(fx));
+  const calls: unknown[] = [];
+  const set = fx.repo.setAskingKind.bind(fx.repo);
+  fx.repo.setAskingKind = (taskId, kind) => (calls.push(kind), set(taskId, kind));
+  await until('the co-reviewer dropped', () => fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status === 'interrupted'));
+  assert.deepEqual(calls, [], 'the co-reviewer`s hooks set and cleared nothing on the task');
+});
+
+test('the task`s latest run is never an additional reviewer`s', async (t) => {
+  const fx = await setup(t);
+  const task = fx.newTask();
+  const a = fx.repo.createRun({ taskId: task.id, phase: 'review', role: 'reviewer', tool: 'claude', panel: 'solo' });
+  fx.repo.createRun({ taskId: task.id, phase: 'review', role: 'reviewer', tool: 'codex', seat: 1, panel: 'co' });
+  assert.equal(fx.repo.latestRunId(task.id), a.id);
+});
