@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PR_ANSWER_TEXT_MAX, type PrCommentItem, type PrCommentsState } from '../src/shared/kanban/prcomments.js';
-import { DraftStore, EMPTY_TEXT, RUNNING_TEXT, SEND_TITLE, answeredCount, countText, draftAnswers, droppedText, groupByPr, placeText, safeHref, sendState, textHint, viewOf, type Drafts } from '../src/client/kanban/prcommentsmodel.js';
+import { DraftStore, EMPTY_TEXT, RUNNING_TEXT, SEND_TITLE, WAITING_TITLE, WARNING_TITLE, answeredCount, countText, draftAnswers, droppedText, groupByPr, placeText, safeHref, sendState, textHint, viewOf, warningOf, type Drafts } from '../src/client/kanban/prcommentsmodel.js';
 
 const P1 = 'https://github.com/acme/api/pull/1';
 const P2 = 'https://github.com/acme/web/pull/7';
@@ -34,6 +34,18 @@ test('each state has its view: nothing, a line, the failure, or the list (locked
   assert.deepEqual(viewOf(s({ fetchedAt: 5, items: ITEMS, sent: { answers: [], at: 9 } })), { kind: 'list', locked: true, fetchedAt: 5 });
   assert.equal(droppedText(1), '1 item the agent wrote could not be read');
   assert.equal(droppedText(3), '3 items the agent wrote could not be read');
+});
+
+test('a parked fetch says it is waiting and why; a warning shows with a list or a failure only', () => {
+  const s = (patch: Partial<PrCommentsState>): PrCommentsState => ({ status: 'running', items: [], dropped: 0, ...patch });
+  assert.equal(WAITING_TITLE, 'The fetch of the review comments is waiting');
+  assert.deepEqual(viewOf(s({ waiting: ' Usage limit reached: resets at 14:00 ' })), { kind: 'waiting', title: WAITING_TITLE, reason: 'Usage limit reached: resets at 14:00' });
+  assert.deepEqual(viewOf(s({ waiting: '  ' })), { kind: 'line', text: RUNNING_TEXT }, 'no reason, no notice: it reads');
+  assert.deepEqual(viewOf(s({ status: 'ready', fetchedAt: 5, waiting: 'stale' })), { kind: 'line', text: EMPTY_TEXT }, 'only a running fetch waits');
+  assert.equal(WARNING_TITLE, 'The fetch left changes behind');
+  assert.equal(warningOf(s({ status: 'ready', warning: ' uncommitted changes in api ' })), 'uncommitted changes in api');
+  assert.equal(warningOf(s({ status: 'failed', warning: 'x' })), 'x');
+  for (const none of [null, undefined, s({ status: 'ready' }), s({ status: 'ready', warning: ' ' }), s({ status: 'running', warning: 'x' }), s({ status: 'none', warning: 'x' })]) assert.equal(warningOf(none), undefined);
 });
 
 test('a comment’s place is its file and line, else its kind; only an https address becomes a link', () => {

@@ -9,14 +9,14 @@
 import './taskprcomments.css';
 import { h, timeAgo } from '../ui/dom';
 import { icon } from '../ui/icons';
-import { btn, segmented } from '../ui/kit';
+import { banner, btn, segmented } from '../ui/kit';
 import type { KanbanTask } from '../../shared/kanban/types.js';
 import { PR_ANSWER_TEXT_MAX, type PrCommentAnswer, type PrCommentDecision, type PrCommentItem, type PrCommentsState } from '../../shared/kanban/prcomments.js';
 import { canFixPrs } from '../../shared/kanban/prs.js';
 import { apiUrl } from '../multiplayer/visit';
 import { getJson } from './api';
 import { fmtTime } from './labels';
-import { CAUSED_MARK, DECISION_LABEL, DraftStore, KIND_LABEL, RECOMMEND_MARK, VALID_MARK, answeredCount, countText, draftAnswers, droppedText, groupByPr, placeText, safeHref, sendState, textHint, viewOf, type Drafts, type Mark, type PrGroup } from './prcommentsmodel';
+import { CAUSED_MARK, DECISION_LABEL, DraftStore, KIND_LABEL, RECOMMEND_MARK, VALID_MARK, WARNING_TITLE, answeredCount, countText, draftAnswers, droppedText, groupByPr, placeText, safeHref, sendState, textHint, viewOf, warningOf, type Drafts, type Mark, type PrGroup } from './prcommentsmodel';
 import type { TaskCtx } from './taskctx';
 import { textArea } from './ui';
 
@@ -74,7 +74,11 @@ export class PrComments {
     const gate = `${can.ok}:${can.ok ? '' : can.reason}:${task.prs.map((p) => `${p.url}#${p.number}:${repoName(p)}`).join('|')}`;
     if (this.built && this.built.state === s && this.built.gate === gate) return this.built.el;
     const el = h('section.kb-sec.kb-prc', {}, h('div.kb-sec-head', {}, h('h4', {}, 'Review comments'), s.fetchedAt && s.status !== 'running' ? h('small.kb-muted', { title: fmtTime(s.fetchedAt) }, `Fetched ${timeAgo(s.fetchedAt)}`) : null));
+    // What the fetch changed although it only reads: said first, over the list or the failure.
+    const warning = warningOf(s);
+    if (warning) el.append(banner({ icon: 'triangle-alert', title: WARNING_TITLE, text: warning }));
     if (v.kind === 'line') el.append(h('p.kb-muted.kb-prc-line', {}, v.text));
+    else if (v.kind === 'waiting') el.append(banner({ icon: 'hourglass', title: v.title, text: v.reason, tone: 'neutral' }));
     else if (v.kind === 'failed') el.append(this.failed(v.error, can));
     else el.append(...this.list(s, groupByPr(s.items, task.prs, repoName), can));
     if (s.dropped > 0 && s.status !== 'running') el.append(h('p.kb-muted.kb-prc-line', {}, droppedText(s.dropped)));

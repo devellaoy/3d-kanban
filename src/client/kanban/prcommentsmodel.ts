@@ -33,6 +33,16 @@ export const DECISION_LABEL: Record<PrCommentDecision, string> = { fix: 'Fix', s
 
 export const RUNNING_TEXT = 'The implementer is reading the review comments…';
 export const EMPTY_TEXT = 'No open review comments.';
+/** A fetch that is parked (a usage limit, a question of the agent's): the notice's title, over the task's own reason. */
+export const WAITING_TITLE = 'The fetch of the review comments is waiting';
+/** A fetch only reads; the notice's title when it changed files anyway, over what it changed. */
+export const WARNING_TITLE = 'The fetch left changes behind';
+
+/** The warning of a fetched list or a failed fetch (never of a running one), trimmed; undefined when there is none. */
+export function warningOf(s: Pick<PrCommentsState, 'status' | 'warning'> | null | undefined): string | undefined {
+  if (!s || (s.status !== 'ready' && s.status !== 'failed')) return undefined;
+  return s.warning?.trim() || undefined;
+}
 
 /** What the note under the list says of the items the office left out. */
 export function droppedText(n: number): string {
@@ -138,12 +148,12 @@ export function sendState(items: readonly PrCommentItem[], drafts: Drafts, can: 
   return { enabled: true, title: SEND_TITLE };
 }
 
-/** What the tab shows for a state: nothing, one line, the failure, or the list (open to fill in, or locked once sent). */
-export type CommentsView = { kind: 'none' } | { kind: 'line'; text: string } | { kind: 'failed'; error: string } | { kind: 'list'; locked: boolean; fetchedAt: number };
+/** What the tab shows for a state: nothing, one line, a parked fetch's notice, the failure, or the list (open to fill in, or locked once sent). */
+export type CommentsView = { kind: 'none' } | { kind: 'line'; text: string } | { kind: 'waiting'; title: string; reason: string } | { kind: 'failed'; error: string } | { kind: 'list'; locked: boolean; fetchedAt: number };
 
 export function viewOf(s: PrCommentsState | null | undefined): CommentsView {
   if (!s || s.status === 'none') return { kind: 'none' };
-  if (s.status === 'running') return { kind: 'line', text: RUNNING_TEXT };
+  if (s.status === 'running') return s.waiting?.trim() ? { kind: 'waiting', title: WAITING_TITLE, reason: s.waiting.trim() } : { kind: 'line', text: RUNNING_TEXT };
   if (s.status === 'failed') return { kind: 'failed', error: s.error || 'The review comments could not be fetched' };
   if (!s.items.length) return { kind: 'line', text: EMPTY_TEXT };
   return { kind: 'list', locked: !!s.sent, fetchedAt: s.fetchedAt ?? 0 };
