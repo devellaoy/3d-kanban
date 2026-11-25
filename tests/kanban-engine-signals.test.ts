@@ -332,3 +332,14 @@ test('heardQuestion: the same boolean as ever, and the question of a question to
   assert.equal(ask('AskUserQuestion', 'PreToolUse', 'nonsense'), true);
   assert.equal(askedQuestion(live), undefined);
 });
+
+test('heardQuestion: what the bridge says it left out is in the text, with its own cut marker', () => {
+  const live = {};
+  const ask = (input: unknown) => heardQuestion(live, { tool: 'request_user_input', hookEvent: 'PreToolUse', payload: { tool_input: input } });
+  ask({ questions: [{ question: 'Long (cut here: 5 more characters)', options: [{ label: 'a' }], moreOptions: 3 }, { question: 'Two', moreOptions: 1 }], moreQuestions: 12 });
+  assert.equal(askedQuestion(live), 'Long (cut here: 5 more characters)\n- a\n(3 more options were left out)\n\nTwo\n(1 more option was left out)\n\n(12 more questions were left out)');
+  ask({ questions: [{ question: 'One' }], moreQuestions: 1 });
+  assert.equal(askedQuestion(live), 'One\n\n(1 more question was left out)');
+  ask({ questions: [{ question: 'One', moreOptions: -2 }], moreQuestions: '4' });
+  assert.equal(askedQuestion(live), 'One');
+});

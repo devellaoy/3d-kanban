@@ -23,6 +23,9 @@ export const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|req
 const asked = new WeakMap<object, string>();
 
 /** The text of a question tool's input: each question as a paragraph with its options as `- label: description` lines; undefined when the shape is unknown. */
+/** A count the bridge sends of what it left out: a positive integer, else nothing. */
+const count = (v: unknown): number => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : 0);
+
 function questionText(payload: unknown): string | undefined {
   const input = (payload as { tool_input?: unknown } | undefined)?.tool_input;
   if (!input || typeof input !== 'object') return undefined;
@@ -40,9 +43,15 @@ function questionText(payload: unknown): string | undefined {
       const desc = str((o as { description?: unknown } | null)?.description);
       if (label) lines.push(`- ${label}${desc ? `: ${desc}` : ''}`);
     }
+    const more = count((q as { moreOptions?: unknown }).moreOptions);
+    if (more) lines.push(`(${more} more ${more === 1 ? 'option was' : 'options were'} left out)`);
     paras.push(lines.join('\n'));
   }
-  if (paras.length) return paras.join('\n\n');
+  const moreQuestions = count((input as { moreQuestions?: unknown }).moreQuestions);
+  if (paras.length) {
+    if (moreQuestions) paras.push(`(${moreQuestions} more ${moreQuestions === 1 ? 'question was' : 'questions were'} left out)`);
+    return paras.join('\n\n');
+  }
   for (const k of ['question', 'prompt', 'message']) {
     const t = str((input as Record<string, unknown>)[k]);
     if (t) return t;

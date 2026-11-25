@@ -240,7 +240,8 @@ answer is kept as your comment and typed into its terminal, as if you typed it t
 carries on (the task is In progress again once the agent goes on; a question with several parts keeps
 it waiting until the last is answered). The box takes files like a comment: their paths are typed in
 after your answer. A comment on the task does the same (its files' paths too). A question asked in the
-terminal is also kept as a comment of the task (with its options, from the hook that announces it), so
+terminal is also kept as a comment of the task (with its options, from the hook that announces it; a very long
+question or one with many questions or options is shortened, and says what was left out), so
 it sits in the task's conversation, and reaches the reviewer's conversation file, right before its
 answer. When it asks for a
 permission (or the office can't tell what it waits on), the task says *answer it in its terminal*
