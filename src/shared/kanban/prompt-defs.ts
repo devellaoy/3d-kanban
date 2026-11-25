@@ -241,6 +241,31 @@ Review the changes again (round {{round}} of {{rounds}}): check that each findin
 
 {{language}}`,
   },
+  'kanban.review.co': {
+    group: 'kanban',
+    label: 'Review · additional reviewer',
+    used: "Added to the review prompt of an additional reviewer, who reviews at the same time as the task's main reviewer. The office appends the review contract after it.",
+    vars: {},
+    text: `Other reviewers are reviewing this same folder at the same time as you. Don't change any files, and don't start servers or other long-running processes. Don't ask the user questions. Your result goes to the main reviewer, who combines the reviews, so make each finding concrete and checkable.`,
+  },
+  'kanban.review.combine': {
+    group: 'kanban',
+    label: 'Review · combine',
+    used: "Sent to the main reviewer's session once the additional reviewers have finished (or the wait for them ran out): their findings, to be checked and merged into the review's one result. The office appends the review contract.",
+    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, reviews: 'Each reviewer: its name, verdict and findings, and the reviewers that did not finish', instructions: TASK_VARS.instructions, language: TASK_VARS.language },
+    needs: ['reviews'],
+    text: `Other reviewers reviewed task #{{taskId}} at the same time as you (round {{round}} of {{rounds}}). Their reviews:
+
+{{reviews}}
+
+Combine them into the review's one result. Check each finding that is disputed or that you doubt against the code, and drop duplicates and findings that turn out to be wrong. Keep every finding you confirm concrete: its file:line, what's wrong and what to do about it. A reviewer that did not finish adds nothing: don't wait for it. Still don't change any files.
+
+End with one verdict for the whole review: CHANGES_REQUESTED if at least one confirmed finding needs fixing, otherwise APPROVED.
+
+{{instructions}}
+
+{{language}}`,
+  },
   'kanban.fix': {
     group: 'kanban',
     label: 'Fix review findings',

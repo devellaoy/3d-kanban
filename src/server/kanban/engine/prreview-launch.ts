@@ -13,7 +13,7 @@ import type { TaskAgentAdapter } from './adapters/types.js';
 import { Composer, isFolderProject, reposText, skillPhase, type ComposeExtra } from './compose.js';
 import type { Comments } from './comments.js';
 import type { Live, Via } from './live.js';
-import { queuedOf, type RunEffect } from './machine.js';
+import { queuedOf, type MachineEvent, type RunEffect } from './machine.js';
 import { slot, slotPatch } from './slot.js';
 import { typeable } from './turnhold.js';
 import { homeCleanup } from './workspace.js';
@@ -35,6 +35,10 @@ export interface PrReviewDeps {
   freshBase(floor: Floor, def: FloorDef, repoIds: string[] | null): Promise<void>;
   hireOwner(task: Pick<KanbanTask, 'createdByAccount'>, who?: Pick<KanbanCaller, 'accountId'>): string | undefined;
   baseBranches(def: FloorDef, repoIds: string[] | null): Record<string, string>;
+  watch(floorId: string): Floor | undefined;
+  op(taskId: number, fn: (task: KanbanTask) => Promise<string | undefined | void>): Promise<string | void>;
+  apply(taskId: number, e: MachineEvent, via?: Via): Promise<string | undefined>;
+  running(taskId: number): boolean;
   finishRun(id: number, project: string, patch: Parameters<KanbanContext['repo']['finishRun']>[1]): void;
   update(id: number, patch: { reviewerWorkerId?: string | null; reviewerSessionId?: string | null; runState?: KanbanTask['runState'] }): void;
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): void;
@@ -51,6 +55,47 @@ const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}â€
 
 export class PrReviews {
   constructor(private d: PrReviewDeps) {}
+
+  /**
+   * Several pull requests reviewed together, as a run of its own (phase pr-review): on the task the
+   * request names, or on a new investigate task for it. The request comes checked (KanbanPullsApi.review);
+   * this checks only what the engine itself needs.
+   */
+  async review(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> {
+    const def = this.d.ctx.project(req.project);
+    if (!def) return `There's no project ${req.project}`;
+    if (!this.d.watch(req.project)) return "The project's floor isn't open, so there's nowhere to seat a reviewer";
+    if (isFolderProject(def)) return 'A folder project has no pull requests to review';
+    if (!req.prs.length) return 'Pick at least one pull request';
+    const labels = req.prs.map((p) => `${p.repo}#${p.number}`);
+    const target = this.taskFor(req, def, who);
+    if (typeof target === 'string') return target;
+    const { taskId, named, created } = target;
+    const request: KanbanPrReviewRequest = { project: req.project, prs: req.prs, ...(named !== undefined ? { taskId: named } : {}), ...(req.tool ? { tool: req.tool } : {}), ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}) };
+    const err = await this.d.op(taskId, async (task) => {
+      if (this.d.running(task.id)) return 'Stop it first: it is running';
+      this.d.ctx.repo.appendEvent(task.id, 'pr.review', { by: who.name, prs: labels, request });
+      return this.d.apply(task.id, { type: 'prReview' }, { who, prReview: request });
+    });
+    const task = this.d.ctx.repo.getTask(taskId);
+    if (!err && task?.runState === 'queued' && task.queuedRun?.phase === 'pr-review') {
+      // No room now (a desk, the worker limit): the task waits in the queue and the review starts by itself.
+      this.d.note(task, `${who.name} asked for a review of ${labels.join(', ')}`);
+      return { taskId };
+    }
+    const workerId = task?.reviewerWorkerId;
+    const info = workerId ? this.d.ctx.floor(req.project)?.workers.get(workerId) : undefined;
+    if (err || !task || !workerId || !info) {
+      // A review task that never got its reviewer is no use to anyone: it goes again.
+      if (created && task && !this.d.running(task.id)) {
+        this.d.ctx.repo.deleteTask(task.id);
+        this.d.ctx.broadcast({ t: 'kanban.task.removed', id: task.id, project: task.project }, task.project);
+      }
+      return err || 'The reviewer could not be hired';
+    }
+    this.d.note(task, `${who.name} asked ${info.name} to review ${labels.join(', ')}`);
+    return { taskId, workerId };
+  }
 
   /** The request of the task's latest pull-request review (for a Retry), as reviewPrs recorded it. */
   last(taskId: number): KanbanPrReviewRequest | undefined {

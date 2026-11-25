@@ -5,7 +5,7 @@ import type { KanbanContext } from '../registry.js';
 import { resetTime } from './markers.js';
 
 /** The run the limit stopped: its tool, and the worker that ran it (for its Codex home). */
-interface LimitedRun {
+export interface LimitedRun {
   tool: KanbanTool;
   floorId: string;
   workerId: string;

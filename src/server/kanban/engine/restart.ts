@@ -19,6 +19,7 @@ import type { MachineEvent } from './machine.js';
 import { finalMarker } from './markers.js';
 import { sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
+import { slot } from './slot.js';
 import { promptHead, type HeldRun } from './turnhold.js';
 
 /** How long an admitted run's launch may take to ask (see Restarts.reviewer): a relaunch waits for its old process to end. */
@@ -129,7 +130,7 @@ export class Restarts<L extends HeldRun> {
   workerOf(run: KanbanRun, task: KanbanTask, floor?: Floor): WorkerInfo | undefined {
     if (!floor) return undefined;
     if (run.workerId) return floor.workers.get(run.workerId);
-    const w = floor.workers.get((run.role === 'implementer' ? task.workerId : task.reviewerWorkerId) ?? '');
+    const w = floor.workers.get(slot(task, run.role, run.seat ?? 0).workerId ?? '');
     return w && floor.workers.cutOffStatus(w.id) !== undefined ? w : undefined;
   }
 
@@ -191,7 +192,8 @@ export class Restarts<L extends HeldRun> {
     const q = t.queuedRun!;
     const id = q.role === 'reviewer' ? t.reviewerWorkerId : t.workerId;
     // The same preconditions as at the restart: the office was down again since, and the launch would quietly start a fresh worktree or session.
-    const last = this.deps.ctx.repo.lastRun(t.id);
+    let last = this.deps.ctx.repo.lastRun(t.id);
+    if (last?.seat) last = this.deps.ctx.repo.listRuns(t.id).filter((r) => !r.seat).at(-1); // an additional reviewer's run is not the task's
     const lost = this.gone(t, q.role, last?.tool ?? t.tool, floor, id ? floor.workers.get(id) : undefined, last?.promptedAt ?? last?.startedAt);
     const why = !floor.workers.carryOn() ? "the office's setting for that is off" : paused;
     if (why || lost) {

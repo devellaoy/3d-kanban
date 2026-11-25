@@ -16,6 +16,8 @@ export interface DepartingRun {
   runId: number;
   phase: RunPhase;
   role: KanbanRole;
+  /** An additional reviewer's run (see ReviewPanel). */
+  seat?: number;
   floorId: string;
   ended: boolean;
   stopping?: unknown;
@@ -42,6 +44,10 @@ export interface Departing<L extends DepartingRun> {
   markDone(task: KanbanTask, by: string): Promise<unknown>;
   /** Fills the floor's free desks. */
   drain(floorId: string): Promise<unknown>;
+  /** An additional reviewer's worker left (see ReviewPanel.left): its seat did not finish. */
+  coLeft(workerId: string, taskId: number, own: L | undefined, by: string): Promise<unknown>;
+  /** The task's review round with several reviewers is cut off: its additional reviewers' runs end. */
+  closePanel(task: KanbanTask, why: string): Promise<unknown>;
 }
 
 export class Departures<L extends DepartingRun> {
@@ -61,6 +67,12 @@ export class Departures<L extends DepartingRun> {
     if (own) {
       own.ended = true;
       this.d.forget(own);
+    }
+    // An additional reviewer's worker: a person sending it home only makes its seat unfinished, never the task's review round abandoned.
+    if (own?.seat || info.kanban?.seat) {
+      await this.d.coLeft(workerId, taskId, own, (departure ?? { by: 'Someone' }).by);
+      if (own) void this.d.drain(own.floorId);
+      return;
     }
     const before = this.d.task(taskId);
     if (before) {
@@ -129,7 +141,7 @@ export class Departures<L extends DepartingRun> {
       } else if (role === 'reviewer') {
         const pending = task.pendingMessages.some((m) => !m.parked);
         line += pending ? `: its ${what} was dropped, and the comments that came in meanwhile go to the agent now` : `: its ${what} was dropped, and the task is in Review`;
-        then = () => this.d.apply(task.id, { type: 'reviewAbandoned', pending });
+        then = async () => (await this.d.closePanel(task, `${line} mid-run`), this.d.apply(task.id, { type: 'reviewAbandoned', pending }));
       } else {
         line += `: its ${what} was stopped. Retry to carry on.`;
         then = () => this.d.apply(task.id, { type: 'stopped', by: intent.by, text: `${this.departureLine(intent, info.name)} mid-run: Retry to carry on` });
