@@ -11,12 +11,13 @@ import { PR_DEFS } from './prompt-defs-pr.js';
 import { UI_DEFS, UI_TESTING_VAR } from './prompt-defs-ui.js';
 import { DRAFT_DEFS } from './prompt-defs-draft.js';
 import { INSTRUCTION_DEFS } from './prompt-defs-instructions.js';
+import { HISTORY_DEFS } from './prompt-defs-history.js';
 import { TASK_VARS } from './prompt-defs-vars.js';
 
 // --- Placeholders several prompts share -----------------------------------------------------------
 
 const ROUND_VARS = { round: 'The review round, from 1', rounds: 'How many review rounds the task gets' };
-const PLAN_VAR = { plan: 'The accepted plan, under a heading; empty when the task ran without a plan' };
+const PLAN_VAR = { plan: "A reference to the file that holds the accepted plan (the plan's text itself where the file could not be written); empty when the task ran without a plan" };
 
 const DEFS = {
   'kanban.plan': {
@@ -193,7 +194,14 @@ Don't change anything in the repositories: no edits, branches or commits. Read t
     group: 'kanban',
     label: 'Review',
     used: 'A review round, for the reviewer: a separate worker (its own tool, model and effort) in the same workspace, without file-editing tools. The office appends the review contract (REVIEW: APPROVED / CHANGES_REQUESTED).',
-    vars: { ...TASK_VARS, ...PLAN_VAR, ...ROUND_VARS, ...UI_TESTING_VAR },
+    vars: {
+      ...TASK_VARS,
+      ...PLAN_VAR,
+      ...ROUND_VARS,
+      history: "The task's conversation, as a reference to its file, with the rule for reading it; empty when the task has none",
+      summary: "What the implementer says it did (its latest summary); empty without one. Not added to a rewritten prompt that lacks it",
+      ...UI_TESTING_VAR,
+    },
     needs: ['description'],
     text: `You are reviewing the work done for kanban task #{{taskId}} in the project {{project}}: {{title}}. This is review round {{round}} of {{rounds}}.
 
@@ -205,6 +213,10 @@ What the user asked for:
 {{attachments}}
 
 {{plan}}
+
+{{history}}
+
+{{summary}}
 
 The workspace, with the task's branch in each repository:
 {{repos}}
@@ -227,13 +239,17 @@ Review the task's commits and any uncommitted changes in each repository against
     group: 'kanban',
     label: 'Review · next round',
     used: "Sent to the reviewer's session for the next round, after the implementer fixed the findings. The office appends the review contract.",
-    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, fixSummary: "The implementer's reply to the findings", ...UI_TESTING_VAR, instructions: TASK_VARS.instructions, language: TASK_VARS.language },
+    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, fixSummary: "The implementer's reply to the findings", ...PLAN_VAR, history: "The task's conversation, as a reference to its file, with the rule for reading it; empty when the task has none", ...UI_TESTING_VAR, instructions: TASK_VARS.instructions, language: TASK_VARS.language },
     needs: ['fixSummary'],
     text: `The implementer of task #{{taskId}} has worked on your findings. Their reply:
 
 {{fixSummary}}
 
 Review the changes again (round {{round}} of {{rounds}}): check that each finding was really fixed or rightly rejected, and that the fixes didn't break anything else. Still don't change any files.
+
+{{plan}}
+
+{{history}}
 
 {{uiTesting}}
 
@@ -318,6 +334,7 @@ Do what the comment asks. Commit any changes locally as before (never push unles
   ...UI_DEFS,
   ...DRAFT_DEFS,
   ...INSTRUCTION_DEFS,
+  ...HISTORY_DEFS,
   'kanban.pr.review': {
     group: 'kanban',
     label: 'Review pull requests together',
@@ -498,7 +515,7 @@ Look at the branch's commits and uncommitted changes (git log, git status, git d
   'kanban.acceptedPlan': {
     group: 'kanban',
     label: 'Accepted plan',
-    used: 'The {{plan}} of the task prompts and the handoff, when the task has an accepted plan.',
+    used: 'The {{plan}} of the task prompts and the handoff, when the task has an accepted plan: used only when the plan\'s file could not be written.',
     vars: { plan: "The plan's text" },
     needs: ['plan'],
     text: `The accepted plan:

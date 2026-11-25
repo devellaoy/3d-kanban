@@ -35,6 +35,12 @@ export interface Rule {
   reply: string;
   /** Claude only: end the turn in ExitPlanMode with this plan (PermissionRequest, no Stop). */
   exitPlan?: string;
+  /**
+   * With `exitPlan`, as Claude Code 2.1.x really does it: the call is NOT in the session log (it writes it after the approval dialog), the PreToolUse hook
+   * carries the plan (the PermissionRequest does not, as the existing exitPlan rules' does not), and the office's report_turn is hooked in the same message before the dialog (PermissionRequest) shows, this many ms later
+   * (time for the test to send the plan-ready signal in between).
+   */
+  exitPlanLate?: number;
   /** Make an empty commit with this message first (the work). */
   commit?: string;
   /** Wait this long before answering (to type a comment meanwhile). */
@@ -123,6 +129,8 @@ export interface Rule {
    * and the turn goes on by the rule matching the last answer.
    */
   ask?: boolean | 'question';
+  /** The options of the AskUserQuestion's question. */
+  options?: { label: string; description?: string }[];
   /**
    * Claude only, with `delayMs`: the turn works that long and an Esc doesn't end it as far as the office can tell: no Stop is
    * posted and the worker stays `working`, as real Claude Code does (it fires no Stop hook on Esc). The turn stops quietly.
@@ -365,14 +373,21 @@ async function turn(prompt, answered) {
     }
     append(final);
     if (rule.ask === 'question') {
-      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'tool_use', id: 'ask-1', name: 'AskUserQuestion', input: { questions: [{ question: rule.reply }] } }] } });
-      await post('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: rule.reply }] } });
+      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'tool_use', id: 'ask-1', name: 'AskUserQuestion', input: { questions: [{ question: rule.reply.replace(/\s*WORK DONE$/, ''), ...(rule.options ? { options: rule.options } : {}) }] } }] } });
+      await post('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: rule.reply.replace(/\s*WORK DONE$/, ''), ...(rule.options ? { options: rule.options } : {}) }] } });
       questions = rule.questions || 1;
       answerDelay = rule.answerDelayMs || 0;
       return;
     }
     if (rule.ask) {
       await post('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+      return;
+    }
+    if (rule.exitPlan && rule.exitPlanLate !== undefined) {
+      await post('PreToolUse', { tool_name: 'ExitPlanMode', tool_input: { plan: rule.exitPlan } });
+      await post('PreToolUse', { tool_name: 'mcp__agent-office__report_turn', tool_input: { kind: 'plan-ready' } });
+      await new Promise((r) => setTimeout(r, rule.exitPlanLate));
+      await post('PermissionRequest', { tool_name: 'ExitPlanMode' });
       return;
     }
     if (rule.exitPlan) {

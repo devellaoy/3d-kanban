@@ -18,6 +18,8 @@ import { PROMPTS, placeholders, promptText, type PromptId } from '../src/shared/
 import type { RunPhase } from '../src/shared/kanban/types.js';
 import type { LanguageSettings } from '../src/shared/language.js';
 import { makeRepo } from './kanban-engine-fixture.js';
+import { conversationFilePath, planFilePath } from '../src/server/kanban/taskfiles.js';
+import { HISTORY_TEXT_MAX } from '../src/server/kanban/engine/taskfiles-block.js';
 
 function setup(t: { after(fn: () => void): void }, office: Record<string, { text: string }> = {}, langs: LanguageSettings = {}) {
   const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'kanban-prompts-')));
@@ -108,7 +110,8 @@ test('every prompt the engine sends is filled in completely and ends with its ph
   }
   const impl = compose.build('implement', def, withPrs, 'claude', dir, { phase: 'implement' });
   assert.match(impl, /Ticket: UYT-12 \(https:\/\/jira\/UYT-12\)/);
-  assert.match(impl, /The accepted plan:\n\nThe plan/);
+  assert.ok(impl.includes(`\`${planFilePath(ctx.filesDir, task.id)}\``), 'the plan is a reference to its file');
+  assert.doesNotMatch(impl, /The plan\b/, 'the plan text is in the file');
   assert.match(impl, /The project's instructions/);
   assert.ok(impl.includes(`\`${path.join(ctx.filesDir, 'instructions', 'proj', 'general.md')}\``), 'the general instructions are a reference to their file');
   assert.doesNotMatch(impl, /Keep it small\.|Run npm test\./, 'the text itself is in the files');
@@ -779,4 +782,131 @@ test('instructions: the plain worker PR prompt has no placeholder left', (t) => 
   const info = { id: 'w', name: 'Ada', title: 'Work', provider: 'claude' } as unknown as WorkerInfo;
   assert.doesNotMatch(compose.workerPr(floor, info), /\{\{instructions\}\}/);
   void root;
+});
+
+// --- the accepted plan and the conversation as files ------------------------------------------------
+
+const histTask = (repo: ReturnType<typeof setup>['repo'], opts: { plan?: boolean; comment?: boolean; summary?: boolean } = {}) => {
+  const task = repo.createTask({ project: 'proj', title: 'Fix it', description: 'x', tool: 'claude', usePlan: !!opts.plan, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  if (opts.plan) {
+    repo.addPlan(task.id, 'Secret plan text');
+    repo.acceptPlan(task.id, 'Ada');
+  }
+  if (opts.comment) repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'Please also handle the empty case.' });
+  if (opts.summary) repo.updateTask(task.id, { summary: 'I changed the redirect.' });
+  return repo.getTask(task.id)!;
+};
+const histX = (phase: RunPhase) => ({ ...insX(phase) });
+
+test('plan file: the plan is a reference in implement, implement.folder, review and the handoff, and its text in no kind', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = histTask(repo, { plan: true });
+  const ref = `\`${planFilePath(ctx.filesDir, task.id)}\``;
+  for (const [kind, phase] of KINDS) assert.doesNotMatch(compose.build(kind, def, task, 'claude', dir, histX(phase)), /Secret plan text/, kind);
+  for (const kind of ['implement', 'review'] as const) assert.ok(compose.build(kind, def, task, 'claude', dir, histX(kind === 'review' ? 'review' : 'implement')).includes(ref), kind);
+  const folder = { ...def, repos: [def.repos![2]], dir: def.repos![2].dir };
+  assert.ok(compose.build('implement', folder, task, 'claude', dir, histX('implement')).includes(ref), 'implement.folder');
+  const handoff = compose.handoff(def, task, dir, 'Carry on.');
+  assert.ok(handoff.includes(ref));
+  assert.doesNotMatch(handoff, /Secret plan text/);
+  assert.equal(readFileSync(planFilePath(ctx.filesDir, task.id), 'utf8').trim(), 'Secret plan text');
+});
+
+test('plan file: where the file cannot be written the text is inlined', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = histTask(repo, { plan: true });
+  mkdirSync(planFilePath(ctx.filesDir, task.id), { recursive: true });
+  const text = compose.build('implement', def, task, 'claude', dir, histX('implement'));
+  assert.match(text, /The accepted plan:\n\nSecret plan text/);
+  assert.doesNotMatch(text, /\{\{/);
+});
+
+test('plan file: acceptPlan on the composer writes the file', (t) => {
+  const { repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'X', tool: 'claude', usePlan: true, planApproval: 'manual', useReview: true, createdBy: 'Ada' });
+  repo.addPlan(task.id, 'Agreed plan');
+  compose.acceptPlan(task.id, 'Ada');
+  assert.equal(readFileSync(planFilePath(ctx.filesDir, task.id), 'utf8').trim(), 'Agreed plan');
+});
+
+test('history: review and rereview name the conversation file, which holds the comments; no other kind does', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = histTask(repo, { comment: true });
+  const file = conversationFilePath(ctx.filesDir, task.id);
+  for (const [kind, phase] of KINDS) {
+    const text = compose.build(kind, def, task, 'claude', dir, histX(phase));
+    assert.doesNotMatch(text, /\{\{\s*\w+\s*\}\}/, kind);
+    const has = kind === 'review' || kind === 'rereview';
+    assert.equal(text.includes(file), has, kind);
+    if (has) assert.match(text, /a later message from the user overrides/, kind);
+  }
+  assert.match(readFileSync(file, 'utf8'), /Please also handle the empty case\./);
+  const combine = compose.build('rereview', def, task, 'claude', dir, { ...histX('review'), panel: 'combine', reviews: 'R1' });
+  assert.ok(!combine.includes(file), 'not in the combine part');
+});
+
+test('history: a bare task gets no blocks, no doubled blank lines and no placeholder', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = histTask(repo);
+  for (const [kind, phase] of KINDS) {
+    const text = compose.build(kind, def, task, 'claude', dir, histX(phase));
+    assert.doesNotMatch(text, /\{\{|conversation\.md|accepted-plan\.md|What the implementer says it did/, kind);
+    assert.doesNotMatch(text, /\n{3,}/, kind);
+  }
+  assert.ok(!existsSync(conversationFilePath(ctx.filesDir, task.id)));
+  assert.ok(!existsSync(planFilePath(ctx.filesDir, task.id)));
+});
+
+test('history: a rewritten review or rereview without {{history}} gets the block before the contract, from a project or the office', (t) => {
+  const office = { 'kanban.review': { text: 'Office review of #{{taskId}}.' }, 'kanban.rereview': { text: 'Office again: {{fixSummary}}' } };
+  const { def, dir, repo, settings, compose, ctx } = setup(t, office);
+  settings.setProject('proj', { uiTesting: false, generalInstructions: '', testingInstructions: '' });
+  def.repos![0].instructions = undefined;
+  const task = histTask(repo, { comment: true, summary: true });
+  const file = conversationFilePath(ctx.filesDir, task.id);
+  const review = compose.build('review', def, task, 'claude', dir, histX('review'));
+  assert.match(review, new RegExp(`^Office review of #\\d+\\.\\n\\nThe task's conversation is in \`${file.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\`[\\s\\S]*\\n\\n---`));
+  assert.doesNotMatch(review, /I changed the redirect/, '{{summary}} is not appended to a rewrite that lacks it');
+  assert.equal(count(review, 'conversation is in'), 1);
+  assert.match(compose.build('rereview', def, task, 'claude', dir, histX('review')), /^Office again: Fixed\n\nThe task's conversation is in/);
+  settings.setProjectPrompt('proj', 'kanban.review', 'Project review.');
+  settings.setProjectPrompt('proj', 'kanban.rereview', 'Project again.');
+  assert.match(compose.build('review', def, task, 'claude', dir, histX('review')), /^Project review\.\n\nThe task's conversation is in[\s\S]*\n\n---/);
+  assert.match(compose.build('rereview', def, task, 'claude', dir, histX('review')), /^Project again\.\n\nThe task's conversation is in[\s\S]*\n\n---/);
+});
+
+test('history: the implementer summary is in a first-round review and not in a rereview', (t) => {
+  const { def, dir, repo, compose } = setup(t);
+  const task = histTask(repo, { summary: true });
+  assert.match(compose.build('review', def, task, 'claude', dir, histX('review')), /What the implementer says it did \(a claim to check against the diff, not a fact\):\n\nI changed the redirect\./);
+  assert.doesNotMatch(compose.build('rereview', def, task, 'claude', dir, histX('review')), /I changed the redirect/);
+});
+
+test('history: where the file cannot be written the newest part of the conversation is inlined, capped', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = histTask(repo, { comment: true });
+  repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'y'.repeat(HISTORY_TEXT_MAX * 2) });
+  repo.addComment({ taskId: task.id, authorKind: 'user', authorName: 'Ada', text: 'The newest word END' });
+  mkdirSync(conversationFilePath(ctx.filesDir, task.id), { recursive: true });
+  const text = compose.build('review', def, task, 'claude', dir, histX('review'));
+  assert.match(text, /The task's conversation follows/);
+  assert.match(text, /a later message from the user overrides/);
+  assert.ok(text.includes('The newest word END'), 'the newest entry is kept');
+  assert.ok(!text.includes('y'.repeat(HISTORY_TEXT_MAX)), 'the older one is left out');
+  assert.doesNotMatch(text, /\{\{/);
+  assert.ok(text.length < HISTORY_TEXT_MAX + 20_000, 'the text is capped');
+});
+
+test('plan file: a rereview names the plan file, carries the text where the file cannot be written, and adds nothing without a plan', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = histTask(repo, { plan: true, comment: true });
+  const re = compose.build('rereview', def, task, 'claude', dir, histX('review'));
+  assert.ok(re.includes(`\`${planFilePath(ctx.filesDir, task.id)}\``));
+  assert.doesNotMatch(re, /Secret plan text/);
+  rmSync(planFilePath(ctx.filesDir, task.id), { force: true });
+  mkdirSync(planFilePath(ctx.filesDir, task.id), { recursive: true });
+  assert.match(compose.build('rereview', def, task, 'claude', dir, histX('review')), /The accepted plan:\n\nSecret plan text/);
+  const bare = histTask(repo);
+  const text = compose.build('rereview', def, bare, 'claude', dir, histX('review'));
+  assert.doesNotMatch(text, /accepted plan|\{\{|\n{3,}/i);
 });

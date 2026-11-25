@@ -31,6 +31,8 @@ import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
 import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, type UiBlockKind } from './uitesting.js';
 import { instructionsBlock } from './instructions-block.js';
+import { historyBlock, planBlock } from './taskfiles-block.js';
+import { syncPlanFile } from '../taskfiles.js';
 import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
@@ -336,9 +338,9 @@ export class Composer {
     return block && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('uiTesting') ? `${text}\n\n${block}` : text;
   }
 
-  /** `text` of prompt `id` with the instructions block at its end when the (rewritten) prompt has no {{instructions}} for it. */
-  private withInstructions(id: KanbanPromptId, project: string, text: string, block: string): string {
-    return block && !placeholders(kanbanPromptText(id, this.layers(project))).includes('instructions') ? `${text.trimEnd()}\n\n${block}` : text;
+  /** `text` of prompt `id` with `block` at its end when the (rewritten) prompt has no {{name}} for it. */
+  private withBlock(id: KanbanPromptId, project: string, text: string, block: string, name: 'instructions' | 'history'): string {
+    return block && !placeholders(kanbanPromptText(id, this.layers(project))).includes(name) ? `${text.trimEnd()}\n\n${block}` : text;
   }
 
   /** The ticket line, and for a Jira ticket the office can read for the worker, the line that says how. */
@@ -350,7 +352,6 @@ export class Composer {
 
   /** Every placeholder the task prompts share. */
   taskVars(def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): Vars {
-    const accepted = this.ctx.repo.acceptedPlan(task.id);
     const ticketId = task.ticket ?? 'none';
     const langs = this.languages(task.project);
     return {
@@ -370,8 +371,10 @@ export class Composer {
       skills: this.skillsLine(task, tool, x.phase),
       // Filled by build() for the prompts that carry it; empty for the others (a rewritten plan prompt may name it).
       uiTesting: '',
+      history: '',
+      summary: '',
       language: this.language(task.project, langs),
-      plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
+      plan: planBlock(this.ctx, (id, p, v) => this.text(id, p, v), task),
       branchInstructions: x.checkout
         ? this.checkout(task, x.checkout)
         : this.ctx.settings.project(task.project).branchInstructions.trim() || this.text('kanban.branch', task.project, { taskId: task.id, slug: slugify(task.title), slugNote: this.slugNote(langs.public), ticketId: task.ticket ? slugify(task.ticket.replace(/^ghp?:/, ''), 30) : String(task.id) }),
@@ -402,7 +405,11 @@ export class Composer {
       return c ? withContract(text, c) : text.trim();
     };
     // The block of a prompt that has no {{instructions}} (a rewritten one) goes at its end, before the held messages and the contract.
-    const ins = (id: KanbanPromptId, text: string) => this.withInstructions(id, p, text, String(v.instructions));
+    const ins = (id: KanbanPromptId, text: string) => this.withBlock(id, p, text, String(v.instructions), 'instructions');
+    // The conversation file is written for the reviewer's two kinds only; a rewritten prompt without {{history}} gets the block at its end.
+    const hist = (id: KanbanPromptId, text: string, block: string) => this.withBlock(id, p, text, block, 'history');
+    let atts: ReturnType<KanbanContext['repo']['listAttachments']> | undefined; // fetched once, when the first comment needs them
+    const history = () => historyBlock(this.ctx, (i, pr, vars) => this.text(i, pr, vars), (c) => this.commentText(p, task.id, c.text, (atts ??= this.ctx.repo.listAttachments(task.id)).filter((a) => a.commentId === c.id)), task);
     switch (kind) {
       case 'plan':
         return seal(ins('kanban.plan', this.text('kanban.plan', p, v)));
@@ -414,11 +421,16 @@ export class Composer {
       }
       case 'investigate':
         return seal(ins('kanban.investigate', this.text('kanban.investigate', p, v)));
-      case 'review':
-        return seal(ins('kanban.review', this.withUi('kanban.review', def, task, 'review', v)) + this.coText(x, p));
-      case 'rereview':
+      case 'review': {
+        const h = history();
+        const summary = task.summary?.trim() ? this.text('kanban.review.summary', p, { summary: task.summary.trim() }) : '';
+        return seal(ins('kanban.review', hist('kanban.review', this.withUi('kanban.review', def, task, 'review', { ...v, history: h, summary }), h)) + this.coText(x, p));
+      }
+      case 'rereview': {
         if (x.panel === 'combine') return seal(ins('kanban.review.combine', this.text('kanban.review.combine', p, { taskId: task.id, round: v.round, rounds: v.rounds, reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })));
-        return seal(ins('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', instructions: v.instructions, language: v.language })) + this.coText(x, p));
+        const h = history();
+        return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', plan: v.plan, history: h, instructions: v.instructions, language: v.language }), h)) + this.coText(x, p));
+      }
       case 'fix':
         return seal(ins('kanban.fix', this.withUi('kanban.fix', def, task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', instructions: v.instructions, language: v.language })));
       case 'resume':
@@ -494,9 +506,15 @@ export class Composer {
     return def ? instructionsBlock(this.ctx, (id, p, v) => this.text(id, p, v), task, taskRepos(def, task)) : '';
   }
 
+  /** Accepts the plan draft of `taskId` and keeps its file (see taskfiles.ts) up to date with it. */
+  acceptPlan(taskId: number, by: string): ReturnType<KanbanContext['repo']['acceptPlan']> {
+    const r = this.ctx.repo.acceptPlan(taskId, by);
+    syncPlanFile(this.ctx.filesDir, taskId, this.ctx.repo.acceptedPlan(taskId)?.text.trim());
+    return r;
+  }
+
   /** The first message of a fresh session taking a task over (kanban.handoff), for `next` to follow. */
   handoff(def: FloorDef, task: KanbanTask, floorDir: string, next: string): string {
-    const accepted = this.ctx.repo.acceptedPlan(task.id);
     const recent = this.ctx.repo
       .listComments(task.id, { limit: 6 })
       .comments.filter((c) => c.kind !== 'status')
@@ -507,7 +525,7 @@ export class Composer {
       description: this.inline(task.id, task.description.trim()) || task.title,
       project: def.name,
       status: `${task.status.replace('_', ' ')}${task.phase ? `, phase ${task.phase}` : ''}`,
-      plan: accepted ? this.text('kanban.acceptedPlan', task.project, { plan: accepted.text.trim() }) : '',
+      plan: planBlock(this.ctx, (id, p, v) => this.text(id, p, v), task),
       summary: task.summary?.trim() ? this.text('kanban.handoff.summary', task.project, { summary: task.summary.trim() }) : '',
       recent: recent.length ? this.text('kanban.handoff.comments', task.project, { comments: recent.join('\n') }) : '',
       repos: reposText(def, task, floorDir) + this.hostingNote(task.project, taskRepos(def, task)),

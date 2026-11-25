@@ -7,10 +7,11 @@
 
 import type { Floor } from '../../floor.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
-import type { KanbanComment, KanbanTask, PendingMessage } from '../../../shared/kanban/types.js';
+import type { KanbanComment, KanbanTask, KanbanTool, PendingMessage } from '../../../shared/kanban/types.js';
 import type { AttachmentRow, TaskUpdate } from '../db/repository.js';
 import { WORK_DONE } from '../../../shared/kanban/prompts.js';
 import type { HoldBack, LastRun, MachineEvent, RunEffect } from './machine.js';
+import { askedQuestion } from './signals.js';
 import { runTyped, setRunTyped } from '../db/typed.js';
 import type { TurnResult } from './adapters/types.js';
 import { promptHead, typeable, type HeldRun } from './turnhold.js';
@@ -69,6 +70,18 @@ export class Comments<L extends CommentLive> {
   /** The files a comment came with. */
   private filesOf(c: KanbanComment): AttachmentRow[] {
     return c.attachmentIds.length ? this.d.ctx.repo.listAttachments(c.taskId).filter((a) => a.commentId === c.id) : [];
+  }
+
+  /** The agent asks in its terminal: a question it asked is kept as a comment of the run (so it is in the task's conversation with its answer). Returns what the task waits for. */
+  asked(task: Pick<KanbanTask, 'id' | 'project'>, live: L, info: { name?: string; activity?: string }): string {
+    const text = live.asks === 'question' ? askedQuestion(live) : undefined;
+    if (text) {
+      const agent = info.name ?? (live.role === 'reviewer' ? 'Reviewer' : 'Agent');
+      const { comment, deduped } = this.d.ctx.repo.addComment({ taskId: task.id, authorKind: 'agent', authorName: live.role === 'reviewer' ? `${agent} (reviewer)` : agent, tool: live.tool as KanbanTool, kind: 'questions', text, runId: live.runId });
+      if (!deduped) this.d.ctx.broadcast({ t: 'kanban.comment', comment, project: task.project }, task.project);
+    }
+    const act = info.activity;
+    return `The agent is asking something in its terminal${act ? `: ${act.length > 160 ? `${act.slice(0, 160)}…` : act}` : ''}`;
   }
 
   /** A user's comment on a task (on the task's chain). */

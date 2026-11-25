@@ -36,7 +36,7 @@ import { Departures } from './departures.js';
 import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable } from './turnhold.js';
-import { agentHook, newTurn, acceptSignal, QUESTION_TOOL, StopGate, stopMessage } from './signals.js';
+import { agentHook, newTurn, acceptSignal, heardQuestion, QUESTION_TOOL, StopGate, stopMessage } from './signals.js';
 import type { Live, Via } from './live.js';
 import { lostText, stopFallback, TurnEnd, typedSettled, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
@@ -724,7 +724,7 @@ export class Orchestrator {
         return err;
       }
       case 'acceptPlan': {
-        const plan = this.ctx.repo.acceptPlan(taskId, via.who?.name ?? 'Kanban');
+        const plan = this.compose.acceptPlan(taskId, via.who?.name ?? 'Kanban');
         if (plan) this.ctx.broadcast({ t: 'kanban.plan', plan, project: task.project }, task.project);
         this.update(taskId, { flags: { ...task.flags, planAccepted: true } });
         return undefined;
@@ -1140,7 +1140,7 @@ export class Orchestrator {
    * (unknown). In memory only: after an office restart it's unknown, answered in the terminal.
    */
   private heardAsk(live: Live, o: WorkerObservation) {
-    const question = !!o.tool && QUESTION_TOOL.test(o.tool);
+    const question = heardQuestion(live, o);
     let kind = live.asks;
     switch (o.hookEvent) {
       case 'PreToolUse':
@@ -1180,7 +1180,7 @@ export class Orchestrator {
     if (live.seat) return this.panel.coGone(live, `it is asking something in its terminal${info.activity ? `: ${clip(info.activity, 160)}` : ''}`); // nobody answers an additional reviewer
     if (live.panel && task) await this.panel.close(task, 'its main reviewer is asking something');
     if (!task || (task.status === 'waiting' && task.waitingReason === 'agent_asking')) return;
-    await this.apply(live.taskId, { type: 'asking', text: `The agent is asking something in its terminal${info.activity ? `: ${clip(info.activity, 160)}` : ''}` });
+    await this.apply(live.taskId, { type: 'asking', text: this.comments.asked(task, live, info) });
   }
 
   /** Its agent exited mid-run, or couldn't start at all because its folder is gone (upstream's lost): the run was interrupted. */
