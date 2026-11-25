@@ -287,7 +287,8 @@ test("the validator's limits fit what the rest of the kanban makes", () => {
   assert.ok(good({ t: 'kanban.issues.createTask', project: 'web', issueKey: key }));
   assert.ok(good({ t: 'kanban.pr.bundle', project: 'web', ticket: key }));
   // Model ids the adapters take.
-  for (const model of ['opus', 'sonnet[1m]', 'claude-opus-4-5-20251101', 'gpt-5.1-codex-max', 'openai/gpt-5']) assert.ok(good({ t: 'kanban.task.create', task: { project: 'web', title: 'x', model } }), model);
+  for (const model of ['opus', 'sonnet[1m]', 'claude-opus-4-5-20251101', 'gpt-5.1-codex-max', 'openai/gpt-5', 'gemini-4-hydrogen-low']) assert.ok(good({ t: 'kanban.task.create', task: { project: 'web', title: 'x', model } }), model);
+  assert.equal((good({ t: 'kanban.task.create', task: { project: 'web', title: 'x', tool: 'antigravity' } }) as { task: { tool?: string } }).task.tool, 'antigravity');
 });
 
 test('the VS Code requests take a task number or a worker id', () => {

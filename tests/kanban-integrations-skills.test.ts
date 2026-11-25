@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { MARKER, bundledSkillsDir, discoverSkills, findSkill, parseFrontmatter, skillHash, type SkillRoots } from '../src/server/kanban/integrations/skills/registry.js';
-import { PLUGIN_NAME, pluginDir, syncCodexSkills } from '../src/server/kanban/integrations/skills/delivery.js';
+import { PLUGIN_NAME, pluginDir, syncCodexSkills, syncHomeSkills } from '../src/server/kanban/integrations/skills/delivery.js';
 import { checkSelection, createSkills, pickedSkills, skillPhase } from '../src/server/kanban/integrations/skills/index.js';
 import { client, def, makeCtx } from './kanban-integrations-ctx.js';
 
@@ -14,11 +14,13 @@ const skill = (root: string, folder: string, name: string, description = `${name
 };
 
 function roots(tmp: string, repoDir: string): SkillRoots {
-  const r: SkillRoots = { bundled: path.join(tmp, 'bundled'), claudeHome: path.join(tmp, 'claude'), codexHome: path.join(tmp, 'codex'), accountHomes: [path.join(tmp, 'homes', 'acc1', 'claude')], repoDirs: [repoDir] };
+  const r: SkillRoots = { bundled: path.join(tmp, 'bundled'), claudeHome: path.join(tmp, 'claude'), codexHome: path.join(tmp, 'codex'), antigravityHome: path.join(tmp, 'antigravity'), accountHomes: [path.join(tmp, 'homes', 'acc1', 'claude')], repoDirs: [repoDir] };
   skill(path.join(r.bundled!, 'claude'), 'office-task-refs', 'office-task-refs');
   skill(path.join(r.bundled!, 'codex'), 'office-task-refs', 'office-task-refs');
+  skill(path.join(r.bundled!, 'antigravity'), 'office-task-refs', 'office-task-refs');
   skill(path.join(r.claudeHome, 'skills'), 'kanban-dev', 'kanban-dev');
   skill(path.join(r.codexHome, 'skills'), 'my-codex', 'my-codex');
+  skill(path.join(r.antigravityHome, 'skills'), 'my-agy', 'my-agy');
   skill(path.join(r.accountHomes[0], 'skills'), 'acct-skill', 'acct-skill');
   skill(path.join(repoDir, '.claude', 'skills'), 'repo-pr', 'hellewi-pr', 'Opens PRs across the Hellewi repos');
   return r;
@@ -30,16 +32,16 @@ test('SKILL.md frontmatter: name and description, folded values and quotes too',
   assert.deepEqual(parseFrontmatter('no frontmatter'), {});
 });
 
-test('the registry finds bundled, user, account, Codex and repository skills', () => {
+test('the registry finds bundled, user, account, Codex, Antigravity and repository skills', () => {
   const ctx = makeCtx();
   const repoDir = path.join(ctx.tmp, 'repo');
   const found = discoverSkills(roots(ctx.tmp, repoDir));
   const line = (s: (typeof found)[number]) => `${s.tool}:${s.origin}:${s.name}`;
-  assert.deepEqual(found.map(line).sort(), ['claude:account:acct-skill', 'claude:bundled:office-task-refs', 'claude:repo:hellewi-pr', 'claude:user:kanban-dev', 'codex:bundled:office-task-refs', 'codex:user:my-codex'].sort());
+  assert.deepEqual(found.map(line).sort(), ['claude:account:acct-skill', 'claude:bundled:office-task-refs', 'claude:repo:hellewi-pr', 'claude:user:kanban-dev', 'codex:bundled:office-task-refs', 'codex:user:my-codex', 'antigravity:bundled:office-task-refs', 'antigravity:user:my-agy'].sort());
   assert.equal(found.find((s) => s.name === 'hellewi-pr')?.description, 'Opens PRs across the Hellewi repos');
   assert.equal(findSkill(found, 'claude', 'hellewi-pr', [repoDir])?.origin, 'repo');
   assert.equal(findSkill(found, 'claude', 'hellewi-pr', ['/elsewhere']), undefined, "another project's repository skill isn't this one's");
-  assert.deepEqual(checkSelection({ plan: { claude: ['kanban-dev', 'nope'], codex: ['my-codex'] } }, found), ["nope (claude, plan) isn't installed anywhere the office looks"]);
+  assert.deepEqual(checkSelection({ plan: { claude: ['kanban-dev', 'nope'], codex: ['my-codex'], antigravity: ['my-agy', 'ghost'] } }, found), ["nope (claude, plan) isn't installed anywhere the office looks", "ghost (antigravity, plan) isn't installed anywhere the office looks"]);
   assert.ok(bundledSkillsDir() && existsSync(path.join(bundledSkillsDir()!, 'claude', 'office-task-refs', 'SKILL.md')), 'the office ships office-task-refs');
 });
 
@@ -83,12 +85,27 @@ test('codex: bundled skills synced with a marker; a copy changed by hand is neve
   assert.equal(existsSync(path.join(other, MARKER)), false);
 });
 
+test('antigravity: bundled skills synced into its config home with the same marker and hand-change protection', () => {
+  const ctx = makeCtx();
+  const r = roots(ctx.tmp, path.join(ctx.tmp, 'repo'));
+  const bundled = discoverSkills(r).filter((s) => s.tool === 'antigravity' && s.origin === 'bundled');
+  assert.deepEqual(syncHomeSkills(r.antigravityHome, bundled).map((x) => x.status), ['installed']);
+  const copy = path.join(r.antigravityHome, 'skills', 'office-task-refs');
+  assert.ok(existsSync(path.join(copy, MARKER)));
+  assert.deepEqual(discoverSkills(r).find((s) => s.tool === 'antigravity' && s.origin === 'bundled')?.installedIn, [r.antigravityHome]);
+  assert.equal(discoverSkills(r).filter((s) => s.tool === 'antigravity' && s.name === 'office-task-refs').length, 1, 'the office\'s own copy is listed as bundled only');
+  writeFileSync(path.join(copy, 'SKILL.md'), '---\nname: office-task-refs\n---\nmine');
+  writeFileSync(path.join(bundled[0].location, 'extra.md'), 'v2');
+  assert.equal(syncHomeSkills(r.antigravityHome, bundled)[0].status, 'update-available');
+  assert.equal(readFileSync(path.join(copy, 'SKILL.md'), 'utf8'), '---\nname: office-task-refs\n---\nmine');
+});
+
 test('a task worker: its picked skills by phase and tool, delivered, hinted, missing ones warned about', () => {
   const repoDir = path.join(makeCtx().tmp, 'repo');
   const ctx = makeCtx([def('app', repoDir)]);
   mkdirSync(repoDir, { recursive: true });
   const r = roots(ctx.tmp, repoDir);
-  ctx.settings.setProject('app', { skills: { plan: { claude: ['kanban-dev', 'hellewi-pr', 'ghost'] }, review: { codex: ['my-codex'] } } });
+  ctx.settings.setProject('app', { skills: { plan: { claude: ['kanban-dev', 'hellewi-pr', 'ghost'] }, review: { codex: ['my-codex'], antigravity: ['my-agy'] } } });
   const t = ctx.repo.createTask({ project: 'app', title: 't', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 'u' });
   const skills = createSkills(ctx, { roots: () => r });
   assert.equal(skillPhase('fix'), 'implement');
@@ -108,9 +125,12 @@ test('a task worker: its picked skills by phase and tool, delivered, hinted, mis
   assert.equal(ctx.toasts.filter((x) => /ghost/.test(x.text)).length, 1, 'warned once');
   assert.deepEqual(skills.workerArgs(t.id, 'codex', 'review'), []);
   assert.ok(existsSync(path.join(r.codexHome, 'skills', 'office-task-refs', MARKER)), "codex gets the office's own skill in its home");
+  assert.equal(skills.skillHint(t.id, 'antigravity', 'review'), 'Use these skills in this phase: my-agy.');
+  assert.deepEqual(skills.workerArgs(t.id, 'antigravity', 'review'), []);
+  assert.ok(existsSync(path.join(r.antigravityHome, 'skills', 'office-task-refs', MARKER)), "antigravity gets the office's own skill in its home");
   const c = client(false);
   skills.plugin.ws!['kanban.skills.sync']!(c, { t: 'kanban.skills.sync', rid: 'x' });
   assert.equal(c.got.at(-1)?.t, 'kanban.error', 'only admins install');
   skills.plugin.ws!['kanban.skills.list']!(c, { t: 'kanban.skills.list', rid: 'y' });
-  assert.equal((c.got.at(-1) as { skills: unknown[] }).skills.length, 6);
+  assert.equal((c.got.at(-1) as { skills: unknown[] }).skills.length, 8);
 });

@@ -38,7 +38,7 @@ import { createSignals } from './signals.js';
 import { createEngine, type KanbanEngine } from './engine/index.js';
 import { createPulls, createRefs, integrationPlugins } from './integrations/index.js';
 import { parseKanbanClientMsg, ridOf, type KanbanClientType, type KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import type { ProjectRepo } from '../../shared/kanban/types.js';
+import type { KanbanTool, ProjectRepo } from '../../shared/kanban/types.js';
 import type { LanguageSettings } from '../../shared/language.js';
 import type { PromptId } from '../../shared/prompts.js';
 import type { WorkerInfo } from '../../shared/protocol.js';
@@ -270,7 +270,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       const a = repo.getAttachment(id);
       return a && attachmentPath(filesDir, a);
     },
-    workerExtras: (taskId: number, tool: 'claude' | 'codex', phase: string) => {
+    workerExtras: (taskId: number, tool: KanbanTool, phase: string) => {
       const args: string[] = [];
       const env: Record<string, string> = {};
       // A plugin that fails loses only its own part of the launch.

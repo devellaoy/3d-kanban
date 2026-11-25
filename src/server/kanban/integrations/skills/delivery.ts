@@ -1,8 +1,8 @@
 // Getting picked skills to a task's agent. Claude: a generated Claude Code plugin
 // (<filesDir>/skills/plugin-<hash>, `.claude-plugin/plugin.json` + `skills/`) holding the bundled
 // and repository skills picked, passed with --plugin-dir; nothing is copied into anyone's config
-// home, and skills installed in the worker's own home load by themselves. Codex has no such flag:
-// the bundled skills picked are copied into $CODEX_HOME/skills with a marker, and a copy the user
+// home, and skills installed in the worker's own home load by themselves. Codex and Antigravity have no such flag:
+// the bundled skills picked are copied into $CODEX_HOME/skills (Antigravity: <config home>/skills) with a marker, and a copy the user
 // changed is never overwritten (the result says an update is available instead).
 
 import { createHash } from 'node:crypto';
@@ -51,14 +51,14 @@ export function pluginDir(filesDir: string, skills: SkillInfo[]): string {
 export type SyncResult = { name: string; status: 'installed' | 'updated' | 'current' | 'update-available' | 'user-owned' | 'failed'; detail?: string };
 
 /**
- * Copies bundled Codex skills into `<codexHome>/skills/<folder>`. A copy the office made and nobody
+ * Copies bundled skills into `<home>/skills/<folder>` (Codex's or Antigravity's home). A copy the office made and nobody
  * changed is brought up to date; one somebody changed, or a skill of the same name the office didn't
  * put there, is left alone.
  */
-export function syncCodexSkills(codexHome: string, skills: SkillInfo[]): SyncResult[] {
+export function syncHomeSkills(home: string, skills: SkillInfo[]): SyncResult[] {
   const out: SyncResult[] = [];
   for (const s of skills) {
-    const dest = path.join(codexHome, 'skills', path.basename(s.location));
+    const dest = path.join(home, 'skills', path.basename(s.location));
     const want = skillHash(s.location);
     try {
       if (existsSync(dest)) {
@@ -94,6 +94,8 @@ export function syncCodexSkills(codexHome: string, skills: SkillInfo[]): SyncRes
   }
   return out;
 }
+
+export const syncCodexSkills = syncHomeSkills;
 
 function copy(from: string, to: string, hash: string) {
   mkdirSync(path.dirname(to), { recursive: true });

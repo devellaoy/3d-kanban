@@ -110,7 +110,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
 - `machine.ts`: pure transition function `next(state, event) → { state, effects[] }`. No I/O. Tested exhaustively.
 - `orchestrator.ts`: applies effects: hires/prompts/relaunches/sends home workers via `WorkerManager`,
   writes runs/comments/plans, emits WS deltas.
-- `adapters/{claude,codex}.ts` implement `TaskAgentAdapter`:
+- `adapters/{claude,codex,antigravity}.ts` implement `TaskAgentAdapter`; `adapters/index.ts` is the one place that maps a `KanbanTool` (`shared/kanban/tools.ts`) to its adapter and per-tool tables, so a tool added to the union cannot fall into another tool's branch:
   - `launchArgs(phase, opts)` — per-phase CLI flags:
     - claude plan, by `planPermission` (`shared/kanban/permissions.ts`; task > project > office, default `plan`): `plan` →
       `--permission-mode plan`; `auto` → `--permission-mode auto --disallowedTools Edit Write NotebookEdit EnterPlanMode ExitPlanMode`.
@@ -123,6 +123,15 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
       for `auto` too (Codex has no verified unattended auto mode) and `bypass` (`workspace-write` chooses `-s workspace-write -a never` instead); pr-review:
       `-s workspace-write -a never -c sandbox_workspace_write.network_access=true` (read-only has no network for `gh`;
       it writes nowhere but its own throwaway worktree, and the contract forbids even that).
+    - antigravity (`agy`): every phase is `agy --dangerously-skip-permissions --settings '{"trustedWorkspaces":["<cwd>"]}' [--model <slug>] [--effort <e>] -i "<prompt>"`
+      (`--resume <conversationId>` on a relaunch; `-i` with a prompt starting with `-` is fine). plan and review add `--mode plan`, which is advisory:
+      without skip-permissions it stops on "Run this command?" dialogs, with it the turn ends normally, and an agent told to write still wrote a file through a
+      shell command (spike, `docs/fork.md`). `planPermission` and `implementPermission` do not change the flags: there is no sandbox the office can enforce
+      (`--sandbox` blocked neither writes outside the workspace nor the network), `--mode auto` is "not available for this account" on a personal account and
+      `--add-dir` makes the agent's shell run with the added folder as its cwd, so none of the three is used. Effort `minimal` is passed as `low` and `max` as `xhigh`.
+      Hooks and MCP come from a plugin the launch writes into the worktree, `<cwd>/.agents/plugins/agent-office/` (`plugin.json`, `hooks.json`, `mcp_config.json`),
+      kept out of git by the repository's `info/exclude`; nothing goes to `~/.gemini` (the kanban's skills, copied to `~/.gemini/config/skills` as Codex's go to `$CODEX_HOME/skills`, excepted). The trust flag skips the folder-trust screen, which
+      `--dangerously-skip-permissions` alone does not.
     - A plan in auto mode has no plan mode: it ends on `PLAN READY` or `QUESTIONS:` in its final message (or `report_turn`), never on
       ExitPlanMode (disallowed), and `StopGate` blocks a Stop of it only for uncommitted changes in its worktree (`gatePlanDirty`, the same
       cap and note; no WORK DONE is asked for). Plan → implement always differ in their flags, so the session is relaunched, never typed into.
@@ -184,6 +193,11 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
       CLI, a run re-attached after a restart) the log's last text goes on, and the office logs a warning.
     - codex: rollout JSONL: the last `event_msg` with `payload.type === 'task_complete'` → `payload.last_agent_message`
       (fallback: last `response_item` assistant message).
+    - antigravity: the conversation's `transcript_full.jsonl` (`~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/`, the hook's `transcriptPath`),
+      one step per line. The office's prompt is a `USER_INPUT` step (`source: USER_EXPLICIT`, the prompt inside `<USER_REQUEST>`); a `SYSTEM_MESSAGE` step is a subagent's
+      or the system's message, not a prompt, and an `ERROR_MESSAGE` step is an API error the CLI retried. The turn's answer is the `content` of the last `PLANNER_RESPONSE`
+      step (`status: DONE`) after the last `USER_INPUT`; a `PLANNER_RESPONSE` with `tool_calls` is not an answer. There is no end-of-turn line, so a turn has ended
+      only when the Stop hook fired and that last step has no `tool_calls`. `created_at` has second precision, so a `promptAt` comparison allows a second of slack.
 - Phase changes that need different launch flags **relaunch** the worker (`--resume <sessionId>` +
   new flags + the phase prompt). Every relaunch passes the task's current model and effort, resolved as at
   hire (`adapter.spawnModel/spawnEffort`), to `WorkerManager.relaunch`, which checks them with upstream's
@@ -191,6 +205,17 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   model and effort (`info.model/effort`) and an idle/done worker: the prompt is typed into the PTY
   (upstream `WorkerManager.prompt`); a changed model or effort relaunches even with the same flags. A
   changed tool hires a new worker (the handoff).
+- Antigravity's hooks map to the office's events in the provider (`server/providers/antigravity.ts`, `server/antigravity.ts`); the hook helper
+  `agent-office-antigravity-hook.cjs` posts the payload in the office's snake_case shape to `/hooks/antigravity` and does nothing without `AGENT_OFFICE_HOOK_URL`.
+  `PreInvocation` with `invocation_num` 0 of the worker's own conversation is the prompt (`UserPromptSubmit`); `Pre/PostToolUse` are the tool events; `ask_question`,
+  `ask_permission` and `ask_custom_permission` need input between Pre and PostToolUse; `Stop` ends the turn. The first event after a launch names the worker's
+  own conversation (a resume fires no `SessionStart`, and a resume of a missing id starts a new conversation); events of any other conversation are subagents'
+  and are only tracked (they reach the observers with `agent_id` set, which keeps the run's "alive" clock going; a `SessionStart` of an unknown conversation with a
+  non-empty prompt is a new conversation of the person's, and becomes the worker's own). A root `Stop` is reported at once when no subagent is live; with one live it is
+  **held**, not reported, and the worker stays working: it is released by the last live subagent's `Stop`, or after 10 minutes without any hook event of the tree (never while a subagent's question is open: then the wait starts over)
+  (`HELD_STOP_MS`, for a subagent `Stop` that never came). During the hold a `PreInvocation` 0 with the same prompt is the root woken by a subagent's message, which drops
+  the hold (its next `Stop` decides again); one with a different prompt is a new prompt. The plugin's MCP entry runs `agent-office-antigravity-mcp.cjs`, which starts the
+  office's MCP server only inside a worker's environment, so a person's own `agy` in the same checkout gets none of it. A question tool call a subagent leaves open counts with the root's own: the worker is `needs_input` until the last one closes. The hook helper reads up to 32 MiB of a payload and cuts `prompt` and `error` to 20 000 characters (every event carries the whole last prompt, and a tool event its arguments). The plugin folder carries a `.agent-office-plugin` marker: a folder that is tracked by git, or has content without the marker, is not written to and fails the start (`finishEnv`). `screen.blocked` knows the trust question and the CLI's sign-in and first-run dialogs by their own lines, never the "not signed in… Signing in..." banner every start prints. An Esc interrupt fires no hook and leaves no transcript line, so it is noticed only at the next prompt.
 - Turn end = the worker goes `done` (Stop hook) or `needs_input`. `needs_input` in the plan phase with
   `ExitPlanMode` pending = the plan is finished. `needs_input` otherwise → task `waiting`
   ("the agent is asking in its terminal"), its run still live.
@@ -281,7 +306,7 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   the status they cause. A `PreToolUse` of `AskUserQuestion` (Codex: `request_user_input`) is a
   `question`; a `PermissionRequest` or a `permission_prompt` notification is a `permission`; another
   tool's `PreToolUse`, a `PostToolUse(Failure)`, `UserPromptSubmit`, `SessionStart` or the turn's end
-  forget it (unknown; so is every run re-attached after an office restart). A question's text (`heardQuestion` in `engine/signals.ts` keeps it from the `PreToolUse` payload's `tool_input`) is added by `Comments.asked`, when `needsInput` takes the task to `agent_asking`, as an agent `questions` comment of the run (never for an additional reviewer). Codex's hook helper (`CODEX_HOOK_SOURCE`, `server/codex.ts`) forwards, for a `PreToolUse` of a question tool only, a bounded copy of the question as `tool_input` (at most 8 questions of 12 options, strings of at most 2 000 characters; a cut is never silent: a clipped string ends in `(cut here: N more characters)`, and the counts of dropped questions and options are forwarded as `moreQuestions` and `moreOptions` and rendered as `(N more questions were left out)` / `(N more options were left out)`; an event over the helper's 64 KiB stdin cap is dropped whole, so such a question is not recorded and its answer keeps the "question was not recorded" qualifier; only `question`, `header`, `options[].label/description` and plain `question`/`prompt`/`message`); no other tool's input is forwarded, and the route hands the body on to the observers as it is, server-side only. The task and its card carry
+  forget it (unknown; so is every run re-attached after an office restart). A question's text (`heardQuestion` in `engine/signals.ts` keeps it from the `PreToolUse` payload's `tool_input`) is added by `Comments.asked`, when `needsInput` takes the task to `agent_asking`, as an agent `questions` comment of the run (never for an additional reviewer). Codex's hook helper (`CODEX_HOOK_SOURCE`, `server/codex.ts`) forwards, for a `PreToolUse` of a question tool only, a bounded copy of the question as `tool_input` (at most 8 questions of 12 options, strings of at most 2 000 characters; a cut is never silent: a clipped string ends in `(cut here: N more characters)`, and the counts of dropped questions and options are forwarded as `moreQuestions` and `moreOptions` and rendered as `(N more questions were left out)` / `(N more options were left out)`; an event over the helper's 64 KiB stdin cap is dropped whole, so such a question is not recorded and its answer keeps the "question was not recorded" qualifier; only `question`, `header`, `options[].label/description` and plain `question`/`prompt`/`message`); no other tool's input is forwarded, and the route hands the body on to the observers as it is, server-side only. Antigravity's helper (`ANTIGRAVITY_HOOK_SOURCE`, `server/antigravity.ts`) forwards its `ask_question` the same way, from the same shared source text (`server/hookquestion.ts`; its options are plain strings, and its stdin cap is 32 MiB, so a long question is cut, not dropped). The task and its card carry
   it as `askingKind` while `agent_asking` (a `KanbanRepository` in-memory map, never stored).
 - **Answering it from the kanban** (`waiting`/`agent_asking`, the live run's worker `needs_input`):
   only a `question` is typed into. `continue(answer)` and `commented()` type the text into that
@@ -849,6 +874,7 @@ fresh from Jira, read-only, with the office's own Jira connection (the token nev
 
 `POST /office/tasks/signal?worker=` (the same bearer token; JSON body `{kind: 'plan-ready' | 'ask' | 'done'}`, `{kind: 'review', verdict: 'approved' | 'changes'}` or `{kind: 'pr', url}`) tells the office how the worker's own turn ends: CLI `office-tasks plan-ready | ask | done | review approved|changes | pr <url>` (prints `Reported: …`; exit 1 with the office's reason on stderr when refused, 2 for a usage error), MCP tool `report_turn {kind, verdict?, url?}` (listed with the task tools, pre-approved with them for Claude task workers; it tells the office about the worker's own turn and works only while its run is going). 400 for a body that isn't one of these, 409 with the engine's reason when the run can't take it (§4 "The end of a turn"). `POST /office/tasks/stop?worker=` is not for agents: it is where a kanban Claude worker's Stop hook posts its payload (the hook's wrapper, `kanbanStopCommand` in `kanban/launch.ts`, curl `-m 25` with the hook's own `timeout: 40`), and answers `{"decision":"block","reason":…}` to block it or `{}` after passing the Stop on to the worker's floor as `/hooks/claude?event=Stop` would (a Stop that a new prompt overtook while the gate judged it is answered `{}` without being passed on); any failure of the call (no curl, the office down, 4xx/5xx) makes the wrapper feed the payload to the original command, so the Stop is never lost. Both routes belong to `kanban/signals.ts` and answer 404 for any other path and 405 for a non-POST.
 Codex: its `read-only` and plain `workspace-write` sandboxes block loopback TCP (verified on macOS with codex-cli 0.167.1), so `office-tasks` can't report from there and its text markers decide; the sandbox is not loosened. Its Stop hook could block per its docs, but the gate is Claude-only: the office's Codex hook helper always prints `{}`, the trusted hash (`codex-trust.ts`) pins its command, and a block reason would enter the rollout as a user message the reader would take for a prompt.
+Antigravity: no sandbox, so `office-tasks` reaches the office; the Stop is never blocked (its hook helper prints nothing) and the text markers and announcements decide as for Codex.
 
 `POST /office/tasks/create?worker=` (JSON body `{title?, description?, project?, repos?, issue?, ticket?, ticketUrl?,
 provider?, model?, effort?, type?, start?, desk?}`; the same bearer token) creates a task: CLI `office-tasks create`,
@@ -881,7 +907,7 @@ never another account's (`HostCredentials.as`), and tries a failed one again on 
 one with no token waits, without spending tries, until one is set.
 
 User skills (integrations/userskills/): a plugin that syncs the repository's `user-skills/claude/*` and
-`user-skills/codex/*` into the machine's `<claude home>/skills/` and `<codex home>/skills/` (the same homes
+`user-skills/codex/*` and `user-skills/antigravity/*` into the machine's `<claude home>/skills/`, `<codex home>/skills/` and `~/.gemini/config/skills/` (the same homes
 `defaultRoots` finds), marking its copies with `.office-user-skill.json` (the source hash, `skillHash(dir, { exclude: USER_SKILL_EXCLUDES })`):
 a marked or ai-kanban (`.aikanban-sync`) copy is overwritten (hand edits too) when the source changed, an unmarked
 one or a symlink is left alone. Copies are built in `<home>/.office-user-skills-tmp/<folder>-<pid>` (outside the scanned

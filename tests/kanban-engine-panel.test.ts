@@ -20,7 +20,7 @@ const APPROVED = 'Looks right.\nREVIEW: APPROVED';
 const CHANGES = (what: string) => `${what}\nREVIEW: CHANGES_REQUESTED`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function setup(t: { after(fn: () => unknown): void }, opts: { extra?: { tool: 'claude' | 'codex' }[]; rounds?: number; engine?: Parameters<typeof engineFixture>[0] extends infer O ? (O extends { engine?: infer E } ? E : never) : never; capacity?: Capacity } = {}) {
+async function setup(t: { after(fn: () => unknown): void }, opts: { extra?: { tool: 'claude' | 'codex' | 'antigravity' }[]; rounds?: number; engine?: Parameters<typeof engineFixture>[0] extends infer O ? (O extends { engine?: infer E } ? E : never) : never; capacity?: Capacity } = {}) {
   const fx = await engineFixture({ engine: { panelWaitMs: 20_000, ...opts.engine }, ...(opts.capacity ? { capacity: opts.capacity } : {}) });
   t.after(() => fx.close());
   fx.settings.setProject('proj', { review: { tool: 'claude', rounds: opts.rounds ?? 1, reReviewLastFix: false, ...(opts.extra === undefined ? { extra: [{ tool: 'codex' }] } : opts.extra.length ? { extra: opts.extra } : {}) } });
@@ -177,6 +177,17 @@ for (const order of ['main first', 'main last'] as const) {
     assert.equal(r.find((x) => x.panel === 'combine')?.workerId, r.find((x) => x.panel === 'solo')?.workerId);
   });
 }
+
+test('an Antigravity co-reviewer sits beside a Claude one: its review is read from its transcript and named in the combine', async (t) => {
+  const fx = await setup(t, { extra: [{ tool: 'antigravity' }, { tool: 'claude' }] });
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Antigravity: a.ts:1.'), { kind: 'agy' }), co(APPROVED, { kind: 'claude' }), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: a.ts:1.'))]);
+  const id = await start(fx);
+  await fx.waitTask(id, inReview, 'the review column', 50_000);
+  assert.deepEqual(runs(fx, id).filter((x) => x.seat).map((x) => `${x.seat}:${x.tool}:${x.status}`).sort(), ['1:antigravity:succeeded', '2:claude:succeeded']);
+  assert.match(prompts(fx).find((p) => /Combine them into the review/.test(p.prompt))!.prompt, /Reviewer 2 \(Antigravity\): CHANGES_REQUESTED\nAntigravity: a\.ts:1\./);
+  const review = fx.invocations().find((i) => i.kind === 'agy' && !i.prompt)!;
+  assert.ok(review.args.includes('--mode') && review.args.includes('plan'), 'a review runs in plan mode');
+});
 
 // --- D. Seats that fail ----------------------------------------------------------------------------
 

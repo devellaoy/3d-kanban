@@ -11,7 +11,7 @@ Back to the [README](../README.md).
 - **Node.js 22 or newer** (the kanban's database module, better-sqlite3, needs 22).
 - **Python 3, make and a C++ compiler.** better-sqlite3 ships prebuilt binaries (macOS, Linux and Windows, x64 and arm64), but npm still runs its native build step on install, which fails without them, and compiles it when there is no binary for your platform. macOS: `xcode-select --install`; Debian/Ubuntu: `sudo apt install build-essential python3`; Windows: tick *Tools for Native Modules* in the Node.js installer (or install Visual Studio Build Tools with *Desktop development with C++*). The terminals' module (node-pty) comes prebuilt and needs nothing.
 - **git**, and the **GitHub CLI** signed in (`gh auth login`), for projects, worktrees and the issue and PR boards. Repositories on **Azure DevOps** or **Bitbucket** need no CLI: a token in ☰ → 🔐 Your sign-ins ([hosting](hosting.md)).
-- At least one agent CLI, signed in as the user that runs the office: **Claude Code** (`claude`), **Codex** (`codex`), **OpenCode** (`opencode`), **Grok** (`grok`), **Muse** (`muse`) or **DeepSeek Harness** (`dsh`). The kanban's tasks run on Claude Code or Codex (the office's other agents stay ordinary workers). With [accounts](accounts.md), everyone can sign in to their own Claude from the office instead.
+- At least one agent CLI, signed in as the user that runs the office: **Claude Code** (`claude`), **Codex** (`codex`), **Antigravity** (`agy`), **OpenCode** (`opencode`), **Grok** (`grok`), **Muse** (`muse`) or **DeepSeek Harness** (`dsh`). The kanban's tasks run on Claude Code, Codex or Antigravity (the office's other agents stay ordinary workers). With [accounts](accounts.md), everyone can sign in to their own Claude from the office instead.
 
 macOS and Linux:
 
@@ -60,7 +60,7 @@ Common options:
 kanban3d ~/code/my-project              # use a project you already have as the first floor
 kanban3d --password 'correct horse'     # choose the password
 kanban3d --port 4700
-kanban3d --agent grok                   # default agent: claude, codex, opencode, grok, muse or dsh
+kanban3d --agent grok                   # default agent: claude, codex, antigravity, opencode, grok, muse or dsh
 kanban3d --no-open                      # print the sign-in link instead of opening a browser
 kanban3d setup                          # the first-start walkthrough again (office stopped)
 ```
@@ -95,7 +95,7 @@ kanban3d [dir] [options]
       --self-signed       Serve HTTPS with a generated self-signed cert
       --trust-proxy       Trust X-Forwarded-* (behind Caddy/nginx)
       --turn <url>        Add a TURN server for voice, e.g. turn:user:pass@host:3478
-      --budget <usd>      Daily tracked Claude Code budget (OpenCode/Codex/Grok/Muse/DSH excluded)
+      --budget <usd>      Daily tracked Claude Code budget (OpenCode/Codex/Antigravity/Grok/Muse/DSH excluded)
       --budget-pause      ...and nobody can hire a new worker until the next day
       --max-workers <n>   Run at most n workers at once, across every floor (env AGENT_OFFICE_MAX_WORKERS)
       --webhook <url>     Post to this Slack / Discord webhook when a worker needs input or finishes

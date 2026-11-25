@@ -20,8 +20,7 @@ import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js'
 import { launchDirs, prReviewRepoIds } from './launchdirs.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
-import { claudeAdapter } from './adapters/claude.js';
-import { codexAdapter } from './adapters/codex.js';
+import { ADAPTERS } from './adapters/index.js';
 import type { ReadOpts, TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
 import { canFixPrs, isPrPhase, onPrBranches, type PrRunMode } from '../../../shared/kanban/prs.js';
@@ -51,7 +50,7 @@ import { syncBranch } from './branchsync.js';
 import { UsageLimits } from './usagelimit.js';
 import { PANEL_WAIT_MS, ReviewPanel } from './panel.js';
 import { RestWaits } from './restwait.js';
-import { sessionLogged } from './sessions.js'; import { observeLeadHook, planFromHook, planModeOf } from './automode.js';
+import { logOf, sessionLogged } from './sessions.js'; import { observeLeadHook, planFromHook, planModeOf } from './automode.js';
 
 export interface EngineOptions {
   /** How often due retries, queued tasks and newly opened floors are looked at (60 s). */
@@ -146,7 +145,7 @@ export class Orchestrator {
     private ctx: KanbanContext,
     options: EngineOptions = {},
   ) {
-    this.adapters = { claude: claudeAdapter, codex: codexAdapter, ...options.adapters };
+    this.adapters = { ...ADAPTERS, ...options.adapters };
     this.compose = new Composer(ctx);
     this.handoffs = new Handoffs(ctx, (p) => this.folder(p), (id, patch) => this.update(id, patch));
     this.prComments = new PrCommentsRuns(ctx, () => this.opts.now());
@@ -235,7 +234,7 @@ export class Orchestrator {
       },
     });
     this.restarts = new Restarts<Live>({
-      ctx,
+      ctx, adapters: this.adapters,
       serial: (taskId, fn) => this.serial(taskId, fn),
       folder: (project) => this.folder(project),
       finishRun: (id, project, patch) => this.finishRun(id, project, patch),
@@ -1286,7 +1285,7 @@ export class Orchestrator {
   }
 
   private readNow(live: Live): TurnResult | undefined { // the run's turn as its session log has it now
-    const logs = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId), file = live.tool === 'claude' ? logs?.claude : logs?.codex;
+    const logs = this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId), file = logOf(logs, live.tool);
     return this.comments.saw(live, file ? this.adapters[live.tool].readTurnResult(file, this.turnOpts(live)) : undefined);
   }
 

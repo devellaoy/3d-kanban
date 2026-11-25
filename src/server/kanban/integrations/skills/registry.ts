@@ -1,5 +1,5 @@
-// The skills the office can find: the ones it ships (skills/claude, skills/codex), the machine's
-// (~/.claude/skills, $CODEX_HOME/skills), each signed-in account's Claude home
+// The skills the office can find: the ones it ships (skills/claude, skills/codex, skills/antigravity), the machine's
+// (~/.claude/skills, $CODEX_HOME/skills, ~/.gemini/config/skills), each signed-in account's Claude home
 // (<dataDir>/homes/<id>/claude/skills), and every project repository's .claude/skills. A skill is a
 // folder with a SKILL.md whose frontmatter names and describes it.
 
@@ -112,12 +112,12 @@ export function skillsIn(root: string, tool: KanbanTool, origin: SkillInfo['orig
   return out;
 }
 
-/** This install's skills/ folder (skills/claude/*, skills/codex/*). */
+/** This install's skills/ folder (skills/claude/*, skills/codex/*, skills/antigravity/*). */
 export function bundledSkillsDir(): string | undefined {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 8; i++, dir = path.dirname(dir)) {
     const d = path.join(dir, 'skills');
-    if (existsSync(path.join(d, 'claude')) || existsSync(path.join(d, 'codex'))) return d;
+    if (existsSync(path.join(d, 'claude')) || existsSync(path.join(d, 'codex')) || existsSync(path.join(d, 'antigravity'))) return d;
   }
   return undefined;
 }
@@ -128,6 +128,8 @@ export interface SkillRoots {
   claudeHome: string;
   /** $CODEX_HOME, else ~/.codex. */
   codexHome: string;
+  /** Antigravity's config home, ~/.gemini/config (its user skills live in skills/ there). */
+  antigravityHome: string;
   /** Account homes: <dataDir>/homes/<id>/claude. */
   accountHomes: string[];
   /** Project repositories' checkouts (their .claude/skills). */
@@ -148,14 +150,16 @@ export function defaultRoots(dataDir: string, repoDirs: string[]): SkillRoots {
     bundled: bundledSkillsDir(),
     claudeHome: process.env.CLAUDE_CONFIG_DIR || path.join(os.homedir(), '.claude'),
     codexHome: process.env.CODEX_HOME || path.join(os.homedir(), '.codex'),
+    antigravityHome: path.join(os.homedir(), '.gemini', 'config'),
     accountHomes: accounts,
     repoDirs: [...new Set(repoDirs)],
   };
 }
 
-/** Every skill it can find. A bundled Codex skill already synced to the Codex home says so in installedIn. */
+/** Every skill it can find. A bundled Codex or Antigravity skill already synced to its home says so in installedIn. */
 export function discoverSkills(roots: SkillRoots): SkillInfo[] {
   const codexSkills = path.join(roots.codexHome, 'skills');
+  const agySkills = path.join(roots.antigravityHome, 'skills');
   const out: SkillInfo[] = [];
   if (roots.bundled) {
     out.push(...skillsIn(path.join(roots.bundled, 'claude'), 'claude', 'bundled'));
@@ -163,10 +167,15 @@ export function discoverSkills(roots: SkillRoots): SkillInfo[] {
       const copy = path.join(codexSkills, path.basename(s.location));
       out.push({ ...s, installedIn: existsSync(path.join(copy, MARKER)) ? [roots.codexHome] : [] });
     }
+    for (const s of skillsIn(path.join(roots.bundled, 'antigravity'), 'antigravity', 'bundled')) {
+      const copy = path.join(agySkills, path.basename(s.location));
+      out.push({ ...s, installedIn: existsSync(path.join(copy, MARKER)) ? [roots.antigravityHome] : [] });
+    }
   }
   out.push(...skillsIn(path.join(roots.claudeHome, 'skills'), 'claude', 'user', [roots.claudeHome]));
   // The office's own copies in the Codex home are listed as bundled above.
   out.push(...skillsIn(codexSkills, 'codex', 'user', [roots.codexHome]).filter((s) => !existsSync(path.join(s.location, MARKER))));
+  out.push(...skillsIn(agySkills, 'antigravity', 'user', [roots.antigravityHome]).filter((s) => !existsSync(path.join(s.location, MARKER))));
   for (const home of roots.accountHomes) out.push(...skillsIn(path.join(home, 'skills'), 'claude', 'account', [home]));
   for (const dir of roots.repoDirs) out.push(...skillsIn(path.join(dir, '.claude', 'skills'), 'claude', 'repo'));
   return out;

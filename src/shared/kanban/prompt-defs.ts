@@ -23,7 +23,7 @@ const DEFS = {
   'kanban.plan': {
     group: 'kanban',
     label: 'Plan',
-    used: "The first turn of a task with planning on. The task's agent is read-only by its contract (Claude in auto mode with the editing tools off, or in plan mode, by the setting; Codex in a read-only sandbox); the office appends the fixed plan contract (PLAN READY / QUESTIONS:).",
+    used: "The first turn of a task with planning on. The task's agent is read-only by its contract (Claude in auto mode with the editing tools off, or in plan mode, by the setting; Codex in a read-only sandbox; Antigravity in its advisory plan mode); the office appends the fixed plan contract (PLAN READY / QUESTIONS:).",
     vars: TASK_VARS,
     needs: ['description'],
     text: `You are planning kanban task #{{taskId}} in the project {{project}}: {{title}}

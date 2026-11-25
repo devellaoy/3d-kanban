@@ -11,7 +11,7 @@ import type { KanbanSettingsStore } from './settings.js';
 import type { KanbanClientMsg, KanbanClientType, KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { LanguageSettings } from '../../shared/language.js';
 import type { PromptId } from '../../shared/prompts.js';
-import type { KanbanPrReviewRequest, KanbanTask, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
+import type { KanbanPrReviewRequest, KanbanTask, KanbanTool, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
 import type { PrMode, PrRunMode } from '../../shared/kanban/prs.js';
 import type { TurnSignal } from '../../shared/kanban/signals.js';
 
@@ -219,7 +219,7 @@ export interface KanbanContext {
   /** The file an uploaded attachment is kept in (absolute), for handing to agents; undefined when there's none. */
   attachmentFile(id: string): string | undefined;
   /** What the plugins add to a task worker's launch (their workerArgs/workerEnv, merged). */
-  workerExtras(taskId: number, tool: 'claude' | 'codex', phase: string): { args: string[]; env: Record<string, string> };
+  workerExtras(taskId: number, tool: KanbanTool, phase: string): { args: string[]; env: Record<string, string> };
 }
 
 export interface KanbanPlugin {
@@ -235,7 +235,7 @@ export interface KanbanPlugin {
   /** Extra env for a task worker's agent (e.g. skills), merged under the engine's own. */
   workerEnv?(taskId: number): Record<string, string>;
   /** Extra CLI args for a task worker's agent (e.g. --plugin-dir for skills). */
-  workerArgs?(taskId: number, tool: 'claude' | 'codex', phase: string): string[];
+  workerArgs?(taskId: number, tool: KanbanTool, phase: string): string[];
   /**
    * A task was started (from anywhere: the board, an API call, a queue): called once the engine took the
    * start, never for one that failed. A throw or rejection is logged and loses only this plugin's part.

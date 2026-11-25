@@ -1,5 +1,5 @@
-// The skills this repository keeps for its developers (user-skills/claude/*, user-skills/codex/*),
-// synced into the machine's own homes: <claudeHome>/skills/<folder> and <codexHome>/skills/<folder>.
+// The skills this repository keeps for its developers (user-skills/claude/*, user-skills/codex/*, user-skills/antigravity/*),
+// synced into the machine's own homes: <claudeHome>/skills/<folder>, <codexHome>/skills/<folder> and <antigravityHome>/skills/<folder>.
 // Like ai-kanban's skill sync: a copy this sync made (or ai-kanban's) is brought up to date (hand edits
 // included), one somebody else put there is left alone. A copy is built outside the scanned skills/ folder,
 // in <home>/.office-user-skills-tmp, and swapped in whole; the target's own node_modules survives, files
@@ -15,12 +15,12 @@ import { AIKANBAN_MARKER, USER_MARKER, USER_SKILL_EXCLUDES, skillHash, skillsIn 
 
 export { AIKANBAN_MARKER, USER_MARKER };
 
-/** This install's user-skills/ folder (user-skills/claude/*, user-skills/codex/*). */
+/** This install's user-skills/ folder (user-skills/claude/*, user-skills/codex/*, user-skills/antigravity/*). */
 export function userSkillsDir(): string | undefined {
   let dir = path.dirname(fileURLToPath(import.meta.url));
   for (let i = 0; i < 8; i++, dir = path.dirname(dir)) {
     const d = path.join(dir, 'user-skills');
-    if (existsSync(path.join(d, 'claude')) || existsSync(path.join(d, 'codex'))) return d;
+    if (existsSync(path.join(d, 'claude')) || existsSync(path.join(d, 'codex')) || existsSync(path.join(d, 'antigravity'))) return d;
   }
   return undefined;
 }
@@ -32,16 +32,19 @@ export interface UserSkillHomes {
   source: string;
   claudeHome: string;
   codexHome: string;
+  antigravityHome: string;
 }
 
-/** Syncs every skill folder of `<source>/claude` and `<source>/codex` into the matching home. */
+/** Syncs every skill folder of `<source>/claude`, `<source>/codex` and `<source>/antigravity` into the matching home. */
 export function syncUserSkills(h: UserSkillHomes): SyncResult[] {
   const out: SyncResult[] = [];
   const tools: [KanbanTool, string][] = [
     ['claude', h.claudeHome],
     ['codex', h.codexHome],
+    ['antigravity', h.antigravityHome],
   ];
   for (const [tool, home] of tools) {
+    if (tool === 'antigravity' && !existsSync(home)) continue; // nobody here runs Antigravity: its config folder isn't made for it
     const tmpRoot = path.join(home, TMP_DIR);
     cleanStale(tmpRoot, path.join(home, 'skills'));
     for (const s of skillsIn(path.join(h.source, tool), tool, 'bundled')) {

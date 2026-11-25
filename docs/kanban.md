@@ -95,7 +95,7 @@ Put such a task on hold instead of leaving it in Waiting or Review, where it cou
 
 ## Idle agents close
 
-A task's agent (Claude or Codex) left alone in Review, Waiting or Done keeps its terminal process for as long as the office runs. After the
+A task's agent (Claude, Codex or Antigravity) left alone in Review, Waiting or Done keeps its terminal process for as long as the office runs. After the
 *close idle agents after* hours in the settings (default 2; 0 never) of nobody touching the task, the office ends that process in place:
 the worker stays at its desk and on its card, shown as asleep ("closed while idle"), its worktree and session kept, and a line in the
 task's conversation says so. Nothing about the task changes: its column, plan, runs and PRs stay as they were.
@@ -103,7 +103,7 @@ task's conversation says so. Nothing about the task changes: its column, plan, r
 - **What counts as quiet**: the task has no run going or waiting for a desk, its agent is at rest (not working, not starting), nobody has its
   window open, and none of its waiting mark, the last text typed into its terminal, the task's last change and the last time the window was open is newer than the limit.
 - **What opens it again**: opening the task from the board (which opens the worker's window), opening the worker's window in the 3D office or the lite view,
-  **R**, a comment, **Retry** or approving a plan all carry on the same session (`claude --resume` / `codex resume`), with no prompt when it is just opened.
+  **R**, a comment, **Retry** or approving a plan all carry on the same session (`claude --resume` / `codex resume` / `agy --resume`), with no prompt when it is just opened.
   Someone looking at the office as a visitor does not wake it; neither does coming to the office or walking to another floor, nor a restart of the office.
 - **What does not wake it**: the Changes window (`tab=changes`), and, while a review runs, the window of the implementer (the worker window shows the reviewer then). Opening its terminal or task window, or commenting, does.
 - **Opening or shutting its window restarts the quiet** (a person in the office; a visitor's does not count), so an agent woken for a quick look is not closed again before the full time has passed.
@@ -146,7 +146,7 @@ heading and a line of help on the left. Its footer has the key hint (**Ctrl/⌘ 
   the UI, see [UI testing](#ui-testing); ticked or not by the project's default until you touch it, and
   not there for an investigation) and **Acceptance criteria** (the agents check the work against
   them).
-- **Who**: the agent (**Claude** or **Codex**), model and effort.
+- **Who**: the agent (**Claude**, **Codex** or **Antigravity**), model and effort.
 
 **Create** puts it in To do; **Create and start** starts it at once. A task in To do can be edited
 (**Edit**); its repositories only before its first start. From the first start the description is
@@ -155,7 +155,7 @@ those two. The issue a task is about can be linked, changed or unlinked at any t
 archive, in the task's **Issue** tab.
 
 In the office, a hire at a desk and the **📋 Task queue**'s form can tick **Run as a kanban task**
-(type, plan, review rounds and repositories; the agent is the form's own, Claude Code or Codex): the
+(type, plan, review rounds and repositories; the agent is the form's own, Claude Code, Codex or Antigravity): the
 task is made and started at once, at that desk or, from the queue, at the next free one.
 **Select issue** is there too and works as in the create form: with an issue picked the text may be
 left empty, and the task's title is the issue's whatever you write (also in a hand-off, whose title
@@ -170,7 +170,7 @@ is long) and a line saying which meeting it came from.
 
 ## The process
 
-1. **Plan** (when *Plan first* is on): the agent plans read-only (Claude in plan mode, or in auto mode with its file editing tools off, as *Plan phase runs* says; Codex in a read-only sandbox). It ends with the plan (the line
+1. **Plan** (when *Plan first* is on): the agent plans read-only (Claude in plan mode, or in auto mode with its file editing tools off, as *Plan phase runs* says; Codex in a read-only sandbox; Antigravity in its plan mode, which is advisory: [Antigravity](#antigravity)). It ends with the plan (the line
    `PLAN READY`), or with `QUESTIONS:`. Questions put the task in Waiting: answer in the box and
    **Send the answer**, or **Continue without answering** (the agent makes and names its assumptions).
    With plan approval *wait for approval* a finished plan waits for **Approve the plan** or
@@ -411,18 +411,18 @@ over it, and the task's own over both.
 
 | Setting | Where | Default | What it does |
 |---|---|---|---|
-| Agent, model, effort | Kanban → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. Where Codex is the agent (or the reviewer), the task view's Agent row and the create form show a small readout of the Codex plan's 5-hour and weekly use; it is read only while it's on screen (numbers it couldn't refresh, or older than ten minutes, say *as of* the time they were read) (see [Codex limits](features.md)). |
+| Agent, model, effort | Kanban → New tasks | Claude, its default | The implementer of new tasks. The default model applies only when the task uses the default agent. Where Codex is the agent (or the reviewer), the task view's Agent row and the create form show a small readout of the Codex plan's 5-hour and weekly use; it is read only while it's on screen (numbers it couldn't refresh, or older than ten minutes, say *as of* the time they were read) (see [Codex limits](features.md)). Antigravity has no such readout: the office shows no usage or limit numbers for it. Its model box suggests the models `agy models` lists (any slug can be typed), and effort is passed as `--effort` (*minimal* becomes `low`, *max* becomes `xhigh`). |
 | Plan first | Kanban → New tasks | on | New tasks start with a plan. |
 | Plan approval | Kanban → New tasks; Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
 | Review rounds | Kanban → New tasks | on | New tasks get reviewed. |
 | UI testing | Kanban → New tasks; Projects → Project; per task | on | Implementers save before and after screenshots of the UI they change (see [UI testing](#ui-testing)). A project chooses *Default*, *On* or *Off*; a task's own choice (the create form's tick box) goes over both, and a task without one follows its project. |
-| Plan phase runs | Kanban → New tasks; Projects | plan mode | How the plan phase runs. *Plan mode* (the default): Claude's own plan mode, which cannot change files. *Auto mode*: Claude runs in auto mode with its file editing tools (and the plan-mode tools) off, and the office blocks the end of a plan turn that left uncommitted changes in the worktree. Codex plans in a read-only sandbox either way. |
-| Implementation runs | Kanban → New tasks; Projects | auto mode | How implement, fix, resume and PR phases run. *Auto mode*: Claude's auto mode, where a classifier reviews risky actions (Codex has no auto mode and runs without permission prompts, as *without permission prompts* does). *Without permission prompts*: Claude's bypass mode; Codex with no approvals and no sandbox. *In Codex's workspace sandbox* (`-s workspace-write -a never`) changes Codex; Claude then runs in bypass mode. Reviews are not affected: they always run in bypass mode with the editing tools off. |
+| Plan phase runs | Kanban → New tasks; Projects | plan mode | How the plan phase runs. *Plan mode* (the default): Claude's own plan mode, which cannot change files. *Auto mode*: Claude runs in auto mode with its file editing tools (and the plan-mode tools) off, and the office blocks the end of a plan turn that left uncommitted changes in the worktree. Codex plans in a read-only sandbox either way. Antigravity plans in `--mode plan` either way, which is advisory, not read-only. |
+| Implementation runs | Kanban → New tasks; Projects | auto mode | How implement, fix, resume and PR phases run. *Auto mode*: Claude's auto mode, where a classifier reviews risky actions (Codex has no auto mode and runs without permission prompts, as *without permission prompts* does; neither has Antigravity, which always runs with `--dangerously-skip-permissions`). *Without permission prompts*: Claude's bypass mode; Codex with no approvals and no sandbox; Antigravity with all permissions. *In Codex's workspace sandbox* (`-s workspace-write -a never`) changes Codex; Claude then runs in bypass mode and Antigravity with all permissions. Reviews are not affected: they always run in bypass mode with the editing tools off. |
 | Reviewer: agent, model, effort | Kanban → Reviews; Projects; per task | Claude | Who reviews (the main reviewer). |
 | Additional reviewers | Kanban → Reviews; Projects | none | Up to 4 more reviewers, each with its own agent, model and effort (*Add a reviewer*). On a review round they all review at the same time and the main reviewer combines their results (see [The process](#the-process)). A project's own review settings replace the office's list, an empty list included; a task has no list of its own. |
 | Rounds | Kanban → Reviews; Projects; per task | 2 | 1–10 review rounds. |
 | Review the last fix too | Kanban → Reviews; Projects; per task | off | One more review after the last round's fix. |
-| Keep the reviewer off the web | Kanban → Reviews; Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. |
+| Keep the reviewer off the web | Kanban → Reviews; Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. An Antigravity review has no such restriction: it runs with all permissions in `--mode plan`, and the reviewer's contract is what keeps it read-only. |
 | Resume after a usage limit or a network break | Kanban | on, 5 tries, 6 hours | A turn cut short by a usage limit or a lost connection is retried by itself: at the reset time the message names (plus a minute); for a Codex run whose message names none, when the last of the Codex account's windows at 100% starts over (plus a minute; it reads the account's numbers afresh when the limit hits, waiting at most 5 seconds; when the percentages lag behind Codex saying the limit is reached, the fullest window's reset is taken; a Codex week that is used up gives up straight away, naming when it resets); else after 5, 10, 20… minutes (at most an hour apart). It gives up after *tries at most* or *waits at most (hours)*, naming the reset time when it knows it; then it waits for Retry. |
 | Archive done tasks after (days) | Kanban | 30 | 0 keeps them on the board. Checked at start-up and hourly. |
 | Close idle agents after (hours) | Kanban | 2 | 0–168; 0 never closes them. See [Idle agents close](#idle-agents-close). |
@@ -449,7 +449,7 @@ back to work:
   again with the task's session and worktree). It doesn't wait for teammates that look busy in the log.
   In Waiting on the plan, it's an answer or a change request for the plan. A comment on a task whose plan run failed,
   was stopped or was interrupted carries on planning (the plan prompt with your comment), not the implementation.
-- The implementer (Claude or Codex) is working: the comment is **typed into its terminal at once** ("Comment #12 from …
+- The implementer (Claude, Codex or Antigravity) is working: the comment is **typed into its terminal at once** ("Comment #12 from …
   while you work"), and it takes it into account in its current work; the run goes on and its answer is the
   result. The same when you comment while a run is held for a wait. Nothing is typed into a plan run (the
   plan is answered when it is ready), into an agent that is asking, or before the agent has taken its
@@ -982,14 +982,14 @@ Only admins save prompts.
 Settings → **Kanban** → **Skills** lists every skill the office finds, with where it's from and installed and which
 projects use it:
 
-- the office's own (`skills/claude`, `skills/codex` in this install),
+- the office's own (`skills/claude`, `skills/codex`, `skills/antigravity` in this install),
 - the machine's (`~/.claude/skills`, or `$CLAUDE_CONFIG_DIR/skills`; `$CODEX_HOME/skills`, default
-  `~/.codex/skills`),
+  `~/.codex/skills`; `~/.gemini/config/skills` for Antigravity),
 - each signed-in account's Claude home (`<data>/homes/<id>/claude/skills`),
 - each project repository's `.claude/skills`.
 
 Per project (**Projects** → **Skills**), pick which skills each phase (plan, implement, review, pull requests) is told to use,
-per agent (Claude, Codex). The phase prompt names them.
+per agent (Claude, Codex, Antigravity). The phase prompt names them.
 
 - **Claude**: the picked office and repository skills go into a generated plugin
   (`<data>/kanban/skills/plugin-<hash>/`) passed with `--plugin-dir`; nothing is copied into anyone's
@@ -997,15 +997,16 @@ per agent (Claude, Codex). The phase prompt names them.
 - **Codex** has no such flag: the office's own skills are copied into `$CODEX_HOME/skills/` with a
   `.office-skill.json` marker. **Sync** (admins) installs or updates them; a copy someone changed
   by hand, or a same-named skill the office didn't put there, is left alone and reported.
-- **office-task-refs** (bundled) is given to every task worker, Claude and Codex, whatever is picked:
+- **Antigravity** works like Codex: the office's own skills are copied into `~/.gemini/config/skills/` with the same `.office-skill.json` marker, and **Sync** installs or updates them. This is the only thing the office writes into `~/.gemini`.
+- **office-task-refs** (bundled) is given to every task worker, Claude, Codex and Antigravity, whatever is picked:
   it tells the agent how to read another task it's pointed at.
 
 ### Skills synced to your own home
 
-The repository's `user-skills/` folder (`claude/*`, `codex/*`) holds skills for the people developing with it:
+The repository's `user-skills/` folder (`claude/*`, `codex/*`, `antigravity/*`) holds skills for the people developing with it:
 `kanban-dev`, `kanban-dev-sonnet` and `kanban-ui-screenshots` for Claude, `kanban-dev` and `kanban-ui-screenshots`
-for Codex (see `user-skills/README.md`). When the server starts they are copied into `<claude home>/skills/<skill>`
-(`$CLAUDE_CONFIG_DIR`, else `~/.claude`) and `<codex home>/skills/<skill>` (`$CODEX_HOME`, else `~/.codex`),
+for Codex and Antigravity (see `user-skills/README.md`). When the server starts they are copied into `<claude home>/skills/<skill>`
+(`$CLAUDE_CONFIG_DIR`, else `~/.claude`), `<codex home>/skills/<skill>` (`$CODEX_HOME`, else `~/.codex`) and `~/.gemini/config/skills/<skill>` (Antigravity),
 the way ai-kanban does. **Sync** (admins) runs it too.
 
 - A copy gets a `.office-user-skill.json` marker. A marked copy is overwritten when the source changed, hand
@@ -1081,7 +1082,7 @@ the ticket (comments, child issues, its status in Jira now, later edits) a worke
   assignee, labels, parent, description, comments (oldest first) and child issues. `office-tasks issue UYT-1416` reads another
   Jira key inside the project's Jira sources, `office-tasks issue 14` the ticket of another task of the same project, and
   `--json` prints the raw answer. The MCP tool **`get_issue`** (optional `ref`) does the same and is pre-approved for a kanban
-  task's Claude worker, also in the plan phase. Codex's sandboxes block the CLI, so Codex uses the MCP tool.
+  task's Claude worker, also in the plan phase. Codex's sandboxes block the CLI, so Codex uses the MCP tool; Antigravity can use the MCP tool as well.
 - It is read-only and runs through the office's own Jira connection; the token never reaches the agent. Every call reads Jira
   afresh. The answer is cut to the description's first 20 000 characters, the newest 30 comments (2 000 characters each, 30 000
   in all) and 50 child issues, with titles, labels, names and notes cut short too, and says so when it cut something.
@@ -1116,7 +1117,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
   The office answers as soon as the task is made; assigning a linked issue on GitHub follows after.
 - **Parameters**: `title` and `description` (both needed unless `issue` is given), `project` (id or
   name), `repos` (`--repo`, repeatable; names or ids), `issue` (a GitHub issue: `12` or `owner/repo#12`,
-  or a Jira key), `ticket` / `ticketUrl`, `provider` (`claude` or `codex`), `model`, `effort` (`minimal` to
+  or a Jira key), `ticket` / `ticketUrl`, `provider` (`claude`, `codex` or `antigravity`), `model`, `effort` (`minimal` to
   `max`), `type` (`implement` or `investigate`), `start` and `desk` (only accepted with `start`). Making
   the same issue, or the same plain `ticket` in the project, again returns the task that exists (`existed`).
   Creating a task in another project than the agent's own is allowed, but it only lands in To do.
@@ -1180,9 +1181,29 @@ Worktrees are upstream's code, but not its place: beside the floor's checkout, i
 (a multi-repository task's workspace folder there holds a worktree of each of its repositories), with
 each worktree's own `node_modules` folder of links to its repository's packages (shared, not copied; a workspace package such as `packages/ui` links to the worktree's own copy). Tasks saved with a path under `.agent-office/worktrees/` keep working.
 
+## Antigravity
+
+Google's Antigravity CLI (`agy`) is the third agent the kanban can drive, as a task's agent or a reviewer, next to Claude Code and Codex. What to know before choosing it:
+
+- **It runs with all permissions.** Every Antigravity phase, plan and review included, is launched with `--dangerously-skip-permissions`. There is no sandbox the office can enforce (`--sandbox` did not stop writes outside the workspace or the network in testing), so the *Plan phase runs*, *Implementation runs* and *Keep the reviewer off the web* settings do not restrict it. Plan and review phases add `--mode plan`, which is advisory: an agent told to write can still write through a shell command. The read-only rule of a plan or a review is the prompt's contract, as for a Claude reviewer's Bash.
+- **What the office writes.** For each worktree it launches Antigravity in, the office writes a plugin into `.agents/plugins/agent-office/` (hooks and the `agent-office` MCP server) and keeps it out of git through the repository's `info/exclude`. Each launch also passes `--settings` with that folder in `trustedWorkspaces`, for that session only. Nothing is written into `~/.gemini` except the kanban's skills copied to `~/.gemini/config/skills` (see Skills): a task's own when it runs, and the office's bundled ones at start only when `~/.gemini/config` already exists. The plugin stays in a checkout after the worker leaves; outside a worker's environment its hooks do nothing and its MCP entry starts nothing.
+- **One sign-in for everyone.** Every account's Antigravity task runs on the office host's own Google sign-in; there is no per-account sign-in. Sign in once by running `agy` in a terminal as the user that runs the office. A keyring-based sign-in may not work on a headless server. `agy` must be on the office's `PATH` ([install](https://antigravity.google/docs/install)).
+- **No usage numbers.** The office shows no tokens, cost or limit clock for Antigravity.
+- **A plugin folder that isn't the office's stops the launch.** The office marks its plugin folder with a `.agent-office-plugin` file. If `.agents/plugins/agent-office/` in a project is tracked by git, or has content without that marker, the office writes nothing there and the worker's start fails with a message saying so: move or remove the folder, then press **R**.
+- **Sign-in, first-run and trust screens.** A worker stuck on Antigravity's sign-in dialog, its first-run colour scheme choice or the folder trust question shows that on its desk and needs a person in its terminal. The sign-in and first-run texts are the ones in the `agy` 1.5.17 program itself; they were not seen live.
+- **A subagent's question** makes the worker need input, like a question of its own, until it is answered.
+- **Esc is not noticed.** An interrupted turn leaves no hook and nothing in the transcript; the office does not see it until the next prompt.
+- **Resume.** A task's session carries on through `agy --resume <conversation-id>`. If that conversation no longer exists, Antigravity does not fail: it starts a new one.
+- **Subagents.** A subagent is its own conversation. The office treats a turn as over when the main conversation has stopped and no subagent is still running, not at the first Stop of the main conversation.
+- **The office's MCP tools come late.** In its terminal UI, `agy` 1.5.17 does not offer a plugin's (or the workspace's) MCP tools during the first turn of a process, new conversation or resumed; they are there from the second turn on. A kanban run is usually one turn, so an Antigravity agent reads tasks and reports its turn with the `office-tasks` and `office-workers` commands on its `PATH` (the prompts name them first), and has the `agent-office` MCP tools only for what is typed into its session later.
+- **What was tried with the real CLI.** Through the office: a task run as plan → implement (resumed session, commit, `office-tasks done`, `WORK DONE`), and a plan run that used a subagent, sat through three retried API errors and ended in `QUESTIONS:`. Antigravity as the reviewer, a question dialog and a comment typed into a running Antigravity run are covered by automated tests against recorded transcripts and hook sequences, not yet by a run through the office.
+- **Models and effort.** They go on the launch (`--model`, `--effort`); the model box suggests what `agy models` lists and accepts any slug.
+
+Verified against `agy` 1.5.17 ([docs/fork.md](fork.md#antigravity-cli-spike)).
+
 ## Limitations
 
-- The kanban process drives **Claude Code and Codex** only; other providers stay ordinary office
+- The kanban process drives **Claude Code, Codex and Antigravity** only; other providers stay ordinary office
   workers (though **O** works for any agent worker).
 - Every phase runs in an interactive worker. Claude's implement, fix, resume and PR phases,
   and investigations, run with `--permission-mode auto` by default, or `bypassPermissions` when the

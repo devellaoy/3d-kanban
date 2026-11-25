@@ -12,16 +12,17 @@ interface PermissionInfo {
   name: string;
   claude: string;
   codex: string;
+  antigravity: string;
 }
 
 /** What a value is called in the UI and what it means for each agent. */
 export const PLAN_PERMISSION_INFO: Record<PlanPermission, PermissionInfo> = {
-  auto: { name: 'auto mode', claude: 'auto mode, with the file editing tools off', codex: 'read-only sandbox' },
-  plan: { name: 'plan mode', claude: 'Claude’s plan mode', codex: 'read-only sandbox' },
+  auto: { name: 'auto mode', claude: 'auto mode, with the file editing tools off', codex: 'read-only sandbox', antigravity: 'no sandbox: all permissions, with plan mode added (advisory)' },
+  plan: { name: 'plan mode', claude: 'Claude’s plan mode', codex: 'read-only sandbox', antigravity: 'no sandbox: all permissions, with plan mode added (advisory)' },
 };
 
 export const IMPLEMENT_PERMISSION_INFO: Record<ImplementPermission, PermissionInfo> = {
-  auto: { name: 'auto mode', claude: 'auto mode: a classifier reviews risky actions', codex: 'no auto mode: runs without permission prompts' },
-  bypass: { name: 'without permission prompts', claude: 'bypass mode', codex: 'no approvals, no sandbox' },
-  'workspace-write': { name: 'in Codex’s workspace sandbox', claude: 'bypass mode (the sandbox is Codex’s)', codex: 'workspace sandbox, no network' },
+  auto: { name: 'auto mode', claude: 'auto mode: a classifier reviews risky actions', codex: 'no auto mode: runs without permission prompts', antigravity: 'no sandbox: runs with all permissions' },
+  bypass: { name: 'without permission prompts', claude: 'bypass mode', codex: 'no approvals, no sandbox', antigravity: 'no sandbox: runs with all permissions' },
+  'workspace-write': { name: 'in Codex’s workspace sandbox', claude: 'bypass mode (the sandbox is Codex’s)', codex: 'workspace sandbox, no network', antigravity: 'no sandbox it can rely on: runs with all permissions' },
 };

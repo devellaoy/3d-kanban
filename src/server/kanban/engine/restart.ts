@@ -12,12 +12,11 @@ import type { KanbanContext } from '../registry.js';
 import type { WorkerInfo, WorkerStatus } from '../../../shared/protocol.js';
 import type { WorkerObservation } from '../../workers.js';
 import type { KanbanEffort, KanbanRun, KanbanTask, KanbanTool, QueuedRun } from '../../../shared/kanban/types.js';
-import { claudeAdapter } from './adapters/claude.js';
-import { codexAdapter, codexUserMessage } from './adapters/codex.js';
-import { readJsonLines } from './adapters/types.js';
+import { ADAPTERS } from './adapters/index.js';
+import type { TaskAgentAdapter } from './adapters/types.js';
 import type { MachineEvent } from './machine.js';
 import { finalMarker } from './markers.js';
-import { sessionLogged } from './sessions.js';
+import { logOf, sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
 import { slot } from './slot.js';
 import { promptHead, type HeldRun } from './turnhold.js';
@@ -28,6 +27,8 @@ const ADMITTED_MS = 60_000;
 /** What the engine lends to the restart handling. */
 export interface RestartDeps<L extends HeldRun> {
   ctx: Pick<KanbanContext, 'repo' | 'runAs'>;
+  /** The engine's agent adapters (tests may inject their own); the stock ones when absent. */
+  adapters?: Record<KanbanTool, TaskAgentAdapter>;
   serial<T>(taskId: number, fn: () => Promise<T>): Promise<T>;
   /** Whether the project is a folder project (no worktrees). */
   folder(project: string): boolean;
@@ -112,18 +113,12 @@ export class Restarts<L extends HeldRun> {
   private received(run: KanbanRun, floor: Floor, info: WorkerInfo, launch: QueuedRun): boolean | undefined {
     const at = run.promptedAt;
     const logs = floor.workers.transcripts(info.id);
-    const file = run.tool === 'claude' ? logs?.claude : logs?.codex;
+    const file = logOf(logs, run.tool);
     if (!file || at === undefined) return undefined;
-    if (run.tool === 'claude') {
-      const result = claudeAdapter.readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: at });
-      return result ? !result.unheard : undefined;
-    }
-    // Codex's rollout names no prompt: a user message at or after the time the office typed it (stamped before it went in), carrying the launch's text when it has one, is the one.
-    const head = promptHead(launch.text ?? '');
-    return readJsonLines(file)?.some((l) => {
-      const text = codexUserMessage(l);
-      return text !== undefined && Date.parse(String(l.timestamp)) >= at && (!head || text.replace(/\s+/g, ' ').includes(head));
-    });
+    const adapter = (this.deps.adapters ?? ADAPTERS)[run.tool];
+    if (adapter.promptReceived) return adapter.promptReceived(file, at, promptHead(launch.text ?? ''));
+    const result = adapter.readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: at });
+    return result ? !result.unheard : undefined;
   }
 
   /** The run's worker on the floor. A run whose launch was cut short before it recorded its worker (a second shutdown while it waited for the woken worker to rest) has the task's own, if that was cut off too. */
@@ -283,8 +278,8 @@ export class Restarts<L extends HeldRun> {
   /** What the run's turns say in the session log, read from the run's start. */
   private readLog(run: KanbanRun, floor: Floor, info: WorkerInfo) {
     const logs = floor.workers.transcripts(info.id);
-    const file = run.tool === 'claude' ? logs?.claude : logs?.codex;
-    return file ? (run.tool === 'claude' ? claudeAdapter : codexAdapter).readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: run.promptedAt }) : undefined;
+    const file = logOf(logs, run.tool);
+    return file ? (this.deps.adapters ?? ADAPTERS)[run.tool].readTurnResult(file, { since: run.startedAt, runStart: run.startedAt, promptAt: run.promptedAt }) : undefined;
   }
 
   /** A run over before its agent had its prompt (its launch record is still there): the comment and messages that prompt held go back in the queue, once. */

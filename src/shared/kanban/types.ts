@@ -67,9 +67,9 @@ export const WAITING_REASONS: readonly WaitingReason[] = ['plan_questions', 'pla
 export type AskingKind = 'question' | 'permission';
 
 /** The agent CLIs the kanban process drives. Other providers stay ordinary office workers. */
-export type KanbanTool = 'claude' | 'codex';
-export const KANBAN_TOOLS: readonly KanbanTool[] = ['claude', 'codex'];
-export const isKanbanTool = (v: unknown): v is KanbanTool => v === 'claude' || v === 'codex';
+export type KanbanTool = 'claude' | 'codex' | 'antigravity';
+export const KANBAN_TOOLS: readonly KanbanTool[] = ['claude', 'codex', 'antigravity'];
+export const isKanbanTool = (v: unknown): v is KanbanTool => KANBAN_TOOLS.includes(v as KanbanTool);
 
 /**
  * Reasoning effort as the kanban picks it. Claude takes low…max (`--effort`); Codex takes
@@ -398,7 +398,7 @@ export interface KanbanProjectInfo {
 export type SkillPhase = 'plan' | 'implement' | 'review' | 'pr';
 export const SKILL_PHASES: readonly SkillPhase[] = ['plan', 'implement', 'review', 'pr'];
 /** Skills per phase and tool, by name (SkillInfo.name). */
-export type SkillSelection = Partial<Record<SkillPhase, { claude?: string[]; codex?: string[] }>>;
+export type SkillSelection = Partial<Record<SkillPhase, Partial<Record<KanbanTool, string[]>>>>;
 
 export type { IssueSourceConfig, IssueSourceKind };
 

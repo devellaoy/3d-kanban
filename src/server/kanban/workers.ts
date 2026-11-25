@@ -3,12 +3,13 @@
 // worker's status changes and hooks, keep guards keep a task's worktree as its worker goes home,
 // and a worker can be relaunched on its session with other flags.
 import type { AgentEffort, WorkerInfo, WorkerStatus } from '../../shared/protocol.js';
-import type { DepartureIntent } from '../../shared/kanban/types.js';
+import { isKanbanTool, type DepartureIntent } from '../../shared/kanban/types.js';
 import { CARRY_ON_STAGGER_MS, carries, setCarryOn } from '../workers/carryon.js';
 import { waitingOnSomeone } from '../../shared/status.js';
 import { codexHookTrustArgs } from './codex-trust.js';
 import { removeWorkerSettings, splitOfficeDirs, writeWorkerSettings } from './launch.js';
 import type { Pty } from '../ptys.js';
+import type { AntigravityState } from '../providers/antigravity.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
 import type { WorktreeCleanup } from '../worktrees.js';
 import type { SpawnExtra, Worker, WorkerHandle, WorkerObservation, WorkerObserver } from '../workers/types.js';
@@ -231,11 +232,11 @@ export abstract class KanbanWorkers {
   }
 
   /** Where a worker's session is logged, for the engine to read its turns (see docs/fork.md, M0 spike results). */
-  transcripts(id: string): { sessionId?: string; claude?: string; codex?: string; codexHome?: string } | undefined {
+  transcripts(id: string): { sessionId?: string; claude?: string; codex?: string; codexHome?: string; antigravity?: string } | undefined {
     const w = this.workers.get(id);
     if (!w) return undefined;
     const codex = codexLog(w);
-    return { sessionId: w.info.sessionId, claude: w.tracker.transcript, codex: codex?.transcript, codexHome: codex?.home };
+    return { sessionId: w.info.sessionId, claude: w.tracker.transcript, codex: codex?.transcript, codexHome: codex?.home, antigravity: antigravityLog(w)?.transcript };
   }
 
   /** A status change, after the update that tells everyone (the observers hear it: see WorkerObservation). */
@@ -254,6 +255,7 @@ export abstract class KanbanWorkers {
     w.owner = owner;
     w.extra = kanbanExtra(extra);
     w.launchTail = extra?.promptTail;
+    // Claude and Codex only: with --add-dir Antigravity's shell commands run with their cwd in the added folder.
     if (extra?.readDir && w.extra && (w.info.provider === 'claude' || w.info.provider === 'codex')) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
     if (extra?.resumeSessionId) w.info.sessionId = extra.resumeSessionId;
     if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role, ...(extra.kanban.seat ? { seat: extra.kanban.seat } : {}) };
@@ -286,6 +288,11 @@ export abstract class KanbanWorkers {
 /** Codex's session log of a worker, when it runs Codex. */
 function codexLog(w: Worker): CodexLog | undefined {
   return w.info.provider === 'codex' ? (w.state as CodexLog) : undefined;
+}
+
+/** Antigravity's session log of a worker, when it runs Antigravity. */
+function antigravityLog(w: Worker): AntigravityState | undefined {
+  return w.info.provider === 'antigravity' ? (w.state as AntigravityState) : undefined;
 }
 
 /** How a hire is launched, kept on its worker (Worker.extra): a kanban hire's flags and settings, undefined for any other hire. Its `id`, `promptTail` and `readDir` are for the first launch only: only `launchArgs` is kept (a direct hire's `readDir` is added to it, see hired()). */

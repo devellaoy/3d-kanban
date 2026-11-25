@@ -23,6 +23,8 @@ export interface LaunchInput<S, P> {
    * otherwise. A fresh copy, its own to change.
    */
   args: string[];
+  /** The folder it runs in. */
+  cwd: string;
   /** Its first message. */
   prompt?: string;
   /** The session it carries on, when it's resumed. */

@@ -1,12 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdirSync, mkdtempSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, utimesSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateWorkerModel } from '../src/server/agents.js';
 import { backgroundLeft, claudeAdapter, claudeAlias, claudeInterruptedSince, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
 import { MODEL_RE } from '../src/shared/kanban/protocol.js';
 import { codexAdapter, readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
+import { antigravityAdapter, readAntigravityTurn } from '../src/server/kanban/engine/adapters/antigravity.js';
 
 function scratch(t: { after(fn: () => void): void }) {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-adapters-'));
@@ -773,4 +774,94 @@ test('office comments: one seen in the log once is never waited for or lost agai
   const cut = readCodexTurn(big, { officePrompts: [{ at: long - 5000, head: 'Comment #6 from Grace' }] });
   assert.equal(cut?.lost, undefined, 'older than the tail that was read: received');
   assert.deepEqual(cut?.seen, [0]);
+});
+
+// --- Antigravity ---------------------------------------------------------------------------------
+
+const agyBase = { permission: 'bypass' as const, planPermission: 'plan' as const, sandbox: false };
+const agySample = (name: string) => path.join(import.meta.dirname, 'fixtures', 'antigravity', `${name}.jsonl`);
+
+test('antigravity launch flags: all permissions always, plan mode for plan and review, model and effort, never --add-dir or --sandbox', () => {
+  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts', 'pr-comments', 'pr-answers', 'pr-review'] as const) {
+    for (const permission of ['auto', 'bypass', 'workspace-write'] as const) assert.deepEqual(antigravityAdapter.launchArgs(phase, { ...agyBase, permission }), ['--dangerously-skip-permissions'], `${phase} ${permission}`);
+  }
+  for (const phase of ['plan', 'review'] as const) for (const planPermission of ['auto', 'plan'] as const) assert.deepEqual(antigravityAdapter.launchArgs(phase, { ...agyBase, planPermission }), ['--dangerously-skip-permissions', '--mode', 'plan'], phase);
+  const full = antigravityAdapter.launchArgs('implement', { ...agyBase, permission: 'workspace-write', sandbox: true, investigate: true, addDirs: ['/up'], readDirs: ['/instr'], model: 'gemini-4-hydrogen', effort: 'high', extra: ['--x'] });
+  assert.deepEqual(full, ['--dangerously-skip-permissions', '--model', 'gemini-4-hydrogen', '--effort', 'high', '--x']);
+  assert.deepEqual(antigravityAdapter.launchArgs('implement', { ...agyBase, effort: 'minimal' }).slice(-2), ['--effort', 'low']);
+  assert.deepEqual(antigravityAdapter.launchArgs('implement', { ...agyBase, effort: 'max' }).slice(-2), ['--effort', 'xhigh']);
+  assert.equal(antigravityAdapter.spawnModel('x'), undefined);
+  assert.equal(antigravityAdapter.spawnEffort('high'), undefined);
+});
+
+test('antigravity transcript: the real samples', () => {
+  const tools = readAntigravityTurn(agySample('tools-and-retry'));
+  assert.equal(tools?.text, 'SPIKE ONE DONE');
+  assert.equal(tools?.complete, true);
+  assert.equal(tools?.apiError, undefined, 'a retried error the turn recovered from is none');
+  const last = readAntigravityTurn(agySample('subagent-question-resume'));
+  assert.equal(last?.text, 'RESUMED OK');
+  assert.equal(last?.complete, true);
+  assert.equal(last?.apiError, undefined);
+  const plan = readAntigravityTurn(agySample('plan-mode'));
+  assert.equal(plan?.complete, true);
+  assert.match(plan?.text ?? '', /^## Plan to Append/);
+  const esc = readAntigravityTurn(agySample('interrupted'));
+  assert.equal(esc?.complete, false);
+  assert.equal(esc?.text, '');
+  assert.equal(readAntigravityTurn(path.join(tmpdir(), 'no-such-agy.jsonl')), undefined);
+});
+
+test('antigravity transcript: a log cut at the interim answer is complete with the interim text; a trailing tool call or error is not the end', (t) => {
+  const write = scratch(t);
+  const lines = readFileSync(agySample('subagent-question-resume'), 'utf8').split('\n').filter(Boolean);
+  // Steps 0..3 are the first prompt up to the root's interim answer, before the subagent reports.
+  const interim = readAntigravityTurn(write('interim.jsonl', lines.slice(0, 4)));
+  assert.equal(interim?.complete, true);
+  assert.match(interim?.text ?? '', /^Started the subagent/);
+  const ts = '2026-11-25T12:00:00Z';
+  const user = { step_index: 0, source: 'USER_EXPLICIT', type: 'USER_INPUT', status: 'DONE', created_at: ts, content: '<USER_REQUEST>\nDo it\n</USER_REQUEST>' };
+  const answer = (content: string, extra: object = {}) => ({ step_index: 1, source: 'MODEL', type: 'PLANNER_RESPONSE', status: 'DONE', created_at: ts, content, ...extra });
+  const call = answer('', { tool_calls: [{ name: 'run_command', args: {} }] });
+  assert.equal(readAntigravityTurn(write('tc.jsonl', [user, answer('Partial.'), call]))?.complete, false);
+  assert.equal(readAntigravityTurn(write('tc.jsonl', [user, answer('Partial.'), call]))?.text, 'Partial.');
+  assert.equal(readAntigravityTurn(write('sys.jsonl', [user, answer('Partial.'), { source: 'SYSTEM', type: 'SYSTEM_MESSAGE', status: 'DONE', created_at: ts, content: 'x' }]))?.complete, false);
+  assert.equal(readAntigravityTurn(write('run.jsonl', [user, answer('Working', { status: 'RUNNING' })]))?.complete, false);
+  const err = readAntigravityTurn(write('err.jsonl', [user, call, { source: 'SYSTEM', type: 'ERROR_MESSAGE', status: 'DONE', created_at: ts, error: 'API error (attempt 3): HTTP 429' }]));
+  assert.equal(err?.apiError, 'API error (attempt 3): HTTP 429');
+  assert.equal(err?.complete, false);
+  assert.equal(err?.text, 'API error (attempt 3): HTTP 429');
+  // A step of a type this reader doesn't know is skipped.
+  assert.equal(readAntigravityTurn(write('new.jsonl', [user, answer('Fine.'), { source: 'MODEL', type: 'SOMETHING_NEW', status: 'DONE', created_at: ts }]))?.text, 'Fine.');
+  // A prompt without the USER_REQUEST tags is its whole content.
+  assert.equal(antigravityAdapter.promptReceived?.(write('raw.jsonl', [{ ...user, content: 'raw prompt text' }]), Date.parse(ts), 'raw prompt'), true);
+});
+
+test('antigravity transcript: the office\'s prompts not in the log yet are unheard, then lost; second-precision times are tolerated', (t) => {
+  const write = scratch(t);
+  const now = Date.now();
+  const sec = (ms: number) => new Date(Math.floor(ms / 1000) * 1000).toISOString().replace('.000Z', 'Z');
+  const step = (i: number, o: object) => ({ step_index: i, status: 'DONE', ...o });
+  const prompt = (i: number, text: string, ms: number) => step(i, { source: 'USER_EXPLICIT', type: 'USER_INPUT', created_at: sec(ms), content: `<USER_REQUEST>\n${text}\n</USER_REQUEST>\n<ADDITIONAL_METADATA>x</ADDITIONAL_METADATA>` });
+  const reply = (i: number, text: string, ms: number) => step(i, { source: 'MODEL', type: 'PLANNER_RESPONSE', created_at: sec(ms), content: text });
+  const f = write('office.jsonl', [prompt(0, 'Implement it', now - 9000), reply(1, 'Done.\n\nWORK DONE', now - 8000)]);
+  // The launch prompt the office typed after the log's last one: not in the log yet.
+  const launch = readAntigravityTurn(f, { promptAt: now - 1000, promptHead: 'Restate' });
+  assert.equal(launch?.unheard, true);
+  assert.equal(launch?.lost, undefined);
+  const late = readAntigravityTurn(write('old.jsonl', [prompt(0, 'Implement it', now - 21 * 60_000), reply(1, 'Done.', now - 21 * 60_000 + 1000)]), { promptAt: now - 20 * 60_000, promptHead: 'Restate' });
+  assert.equal(late?.lost?.launch, true);
+  assert.equal(late?.unheard, undefined);
+  // A comment: waiting until the log shows a prompt starting like it, and the second's precision doesn't hide one typed in that second.
+  const comment = { at: now - 500, head: 'Comment from Grace' };
+  const waiting = readAntigravityTurn(f, { officePrompts: [comment] });
+  assert.equal(waiting?.unheard, true);
+  assert.deepEqual(waiting?.waiting, [0]);
+  const shown = write('shown.jsonl', [prompt(0, 'Implement it', now - 9000), prompt(1, 'Comment from Grace on task #3: a', comment.at), reply(2, 'Done.', now)]);
+  const got = readAntigravityTurn(shown, { officePrompts: [comment] });
+  assert.equal(got?.unheard, undefined);
+  assert.deepEqual(got?.seen, [0]);
+  assert.equal(antigravityAdapter.promptReceived?.(shown, comment.at, 'Comment from Grace'), true);
+  assert.equal(antigravityAdapter.promptReceived?.(shown, comment.at, 'Another one'), false);
+  assert.equal(antigravityAdapter.promptReceived?.(shown, now + 5000, ''), false);
 });

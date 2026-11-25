@@ -1,7 +1,7 @@
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { AgentChoice, AgentEffort, AgentProvider, TerminalHit, WorkerInfo, WorkerKind, WorkerRepo, WorkerStatus } from '../../shared/protocol.js';
-import { AGENT_PROVIDERS, takesEffort, takesModel } from '../../shared/providers.js';
+import { AGENT_PROVIDERS, PROVIDER_META, takesEffort, takesModel } from '../../shared/providers.js';
 import { Worktrees, workspaceOf, worktreeDir, type WorktreeCleanup, type WorktreeState } from '../worktrees.js';
 import { DESK_BY_ID, STATION_AGENT, deskBuilt } from '../../shared/layout.js';
 import { stationBrief } from '../stations.js';
@@ -653,8 +653,9 @@ export class WorkerManager extends KanbanWorkers {
     const command = this.command(info);
     const commandPath = isShell ? undefined : configured ? this.agentPath : resolveCommand(command);
     const base = isShell ? (WIN && !process.env.SHELL ? [] : ['-l']) : configured ? [...this.agentArgs] : [];
+    const cwd = this.cwd(info);
     // Its provider's command line, and anything it sets for this run (see ProviderAdapter.launch).
-    const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, prompt, resumeSessionId, station, setup: kanbanSetup(w, adapter, this.setups[adapter.id]), extraArgs: kanbanExtraArgs(w, adapter, this.setups[adapter.id]) }) : { args: base }; // the task's settings file and flags (plus Codex's hook trust)
+    const plan: LaunchPlan = adapter ? adapter.launch({ h: this.handleOf(w), args: base, cwd, prompt, resumeSessionId, station, setup: kanbanSetup(w, adapter, this.setups[adapter.id]), extraArgs: kanbanExtraArgs(w, adapter, this.setups[adapter.id]) }) : { args: base }; // the task's settings file and flags (plus Codex's hook trust)
     const { args } = plan;
     if (plan.rotateToken) w.hookToken = randomBytes(16).toString('hex');
     const env = { ...childEnv(), ...w.extra?.env }; // the engine's own variables, under the office's (which they can't replace)
@@ -674,7 +675,6 @@ export class WorkerManager extends KanbanWorkers {
       env[key] = [this.officeBin, env[key]].filter(Boolean).join(path.delimiter);
     }
 
-    const cwd = this.cwd(info);
     // A workspace isn't a repository, but it's beside this floor's checkout (or inside it, for older ones): git run in it must not
     // find that checkout (and switch its branch, say) instead of saying it's no repository.
     if (info.repos?.length) env.GIT_CEILING_DIRECTORIES = [path.dirname(cwd), env.GIT_CEILING_DIRECTORIES].filter(Boolean).join(path.delimiter);
@@ -848,7 +848,7 @@ export class WorkerManager extends KanbanWorkers {
   /** What a worker's terminal runs: the shell, the configured agent command, or another provider's CLI. */
   private command(info: WorkerInfo): string {
     if (info.kind === 'shell') return defaultShell();
-    return info.provider === this.defaultProvider ? this.agentCmd : info.provider ?? this.agentCmd;
+    return info.provider === this.defaultProvider || !info.provider ? this.agentCmd : PROVIDER_META[info.provider].bin ?? info.provider; // a provider's executable isn't always its id (Antigravity runs as agy)
   }
 
   /** Where a worker works: its worktree, a workspace for a worker across repositories, or the project itself. */

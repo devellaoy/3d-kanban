@@ -9,6 +9,7 @@ import path from 'node:path';
 import { Ledger } from '../src/server/usage.js';
 import { WorkerManager, type WorkerEvents } from '../src/server/workers.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
+import { antigravityAdapter } from '../src/server/kanban/engine/adapters/antigravity.js';
 import { registerOfficeFiles, splitOfficeDirs } from '../src/server/kanban/launch.js';
 
 const fakeAgent = `#!/usr/bin/env node
@@ -32,7 +33,7 @@ function setup(t: { after(fn: () => void): void }) {
   const log = path.join(root, 'invocations.jsonl');
   mkdirSync(data, { recursive: true });
   mkdirSync(bin, { recursive: true });
-  for (const name of ['claude', 'codex']) {
+  for (const name of ['claude', 'codex', 'agy']) {
     writeFileSync(path.join(bin, name), fakeAgent, { mode: 0o700 });
     chmodSync(path.join(bin, name), 0o700);
   }
@@ -118,6 +119,25 @@ test('a Codex task worker: the phase flags come after the office hooks and befor
   assert.equal(run.args[at('--sandbox') + 4], 'resume');
   assert.equal(run.args[at('--sandbox') + 5], 'sess-2');
   assert.deepEqual(run.args.slice(-2), ['--', 'do the task']);
+  assert.equal(run.env.taskId, '8');
+});
+
+test('an Antigravity task worker: trust, then the phase flags, then resume and the prompt (-i), with no --add-dir', async (t) => {
+  const { workers, launched } = setup(t);
+  const w = workers.spawn('desk-1', 'Ada', 'do the task', false, 'agent', 'antigravity', undefined, undefined, undefined, undefined, [], undefined, {
+    launchArgs: antigravityAdapter.launchArgs('plan', { permission: 'bypass', planPermission: 'plan', sandbox: false, model: 'gemini-4-hydrogen', effort: 'max', addDirs: ['/refs'], readDirs: ['/instr'] }),
+    resumeSessionId: 'conv-2',
+    readDir: '/instr',
+    kanban: { taskId: 8, role: 'implementer' } as never,
+  });
+  assert.equal(typeof w, 'object');
+  if (typeof w === 'string') return;
+  const run = await launched('agy');
+  const at = (a: string) => run.args.indexOf(a);
+  assert.equal(run.args[0], '--settings');
+  assert.ok(Array.isArray(JSON.parse(run.args[1]).trustedWorkspaces));
+  assert.deepEqual(run.args.slice(2), ['--dangerously-skip-permissions', '--mode', 'plan', '--model', 'gemini-4-hydrogen', '--effort', 'xhigh', '--resume', 'conv-2', '-i', 'do the task']);
+  assert.ok(at('--add-dir') < 0, "a hire's instructions folder is never --add-dir for Antigravity");
   assert.equal(run.env.taskId, '8');
 });
 

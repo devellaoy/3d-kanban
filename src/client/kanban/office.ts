@@ -8,7 +8,7 @@
 import type { AgentEffort, AgentProvider, WorkerInfo, WorkerTask } from '../../shared/protocol';
 import type { IssueTaskFields, KanbanClientMsg, KanbanTaskInput } from '../../shared/kanban/protocol.js';
 import { KANBAN_LIMITS, PROJECT_ID_RE } from '../../shared/kanban/protocol.js';
-import type { KanbanEffort, KanbanTaskCard, KanbanTool, KanbanWorkerSummary, PlanApproval, RunPhase, TaskStatus, TaskType, WaitingReason } from '../../shared/kanban/types.js';
+import { isKanbanTool, type KanbanEffort, type KanbanTaskCard, type KanbanTool, type KanbanWorkerSummary, type PlanApproval, type RunPhase, type TaskStatus, type TaskType, type WaitingReason } from '../../shared/kanban/types.js';
 
 /** What a task worker says about its task (WorkerInfo.kanban): the server keeps the summary current. */
 export type WorkerKanban = KanbanWorkerSummary;
@@ -207,9 +207,9 @@ export function officeLink(link: OfficeLink): string {
 
 // --- Hiring as a kanban task ----------------------------------------------------------------------
 
-/** Only Claude Code and Codex run the kanban process; other providers stay ordinary workers. */
+/** Only Claude Code, Codex and Antigravity run the kanban process; other providers stay ordinary workers. */
 export function kanbanTool(provider: AgentProvider | undefined): KanbanTool | undefined {
-  return provider === 'claude' || provider === 'codex' ? provider : undefined;
+  return isKanbanTool(provider) ? provider : undefined;
 }
 
 /** A task's title: the first non-empty line, at most 120 characters. */
@@ -270,7 +270,7 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
   const title = (f.title?.trim() ? clipText(f.title, 120) : titleFrom(text)).slice(0, KANBAN_LIMITS.title);
   if (!title && !f.issueKey) return { error: 'Say what the task is: its first line is the title' };
   const tool = kanbanTool(f.provider);
-  if (f.provider && !tool) return { error: 'The kanban process runs on Claude Code or Codex only' };
+  if (f.provider && !tool) return { error: 'The kanban process runs on Claude Code, Codex or Antigravity only' };
   // The primary repository always, whatever was ticked; every one ticked is the same as all (null).
   const picked = new Set(f.repoIds);
   if (f.primaryId) picked.add(f.primaryId);

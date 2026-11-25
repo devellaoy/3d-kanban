@@ -10,6 +10,7 @@ test('detects the configured provider from Unix and Windows command paths', () =
   assert.equal(configuredProvider('C:\\Users\\me\\bin\\opencode.exe'), 'opencode');
   assert.equal(configuredProvider('/opt/tools/codex'), 'codex');
   assert.equal(configuredProvider('CODEX.EXE'), 'codex');
+  assert.equal(configuredProvider('/opt/tools/agy'), 'antigravity');
   assert.equal(configuredProvider('/home/me/.local/bin/grok'), 'grok');
   assert.equal(configuredProvider('GROK.EXE'), 'grok');
   assert.equal(configuredProvider('/home/me/.local/bin/muse'), 'muse');
@@ -23,7 +24,7 @@ test('detects the configured provider from Unix and Windows command paths', () =
 
 test('dsh is a provider the wire accepts, and the others still are', () => {
   assert.equal(isAgentProvider('dsh'), true);
-  for (const provider of ['claude', 'opencode', 'codex', 'custom']) assert.equal(isAgentProvider(provider), true);
+  for (const provider of ['claude', 'opencode', 'codex', 'antigravity', 'custom']) assert.equal(isAgentProvider(provider), true);
   assert.equal(isAgentProvider('deepseek'), false);
   assert.equal(isAgentProvider(undefined), false);
 });

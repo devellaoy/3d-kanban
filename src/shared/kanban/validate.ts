@@ -45,7 +45,7 @@ export const SOURCE_ID_RE = /^[A-Za-z0-9_-]{1,40}$/;
 export const PROJECT_ID_RE = /^[a-z0-9-]{1,40}$/;
 /** A person's id: a Jira account id (`712020:ab-cd`, `557058:…`), or a GitHub login. */
 export const PERSON_ID_RE = /^[\w:@.-]{1,200}$/;
-/** Claude aliases (opus, sonnet[1m]) and Codex ids (gpt-5.1-codex), nothing that looks like a flag. */
+/** Claude aliases (opus, sonnet[1m]) and Codex ids (gpt-5.1-codex), Antigravity slugs (gemini-4-hydrogen-low), nothing that looks like a flag. */
 export const MODEL_RE = /^[A-Za-z0-9][\w.:/[\]-]{0,99}$/;
 
 /** A request key a browser chooses for one creation (`once`): letters, digits, `_` and `-`. */

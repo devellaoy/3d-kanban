@@ -60,7 +60,7 @@ function snapshot(net: Net, project: string): Promise<Snapshot> {
 
 /**
  * The toggle and, while it's on, the task's fields. `provider` is the dialog's agent picker: only
- * Claude Code and Codex run the kanban process, so any other provider turns the toggle off.
+ * Claude Code, Codex and Antigravity run the kanban process, so any other provider turns the toggle off.
  */
 export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null): KanbanSection {
   const listeners: ((on: boolean) => void)[] = [];
@@ -119,7 +119,7 @@ export function kanbanSection(opt: KanbanOption, provider: ProviderPicker | null
   const paint = () => {
     const ok = !!tool();
     box.disabled = !ok;
-    hint.textContent = ok ? '' : '· needs Claude Code or Codex as the worker';
+    hint.textContent = ok ? '' : '· needs Claude Code, Codex or Antigravity as the worker';
     fields.classList.toggle('hidden', !on());
     const investigate = type.value === 'investigate';
     planRow.classList.toggle('hidden', investigate);
@@ -284,7 +284,7 @@ export function issueTask(net: Net, issue: Pick<GhIssue, 'number' | 'title' | 'u
   const project = store.floor;
   if (!project) return void toast('Go to a project’s floor first', 'warn');
   const agent = officeChoice(store.project);
-  if (!kanbanTool(agent.provider)) return void toast('The kanban process runs on Claude Code or Codex: pick one of them as the office’s worker in Settings', 'warn');
+  if (!kanbanTool(agent.provider)) return void toast('The kanban process runs on Claude Code, Codex or Antigravity: pick one of them as the office’s worker in Settings', 'warn');
   const ticket = issueTicket(issue.repo ?? store.currentFloor()?.repo, issue.number);
   const api = kanbanApi(net);
   snapshot(net, project)

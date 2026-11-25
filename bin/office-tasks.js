@@ -41,7 +41,7 @@ const USAGE = `Usage:
                                                       issue, Jira key or Azure Boards work item,
                                                       ab:org/project#12 when the project has several;
                                                       then title and description may be left out) --ticket <id> --ticket-url <url>
-                                                      --provider claude|codex --model <m>
+                                                      --provider claude|codex|antigravity --model <m>
                                                       --effort minimal|low|medium|high|xhigh|max
                                                       --type implement|investigate --start
                                                       --desk <id> (with --start) --no-description --json
@@ -73,7 +73,7 @@ const ISSUE_TIMEOUT_MS = 75_000;
 /** A description on stdin that has not started within this long is taken as none. */
 const STDIN_IDLE_MS = 3000;
 export const EFFORTS = ['minimal', 'low', 'medium', 'high', 'xhigh', 'max'];
-export const PROVIDERS = ['claude', 'codex'];
+export const PROVIDERS = ['claude', 'codex', 'antigravity'];
 export const TASK_TYPES = ['implement', 'investigate'];
 const SIGNAL_KINDS = ['plan-ready', 'ask', 'done', 'review', 'pr'];
 export const VERDICTS = ['approved', 'changes'];

@@ -112,6 +112,11 @@ export const codexAdapter: TaskAgentAdapter = {
     return args;
   },
   readTurnResult: readCodexTurn,
+  // Codex's rollout names no prompt: a user message at or after the time the office typed it, carrying `head` when there is one, is the one.
+  promptReceived: (file, at, head) => readJsonLines(file)?.some((l) => {
+    const text = codexUserMessage(l);
+    return text !== undefined && Date.parse(String(l.timestamp)) >= at && (!head || text.replace(/\s+/g, ' ').includes(head));
+  }),
   // Upstream doesn't take a model or effort for Codex workers: both go in launchArgs.
   spawnModel: () => undefined,
   spawnEffort: () => undefined,

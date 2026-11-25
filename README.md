@@ -16,7 +16,7 @@ board beside the office.
 
 **You need**, on the machine that runs it: Node.js 22 or newer; Python 3, make and a C++ compiler (the
 kanban's database module is built on install); `git`; the GitHub CLI signed in (`gh auth login`); and
-Claude Code (`claude`) or Codex (`codex`), signed in, for the kanban's tasks (the implement phases' default, Claude's auto mode,
+Claude Code (`claude`), Codex (`codex`) or Antigravity (`agy`), signed in, for the kanban's tasks (the implement phases' default, Claude's auto mode,
 needs Claude Code 2.1.327 or newer and a model that supports it; see [docs/kanban.md](docs/kanban.md#settings)). Details and the
 per-platform packages: [docs/configuration.md](docs/configuration.md#installing).
 
@@ -57,7 +57,7 @@ The common options (all of them are in [docs/configuration.md](docs/configuratio
 kanban3d ~/code/my-project              # use a project you already have as the first floor
 kanban3d --password 'correct horse'     # choose the password
 kanban3d --port 4700
-kanban3d --agent grok                   # default agent: claude, codex, opencode, grok, muse or dsh
+kanban3d --agent grok                   # default agent: claude, codex, antigravity, opencode, grok, muse or dsh
 kanban3d --no-open                      # print the sign-in link instead of opening a browser
 kanban3d setup                          # the first-start walkthrough again (office stopped)
 ```
@@ -92,7 +92,7 @@ A task goes through the same steps whoever made it, and the office sees each ste
 
 1. **A task is created**: by hand, from an issue, or by an agent.
 2. **Plan**: the agent plans read-only (Claude in plan mode, or in auto mode with its file editing tools off, as you set
-   it; Codex in a read-only sandbox) and may ask questions. A finished plan is approved automatically or
+   it; Codex in a read-only sandbox; Antigravity in its plan mode, which is advisory) and may ask questions. A finished plan is approved automatically or
    waits for your approval, as you set it.
 3. **Implement**: in a git worktree of its own, on its own branch (one worktree per repository).
 4. **Review rounds**: a reviewer checks the work, the implementer fixes what it finds, for 1 to 10 rounds. Up to four additional reviewers (each its own agent, model and effort) can review at the same time, and the main reviewer combines their findings into the round's one review.
@@ -109,8 +109,8 @@ What the office does for you:
 
 - **The kanban page** at `/kanban` (**J**, or **🗂️ Kanban** in the office, a link on `/lite`): board, task
   view with conversation, plan, runs, changes and PRs, and a bar of the floor's other workers ([docs/kanban.md](docs/kanban.md#opening-it)).
-- **Workers at desks**: Claude Code, Codex, OpenCode, Grok, Muse or DeepSeek Harness, each with its terminal
-  on its laptop; kanban tasks run on Claude Code or Codex ([agents](docs/agents.md)).
+- **Workers at desks**: Claude Code, Codex, Antigravity, OpenCode, Grok, Muse or DeepSeek Harness, each with its terminal
+  on its laptop; kanban tasks run on Claude Code, Codex or Antigravity ([agents](docs/agents.md)).
 - **Who needs you**: workers that wait on you jump and ding, **N** goes to the one waiting longest, and a
   Slack / Discord webhook (`--webhook`) can announce it ([configuration](docs/configuration.md#command-line)).
 - **Projects with several repositories**: a task gets a worktree of each repository on one branch, and the PR
