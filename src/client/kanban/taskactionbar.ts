@@ -13,7 +13,7 @@ import type { TaskCtx } from './taskctx';
 import { openHoldDialog } from './holddialog';
 import { resumeTarget, resumeTitle } from './holdwords';
 import { columnName } from './labels';
-import { findPrsButton, prModeButton } from './prbuttons';
+import { fetchCommentsButton, findPrsButton, prModeButton } from './prbuttons';
 
 /** What an action looks like and does; the PR-mode buttons and Find PRs are built by prbuttons.ts. */
 interface Spec {
@@ -32,7 +32,7 @@ function draftPlan(c: TaskCtx) {
   return latest?.status === 'draft' ? latest : undefined;
 }
 
-function specOf(id: Exclude<ActionId, 'fix-prs' | 'resolve-conflicts' | 'find-prs' | 'review-prs' | 'send-plan-feedback'>, task: KanbanTask, c: TaskCtx): Spec {
+function specOf(id: Exclude<ActionId, 'fix-prs' | 'fetch-pr-comments' | 'resolve-conflicts' | 'find-prs' | 'review-prs' | 'send-plan-feedback'>, task: KanbanTask, c: TaskCtx): Spec {
   const tid = task.id;
   const send = (msg: Parameters<TaskCtx['req']>[0], done?: string) => (b: HTMLButtonElement) => void c.req(msg, b, done);
   const move = (to: 'waiting' | 'review' | 'on_hold', b: HTMLButtonElement, extras: { note?: string; until?: number } = {}, done?: string) => void c.req({ t: 'kanban.task.move', id: tid, to, ...extras }, b, done);
@@ -111,6 +111,7 @@ function specOf(id: Exclude<ActionId, 'fix-prs' | 'resolve-conflicts' | 'find-pr
 export function actionButton(id: ActionId, task: KanbanTask, c: TaskCtx, kind: Kind = 'secondary'): HTMLElement | null {
   if (id === 'fix-prs' || id === 'resolve-conflicts') return prModeButton(task, id, (m, b, d) => c.req(m, b, d));
   if (id === 'find-prs') return findPrsButton(task, c.api);
+  if (id === 'fetch-pr-comments') return fetchCommentsButton(task, (m, b, d) => c.req(m, b, d));
   if (id === 'send-plan-feedback' || id === 'review-prs') return null;
   const spec = specOf(id, task, c);
   const b = btn(spec.label, { kind, icon: spec.icon, attrs: { title: spec.title, 'data-focus': `act-${id}` } });

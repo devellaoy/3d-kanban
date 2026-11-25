@@ -1,0 +1,61 @@
+/* The review comments on the task view's Pull requests tab (taskprcomments.ts): a list by pull request, each comment a
+   box with who wrote it and where, its text quoted, the agent's analysis in labelled rows, and the user's decision under
+   them. The frame and the pieces are the kit's (pills, the segmented control, .inp, buttons); what is here is the list's
+   own layout. Scoped under .kb-tv like the view's sheet. The section measures its own width, so the rows stand label
+   over value in a narrow window and side by side in a wide one. */
+
+.kb-tv .kb-prc { container-type: inline-size; gap: 12px; }
+.kb-tv .kb-prc-line { margin: 0; }
+.kb-tv .kb-prc-error { overflow-wrap: anywhere; font-weight: var(--fw-medium); }
+
+/* A pull request's heading over its comments. */
+.kb-tv .kb-prc-group { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+.kb-tv .kb-prc-pr { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; min-width: 0; font-size: var(--fs-sm); }
+.kb-tv .kb-prc-pr > svg { flex: none; color: var(--muted); }
+.kb-tv .kb-prc-pr > b { min-width: 0; overflow-wrap: anywhere; font-weight: var(--fw-semibold); }
+.kb-tv .kb-prc-pr > a, .kb-tv a.kb-prc-place { display: inline-flex; align-items: center; gap: 4px; min-width: 0; color: var(--link); text-decoration: none; overflow-wrap: anywhere; }
+.kb-tv .kb-prc-pr > a:hover, .kb-tv a.kb-prc-place:hover { text-decoration: underline; }
+.kb-tv .kb-prc-pr > a > svg, .kb-tv .kb-prc-place > svg { flex: none; }
+
+.kb-tv .kb-prc-items { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+.kb-tv .kb-prc-item { display: flex; flex-direction: column; gap: 10px; min-width: 0; padding: 10px 12px 12px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
+.kb-tv .kb-prc-item.locked { background: var(--field-quiet); }
+
+/* Who, what kind, where: the place goes to the right while it fits, and wraps (a long path breaks anywhere) when not. */
+.kb-tv .kb-prc-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; margin: 0; padding: 0; font-size: var(--fs-sm); background: none; border: 0; }
+.kb-tv .kb-prc-head .kb-who { min-width: 0; overflow-wrap: anywhere; }
+.kb-tv .kb-prc-place { margin-left: auto; min-width: 0; font-size: var(--fs-xs); overflow-wrap: anywhere; }
+.kb-tv .kb-prc-place > code { min-width: 0; font-family: var(--font-mono); font-size: inherit; color: inherit; background: none; overflow-wrap: anywhere; }
+
+/* The comment as it was written: plain text, a few lines high, the rest scrolls. */
+.kb-tv .kb-prc-body { margin: 0; padding: 8px 10px; max-height: 9.5em; overflow: auto; white-space: pre-wrap; overflow-wrap: anywhere; font-size: var(--fs-sm); line-height: 1.45; color: var(--text-2); background: var(--field-quiet); border-left: max(3px, calc(var(--bw) * 2)) solid var(--rule-soft); border-radius: var(--radius-xs); }
+.kb-tv .kb-prc-item.locked .kb-prc-body { background: var(--field); }
+
+/* The analysis: a label and its value, one under the other; side by side when the section is wide enough. */
+.kb-tv .kb-prc-rows { display: flex; flex-direction: column; gap: 8px; margin: 0; }
+.kb-tv .kb-prc-row { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.kb-tv .kb-prc-row > dt { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.kb-tv .kb-prc-row > dd { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; margin: 0; min-width: 0; }
+.kb-tv .kb-prc-why { flex: 1 1 14em; min-width: 0; overflow-wrap: anywhere; line-height: 1.45; }
+@container (min-width: 560px) {
+  .kb-tv .kb-prc-row { display: grid; grid-template-columns: 150px minmax(0, 1fr); gap: 12px; align-items: baseline; }
+}
+
+/* A mark of the analysis, on the kit's pill. */
+.kb-tv .kb-prc-mark { flex: none; }
+.kb-tv .kb-prc-mark.good { background: var(--pr-open-soft); color: var(--pr-open-ink); }
+.kb-tv .kb-prc-mark.warn { background: var(--st-waiting-soft); color: var(--st-waiting-ink); }
+.kb-tv .kb-prc-mark.bad { background: var(--pr-closed-soft); color: var(--pr-closed-ink); }
+.kb-tv .kb-prc-mark.neutral { background: var(--pr-draft-soft); color: var(--pr-draft-ink); }
+
+/* The decision: the three choices, then the text box across the box. */
+.kb-tv .kb-prc-choice { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; padding-top: 10px; border-top: var(--bw-sm) solid var(--rule-soft); }
+.kb-tv .kb-prc-choice > .segmented { max-width: 100%; flex-wrap: wrap; }
+.kb-tv .kb-prc-choice > textarea.inp { min-height: calc(var(--field-h) + 16px); max-height: 240px; }
+/* As it was sent: the decision and the text, to read. */
+.kb-tv .kb-prc-answer { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 8px; padding-top: 10px; border-top: var(--bw-sm) solid var(--rule-soft); }
+.kb-tv .kb-prc-answer-label { font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
+.kb-tv .kb-prc-answer-text { flex: 1 1 100%; margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.45; }
+
+/* How many are answered, and the button that sends them. */
+.kb-tv .kb-prc-foot { display: flex; flex-wrap: wrap; align-items: center; justify-content: flex-end; gap: 8px 12px; }

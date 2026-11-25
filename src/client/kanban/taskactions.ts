@@ -26,6 +26,8 @@ export type ActionId =
   | 'hold'
   | 'resume'
   | 'fix-prs'
+  /** The PRs tab's button that sends the agent to fetch and analyse the unresolved review comments (shown with fix-prs). */
+  | 'fetch-pr-comments'
   | 'resolve-conflicts'
   | 'find-prs'
   | 'review-prs'
@@ -127,7 +129,7 @@ export function currentActions(task: ActionSubject, ctx: ActionCtx): PlacedActio
     [c.delete, 'delete'],
   );
   at('plan', [c.planFeedback, 'approve'], [c.planFeedback, 'send-plan-feedback']);
-  at('prs', [c.createPrsTab, createId(task)], [c.prsOk, 'fix-prs'], [c.prsOk, 'resolve-conflicts'], [c.findPrs, 'find-prs'], [c.reviewPrs, 'review-prs']);
+  at('prs', [c.createPrsTab, createId(task)], [c.prsOk, 'fix-prs'], [c.prsOk, 'fetch-pr-comments'], [c.prsOk, 'resolve-conflicts'], [c.findPrs, 'find-prs'], [c.reviewPrs, 'review-prs']);
   return out;
 }
 
@@ -139,7 +141,7 @@ export interface FooterActions {
 }
 
 /** Actions that stay on a tab of their own and are not in the footer. */
-export const TAB_ONLY_ACTIONS: readonly ActionId[] = ['fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs', 'send-plan-feedback'];
+export const TAB_ONLY_ACTIONS: readonly ActionId[] = ['fix-prs', 'fetch-pr-comments', 'resolve-conflicts', 'find-prs', 'review-prs', 'send-plan-feedback'];
 
 /**
  * Which of the right-hand actions is primary, first match wins: what was the `.primary` button of the old

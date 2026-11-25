@@ -26,6 +26,7 @@ export const ALWAYS_BUNDLED = ['office-task-refs'];
 export function skillPhase(phase: string): SkillPhase {
   const p = phase as RunPhase;
   if (p === 'plan' || p === 'review') return p;
+  if (p === 'pr-comments') return 'review'; // reads and analyses only: no pr skills
   if (isPrPhase(p)) return 'pr';
   return 'implement';
 }

@@ -110,6 +110,19 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'fix' }), { t: 'kanban.task.pr', id: 1, mode: 'fix' });
   assert.deepEqual(good({ t: 'kanban.task.pr', id: 1, mode: 'conflicts' }), { t: 'kanban.task.pr', id: 1, mode: 'conflicts' });
   refused({ t: 'kanban.task.pr', id: 1, mode: 'rebase' }, /mode/);
+  // The runs of the review comments' flow are the office's own: the public message never starts them.
+  refused({ t: 'kanban.task.pr', id: 1, mode: 'comments' }, /mode/);
+  refused({ t: 'kanban.task.pr', id: 1, mode: 'answers' }, /mode/);
+  assert.deepEqual(good({ t: 'kanban.pr.comments.fetch', taskId: 4, rid: 'r' }), { t: 'kanban.pr.comments.fetch', taskId: 4, rid: 'r' });
+  refused({ t: 'kanban.pr.comments.fetch' }, /taskId/);
+  const answers = [{ id: 'thread:1', decision: 'fix' }, { id: 'comment:2', decision: 'custom', text: 'Rename it' }, { id: 'review:3', decision: 'skip', text: '   ' }];
+  assert.deepEqual(good({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 1700000000000, answers }), { t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 1700000000000, answers: [answers[0], answers[1], { id: 'review:3', decision: 'skip' }] });
+  refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 'x', answers }, /fetchedAt/);
+  refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: 'a', decision: 'merge' }] }, /decision/);
+  refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: '', decision: 'fix' }] }, /empty/);
+  refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: 'fix' }, /answers/);
+  refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: 'a', decision: 'fix' }, { id: 'a', decision: 'skip' }] }, /decided once/);
+  refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: 'a', decision: 'custom', text: 'x'.repeat(4001) }] }, /too long/);
   assert.deepEqual(good({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null }), { t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null });
   assert.deepEqual(good({ t: 'kanban.issue.comment', project: 'web', issueKey: 'DEV-1', text: 'x', source: 'src-1' }), { t: 'kanban.issue.comment', project: 'web', issueKey: 'DEV-1', source: 'src-1', text: 'x' });
   assert.deepEqual(good({ t: 'kanban.issue.transitions', project: 'web', issueKey: 'DEV-1' }), { t: 'kanban.issue.transitions', project: 'web', issueKey: 'DEV-1' });
@@ -168,7 +181,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.create', task, once }, /once must be a request key/);
     refused({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once }, /once must be a request key/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 61);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 63);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {

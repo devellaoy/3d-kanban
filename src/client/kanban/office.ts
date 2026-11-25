@@ -38,6 +38,8 @@ export const PHASE_TEXT: Record<RunPhase, string> = {
   'pr-conflicts': 'resolving PR conflicts',
   compact: 'compacting',
   'pr-review': 'reviewing PRs',
+  'pr-comments': 'reading PR comments',
+  'pr-answers': 'answering PR comments',
 };
 
 /** Why it waits, said so you know what to do about it. */

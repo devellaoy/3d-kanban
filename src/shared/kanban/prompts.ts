@@ -134,6 +134,13 @@ Rules for this task (set by the office, they apply whatever else is said above):
 - Never rewrite published history (no force-push, no rebase of pushed commits).
 
 ${FINISH}`,
+  /** A fetch of a pull request's review comments (the pr-comments phase): reads, writes one file, ends with the work-done line only. */
+  prComments: `${RULE}
+${STOP_PROCESSES}
+
+Rules for this run (set by the office, they apply whatever else is said above): don't modify, stage or commit anything in the repositories, don't push, and post nothing to the pull requests' host. Write only the file the prompt names.
+
+${FINISH.replace(' and committed (for an investigation: nothing to commit)', '')}`,
   investigateSafety: `${RULE}
 ${STOP_PROCESSES}
 
@@ -197,6 +204,8 @@ export const PROMPT_CONTRACT: Partial<Record<KanbanPromptId, KanbanContractId>> 
   'kanban.pr.create': 'pr',
   'kanban.pr.fix': 'pr',
   'kanban.pr.conflicts': 'pr',
+  'kanban.pr.answers': 'pr',
+  'kanban.pr.comments': 'prComments',
   'kanban.pr.review': 'prReview',
   'kanban.pr.panel': 'panel',
 };

@@ -257,6 +257,8 @@ export const CLIENT_MSG_CLASS = {
   'kanban.pr.find': 'deny',
   'kanban.pr.link': 'deny',
   'kanban.pr.unlink': 'deny',
+  'kanban.pr.comments.fetch': 'deny',
+  'kanban.pr.comments.send': 'deny',
   // Reads, but through the owner's Jira / GitHub credentials, so not covered by the visitor's repo access.
   'kanban.pr.owner': 'deny',
   'kanban.issues.list': 'deny',

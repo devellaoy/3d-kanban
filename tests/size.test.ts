@@ -38,7 +38,7 @@ const CEILINGS: Readonly<Record<string, number>> = {
   'src/client/world/costumes.ts': 603,
   // The kanban's files, held to the budget since it became part of the project (#327) rather than kept
   // apart from it: their length then, as for the rest.
-  'src/server/kanban/engine/orchestrator.ts': 1764,
+  'src/server/kanban/engine/orchestrator.ts': 1757,
   'src/server/kanban/db/repository.ts': 901,
   'src/client/kanban/changesview.ts': 769,
 };

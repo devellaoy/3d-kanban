@@ -23,7 +23,7 @@ test('parseTurnSignal: only the announcements there are', () => {
 
 test('acceptSignal: each phase takes its own announcements, with a clear refusal for the rest', () => {
   const ok = (phase: SignalRun['phase'], sig: Parameters<typeof acceptSignal>[1]) => acceptSignal(run(phase), sig);
-  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts'] as const) {
+  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts', 'pr-comments', 'pr-answers'] as const) {
     assert.equal(ok(phase, { kind: 'done' }), undefined, phase);
     assert.equal(ok(phase, { kind: 'ask' }), undefined, phase);
   }
@@ -32,6 +32,8 @@ test('acceptSignal: each phase takes its own announcements, with a clear refusal
   assert.equal(ok('review', { kind: 'review', verdict: 'approved' }), undefined);
   assert.equal(ok('pr-review', { kind: 'review', verdict: 'changes' }), undefined);
   assert.equal(ok('pr-fix', { kind: 'pr', url: 'https://github.com/a/b/pull/1' }), undefined);
+  assert.equal(ok('pr-answers', { kind: 'pr', url: 'https://github.com/a/b/pull/1' }), undefined);
+  assert.match(ok('pr-comments', { kind: 'pr', url: 'https://github.com/a/b/pull/1' }) as string, /in its pr-comments phase: it takes "office-tasks done" or "office-tasks ask", not "pr"/, 'a fetch opens no pull requests');
   assert.equal(ok('review', { kind: 'done' }), 'This run is in its review phase: it takes "office-tasks review approved|changes", not "done"');
   assert.match(ok('implement', { kind: 'review', verdict: 'approved' }) as string, /in its implement phase: it takes "office-tasks done" or "office-tasks ask", not "review approved"/);
   assert.match(ok('plan', { kind: 'done' }) as string, /in its plan phase: it takes "office-tasks plan-ready" or "office-tasks ask", not "done"/);

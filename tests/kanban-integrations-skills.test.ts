@@ -94,6 +94,8 @@ test('a task worker: its picked skills by phase and tool, delivered, hinted, mis
   assert.equal(skillPhase('fix'), 'implement');
   assert.equal(skillPhase('pr-fix'), 'pr');
   assert.equal(skillPhase('pr-conflicts'), 'pr');
+  assert.equal(skillPhase('pr-answers'), 'pr');
+  assert.equal(skillPhase('pr-comments'), 'review', 'a fetch of review comments reads only: no pr skills');
   assert.deepEqual(pickedSkills({ plan: { claude: ['a'] } }, { plan: { claude: ['b'] } }, 'plan', 'claude'), ['b'], "the task's own pick wins");
   const args = skills.workerArgs(t.id, 'claude', 'plan');
   assert.equal(args[0], '--plugin-dir');

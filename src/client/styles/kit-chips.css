@@ -33,7 +33,7 @@
 .kb-phase.implement, .kb-phase.resume { background: var(--ph-implement-soft); color: var(--ph-implement-ink); }
 .kb-phase.review, .kb-phase.pr-review { background: var(--ph-review-soft); color: var(--ph-review-ink); }
 .kb-phase.fix { background: var(--ph-fix-soft); color: var(--ph-fix-ink); }
-.kb-phase.pr, .kb-phase.pr-fix, .kb-phase.pr-conflicts { background: var(--ph-pr-soft); color: var(--ph-pr-ink); }
+.kb-phase.pr, .kb-phase.pr-fix, .kb-phase.pr-conflicts, .kb-phase.pr-comments, .kb-phase.pr-answers { background: var(--ph-pr-soft); color: var(--ph-pr-ink); }
 
 /* ---------- Pull request state: the pill in a window, the chip on a card or in a list ---------- */
 .pr-pill.open { background: var(--pr-open-soft); color: var(--pr-open-ink); }

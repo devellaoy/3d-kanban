@@ -24,13 +24,15 @@ import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { ReadOpts, TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
-import { canFixPrs, isPrPhase, onPrBranches, type PrMode } from '../../../shared/kanban/prs.js';
+import { canFixPrs, isPrPhase, onPrBranches, type PrRunMode } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
 import { next, prPrompt, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
-import { backoffMs, looksInterrupted, notUpdatedLines, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers, stripWorkDone } from './markers.js';
+import { backoffMs, looksInterrupted, planOutcome, reviewFindings, reviewVerdict, stripPlanMarkers, stripWorkDone } from './markers.js';
 import { endStop, type StopRun } from './stopping.js';
-import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders, uncommitted } from './workspace.js';
+import { branchExists, homeCleanup, hasChanges, missingFolders, uncommitted } from './workspace.js';
 import { Handoffs } from './handoff.js';
+import { PrCommentsRuns } from './prcomments.js';
+import { PrTurn } from './prturn.js';
 import { Departures } from './departures.js';
 import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
@@ -40,12 +42,12 @@ import type { Live, Via } from './live.js';
 import { lostText, stopFallback, TurnEnd, typedSettled, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
 import type { ReviewPanelPart } from '../../../shared/kanban/review.js';
+import { checkoutFor } from './checkoutfor.js';
 import { slot, slotPatch } from './slot.js';
 import { Seating, baseBranches } from './seating.js';
 export { baseBranches };
 import { PrReviews } from './prreview-launch.js';
 import { syncBranch } from './branchsync.js';
-import { recordPrs, refreshPrBoards } from './prlinks.js';
 import { UsageLimits } from './usagelimit.js';
 import { PANEL_WAIT_MS, ReviewPanel } from './panel.js';
 import { RestWaits } from './restwait.js';
@@ -96,7 +98,7 @@ const OFFICE: KanbanCaller = { name: 'Kanban', admin: true };
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const SUMMARY_MAX = 20_000;
 /** The prompts a fresh session taking over work under way is handed off with. */
-const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'pr.create', 'pr.fix', 'pr.conflicts']);
+const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'pr.create', 'pr.fix', 'pr.conflicts', 'pr.answers']);
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
 /** Why an answer from the kanban isn't typed into a terminal that isn't asking a question (answer). */
@@ -124,6 +126,8 @@ export class Orchestrator {
   private adapters: Record<KanbanTool, TaskAgentAdapter>;
   private compose: Composer;
   private handoffs: Handoffs;
+  private prComments: PrCommentsRuns;
+  private prTurn: PrTurn;
   private departures: Departures<Live>;
   private holds: Holds;
   private turnHolds: TurnHolds<Live>;
@@ -145,6 +149,8 @@ export class Orchestrator {
     this.adapters = { claude: claudeAdapter, codex: codexAdapter, ...options.adapters };
     this.compose = new Composer(ctx);
     this.handoffs = new Handoffs(ctx, (p) => this.folder(p), (id, patch) => this.update(id, patch));
+    this.prComments = new PrCommentsRuns(ctx, () => this.opts.now());
+    this.prTurn = new PrTurn(ctx, { update: (id, patch) => this.update(id, patch), note: (task, text, runId) => this.note(task, text, runId), pushTask: (task) => this.pushTask(task) }, this.prComments);
     this.departures = new Departures<Live>({
       live: (workerId) => this.live.get(workerId),
       liveOf: (taskId) => this.liveOf(taskId),
@@ -544,7 +550,9 @@ export class Orchestrator {
    * One stopped with no worker never started (see queuedStopped): it goes again as it would have.
    */
   private lastRun(taskId: number): LastRun | undefined {
-    const runs = this.ctx.repo.listRuns(taskId).filter((r) => r.phase !== 'compact' && !r.seat);
+    // A fetch of review comments is no work to carry on (the task went back to where it was), unless it is what is parked. An additional reviewer's run is not the task's.
+    const fetching = this.ctx.repo.getTask(taskId)?.phase === 'pr-comments';
+    const runs = this.ctx.repo.listRuns(taskId).filter((r) => r.phase !== 'compact' && !r.seat && (fetching || r.phase !== 'pr-comments'));
     const last = runs[runs.length - 1];
     const fresh = last?.status === 'stopped' && !last.workerId && !last.sessionId;
     return last && { phase: last.phase, ...(last.round !== undefined ? { round: last.round } : {}), role: last.role, ...(fresh ? { fresh } : {}) };
@@ -663,6 +671,7 @@ export class Orchestrator {
   private async apply(taskId: number, e: MachineEvent, via: Via = {}): Promise<string | undefined> {
     const task = this.ctx.repo.getTask(taskId);
     if (!task) return 'No such task';
+    e = this.prComments.ending(task, e); // a fetch of review comments that ends leaves the task where it was
     const review = this.reviewSettings(task);
     const defaultAnswer = this.compose.text('kanban.defaultAnswer', task.project, { taskId: task.id });
     const tr = next(stateOf(task), e, { type: task.type, usePlan: task.usePlan, useReview: task.useReview, planApproval: task.planApproval }, { rounds: review.rounds, reReviewLastFix: review.reReviewLastFix, ...(defaultAnswer ? { defaultAnswer } : {}) });
@@ -740,6 +749,9 @@ export class Orchestrator {
         return undefined;
       case 'note':
         this.note(task, eff.text);
+        return undefined;
+      case 'commentsOrigin':
+        this.prComments.origin(taskId, eff.back);
         return undefined;
       case 'finished':
         this.update(taskId, { finishedAt: this.opts.now() });
@@ -850,7 +862,7 @@ export class Orchestrator {
       ...(part === 'co' || part === 'combine' ? { panel: part } : {}),
       ...more,
       fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.prReviews.last(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
-      held,
+      held, prAnswers: eff.phase === 'pr-answers' ? this.prComments.answersFor(task.id) : undefined,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);
@@ -936,7 +948,7 @@ export class Orchestrator {
       info = floor.workers.get(info.id);
     }
     if (info && info.kind === 'agent' && ((info.status !== 'working' && info.status !== 'starting') || (quick && info.status === 'working' && !relaunches(info)))) {
-      x.checkout = await this.checkoutFor(fresh, def, floor.dir, role, eff.phase, false);
+      x.checkout = await checkoutFor(this.ctx, fresh, def, floor.dir, role, eff.phase, false);
       const prompt = typeable(withCheckout(build((eff.prompt === 'continue' || eff.prompt === 'restarted') && !info.sessionId ? this.freshKind(fresh, eff.phase) : eff.prompt)));
       const live = follow(info.id, prompt);
       let err: string | undefined;
@@ -980,7 +992,7 @@ export class Orchestrator {
       if (kind === 'continue' || kind === 'restarted' || (kind === 'rereview' && part !== 'combine')) kind = kind === 'rereview' ? 'review' : this.freshKind(now, eff.phase);
       if (kind === 'replan') kind = 'plan';
     }
-    x.checkout = await this.checkoutFor(now, def, floor.dir, role, eff.phase, !folder && !now.workspace);
+    x.checkout = await checkoutFor(this.ctx, now, def, floor.dir, role, eff.phase, !folder && !now.workspace);
     let prompt = build(kind);
     // A fresh session taking over work already under way is told where things stand first.
     if (!session && role === 'implementer' && HANDOFF_KINDS.has(kind) && (now.workspace || x.checkout)) {
@@ -1025,21 +1037,6 @@ export class Orchestrator {
   private exitedAtHire(live: Live) {
     const info = this.ctx.floor(live.floorId)?.workers.get(live.workerId);
     if (info?.status === 'exited') void this.serial(live.taskId, () => this.exited(live));
-  }
-
-  /**
-   * The task's branch in each repository, one line each, when the worktree the run goes into isn't on
-   * it: a fresh one (`freshTree`) for a task that already has a branch, or one still on the branch
-   * the office cut for it. Undefined when there's nothing to check out (a plan, an
-   * investigation, a folder project, no branch yet, or already on it).
-   */
-  private async checkoutFor(task: KanbanTask, def: FloorDef, floorDir: string, role: KanbanRole, phase: RunPhase, freshTree: boolean): Promise<string | undefined> {
-    if (role !== 'implementer' || phase === 'plan' || (task.type === 'investigate' && !onPrBranches(phase)) || isFolderProject(def)) return undefined;
-    // A Fix PRs or Resolve conflicts run works on each open PR's own branch, whatever branch the task (an investigation's, say) has.
-    const prs = onPrBranches(phase) ? fixTargetsOf(task, def, this.ctx.floor(task.project)).filter((p) => p.branch) : [];
-    if (!task.branch && !prs.length) return undefined;
-    const saved = { ...this.ctx.repo.repoBranches(task.id), ...Object.fromEntries(prs.map((p) => [p.repoId, p.branch])) };
-    return checkoutLines(floorDir, task, taskRepos(def, task), saved, onPrBranches(phase), prs.length > 0, freshTree);
   }
 
   /** The task's workspace is gone: its workers go home, and it (and the sessions that ran there) is forgotten; its branch stays. */
@@ -1443,16 +1440,11 @@ export class Orchestrator {
         break;
       case 'pr':
       case 'pr-fix':
-      case 'pr-conflicts': {
-        say('result', text);
-        recordPrs(this.ctx, task, text, (t) => this.pushTask(t));
-        refreshPrBoards(this.ctx, task);
-        const missed = live.phase === 'pr-conflicts' ? notUpdatedLines(text).length : 0;
-        if (missed) this.note(task, `${missed} pull request${missed === 1 ? ' was' : 's were'} not updated: read the result for why`, live.runId);
-        if (live.phase === 'pr') this.update(task.id, { flags: { ...(this.ctx.repo.getTask(task.id)?.flags ?? task.flags), prRequested: true } });
-        event = { type: 'prDone', pending };
+      case 'pr-conflicts':
+      case 'pr-answers':
+      case 'pr-comments':
+        event = await this.prTurn.ended(task, live, text, pending, (t) => say('result', t));
         break;
-      }
       case 'pr-review':
         verdict = reviewVerdict(text);
         say('review', text);
@@ -1653,7 +1645,8 @@ export class Orchestrator {
     });
   }
 
-  pr(taskId: number, who: KanbanCaller, mode: PrMode): Promise<string | void> {
+  /** The PR runs, the review comments' fetch and answers among them (only the engine's own callers may name those two, see PrRunMode). */
+  prRun(taskId: number, who: KanbanCaller, mode: PrRunMode): Promise<string | void> {
     return this.op(taskId, (task) => {
       // Fixing or resolving conflicts, the shared rule answers first: the server gives the reason the button does.
       const def = this.ctx.project(task.project);
@@ -1752,7 +1745,7 @@ export class Orchestrator {
     if (!floor) return 'No such floor';
     const info = floor.workers.get(workerId);
     if (!info) return 'No such worker';
-    if (info.kanban) return this.pr(info.kanban.taskId, who, 'create');
+    if (info.kanban) return this.prRun(info.kanban.taskId, who, 'create');
     if (info.kind === 'shell') return 'fallback';
     if (info.status === 'needs_input') return `${info.name} is waiting on an answer in its terminal`;
     const text = this.compose.workerPr(floor, info);
