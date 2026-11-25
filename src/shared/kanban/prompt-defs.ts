@@ -239,13 +239,15 @@ Review the task's commits and any uncommitted changes in each repository against
     group: 'kanban',
     label: 'Review · next round',
     used: "Sent to the reviewer's session for the next round, after the implementer fixed the findings. The office appends the review contract.",
-    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, fixSummary: "The implementer's reply to the findings", history: "The task's conversation, as a reference to its file, with the rule for reading it; empty when the task has none", ...UI_TESTING_VAR, instructions: TASK_VARS.instructions, language: TASK_VARS.language },
+    vars: { taskId: TASK_VARS.taskId, ...ROUND_VARS, fixSummary: "The implementer's reply to the findings", ...PLAN_VAR, history: "The task's conversation, as a reference to its file, with the rule for reading it; empty when the task has none", ...UI_TESTING_VAR, instructions: TASK_VARS.instructions, language: TASK_VARS.language },
     needs: ['fixSummary'],
     text: `The implementer of task #{{taskId}} has worked on your findings. Their reply:
 
 {{fixSummary}}
 
 Review the changes again (round {{round}} of {{rounds}}): check that each finding was really fixed or rightly rejected, and that the fixes didn't break anything else. Still don't change any files.
+
+{{plan}}
 
 {{history}}
 

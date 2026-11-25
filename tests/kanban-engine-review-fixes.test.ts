@@ -9,6 +9,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import type { Capacity } from '../src/server/machine.js';
 import { DESKS } from '../src/shared/layout.js';
+import { taskConversation } from '../src/server/kanban/conversation.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
 
 const IMPLEMENT: Rule = { when: 'Implement kanban task', reply: 'Changed the redirect.', commit: 'Fix the redirect' };
@@ -163,6 +164,36 @@ const stillAsking = (fx: EngineFixture, id: number) => {
   assert.equal(now.waitingReason, 'agent_asking');
   return now;
 };
+
+// The question asked in the terminal is kept as a comment of the run, so the conversation file has it right before its answer.
+async function kept(fx: EngineFixture, answer: (taskId: number) => Promise<void>) {
+  const { task, run } = await asking(fx, { ...ASK, options: [{ label: 'v1', description: 'older' }, { label: 'v2', description: 'newer' }] });
+  const q = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'questions');
+  assert.equal(q.length, 1);
+  assert.equal(q[0].text, 'Shall I use v1 or v2 of the API?\n- v1: older\n- v2: newer');
+  assert.equal(q[0].runId, run.id);
+  assert.equal(q[0].authorKind, 'agent');
+  await answer(task.id);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
+  const md = taskConversation({ repo: fx.repo }, task.id, (c) => c.text)!.markdown();
+  assert.match(md, /What the agent had said or asked \([^)]*\)\n\n> Shall I use v1 or v2 of the API\?\n> - v1: older\n> - v2: newer\n\n## [^\n]* — Ada\n\n> yes, use v2\n/);
+  assert.doesNotMatch(md, /question was not recorded/);
+}
+
+test('a question asked in the terminal is kept as a comment and leads its answer given in the answer box', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  await kept(fx, async (id) => void (await fx.engine.continue(id, ADA, 'yes, use v2')));
+});
+
+test('a question asked in the terminal leads its answer given as a comment', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  await kept(fx, async (id) => {
+    const { comment } = fx.repo.addComment({ taskId: id, authorKind: 'user', authorName: 'Ada', kind: 'message', text: 'yes, use v2' });
+    await fx.engine.commented(id, comment.id, ADA);
+  });
+});
 
 test('agent asking a question → continue with an answer: stored as a comment, typed into its terminal; waiting until its hooks say it went on, then in progress on the same run', async (t) => {
   const fx = await engineFixture();

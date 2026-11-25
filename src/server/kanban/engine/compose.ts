@@ -408,7 +408,8 @@ export class Composer {
     const ins = (id: KanbanPromptId, text: string) => this.withBlock(id, p, text, String(v.instructions), 'instructions');
     // The conversation file is written for the reviewer's two kinds only; a rewritten prompt without {{history}} gets the block at its end.
     const hist = (id: KanbanPromptId, text: string, block: string) => this.withBlock(id, p, text, block, 'history');
-    const history = () => historyBlock(this.ctx, (i, pr, vars) => this.text(i, pr, vars), (c) => this.commentText(p, task.id, c.text, this.ctx.repo.listAttachments(task.id).filter((a) => a.commentId === c.id)), task);
+    let atts: ReturnType<KanbanContext['repo']['listAttachments']> | undefined; // fetched once, when the first comment needs them
+    const history = () => historyBlock(this.ctx, (i, pr, vars) => this.text(i, pr, vars), (c) => this.commentText(p, task.id, c.text, (atts ??= this.ctx.repo.listAttachments(task.id)).filter((a) => a.commentId === c.id)), task);
     switch (kind) {
       case 'plan':
         return seal(ins('kanban.plan', this.text('kanban.plan', p, v)));
@@ -428,7 +429,7 @@ export class Composer {
       case 'rereview': {
         if (x.panel === 'combine') return seal(ins('kanban.review.combine', this.text('kanban.review.combine', p, { taskId: task.id, round: v.round, rounds: v.rounds, reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })));
         const h = history();
-        return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', history: h, instructions: v.instructions, language: v.language }), h)) + this.coText(x, p));
+        return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', plan: v.plan, history: h, instructions: v.instructions, language: v.language }), h)) + this.coText(x, p));
       }
       case 'fix':
         return seal(ins('kanban.fix', this.withUi('kanban.fix', def, task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', instructions: v.instructions, language: v.language })));

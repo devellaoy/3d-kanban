@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { parseTurnSignal } from '../src/shared/kanban/signals.js';
-import { acceptSignal, applySignal, expireSignal, type SignalRun } from '../src/server/kanban/engine/signals.js';
+import { acceptSignal, applySignal, askedQuestion, expireSignal, heardQuestion, type SignalRun } from '../src/server/kanban/engine/signals.js';
 import { finalMarker, planOutcome, prLines, reviewVerdict, workDone } from '../src/server/kanban/engine/markers.js';
 import { ADA, engineFixture, hookToken, midTurn, type EngineFixture } from './kanban-engine-fixture.js';
 
@@ -310,4 +310,25 @@ test('implement ask: Continue with an answer resumes too, and a comment made whi
   assert.ok(prompts.some((p) => /Use sqlite/.test(p)), 'the answer reached the agent');
   assert.ok(fx.invocations().concat([]).some((i) => /Also add a README/.test(`${i.prompt ?? ''}${i.args.join(' ')}`)), 'the comment reached it too');
   assert.equal(fx.task(task.id).pendingMessages.length, 0);
+});
+
+test('heardQuestion: the same boolean as ever, and the question of a question tool\'s PreToolUse is kept for the run', () => {
+  const live = {};
+  const ask = (tool: string | undefined, hookEvent: string, payload?: unknown) => heardQuestion(live, { tool, hookEvent, payload });
+  assert.equal(ask('Bash', 'PreToolUse', { tool_input: { command: 'ls' } }), false);
+  assert.equal(ask(undefined, 'PreToolUse'), false);
+  assert.equal(askedQuestion(live), undefined);
+  const input = { questions: [{ question: 'Which one?', header: 'Pick', options: [{ label: 'A', description: 'first' }, { label: 'B' }] }, { question: 'Sure?' }] };
+  assert.equal(ask('AskUserQuestion', 'PreToolUse', { tool_input: input }), true);
+  assert.equal(askedQuestion(live), 'Pick: Which one?\n- A: first\n- B\n\nSure?');
+  assert.equal(askedQuestion(live), undefined, 'taken once: a second wait for input records nothing again');
+  // Other events of the tool don't bring it back; a later question is kept; an unknown shape forgets it; plain fields are tried.
+  assert.equal(ask('AskUserQuestion', 'PostToolUse'), true);
+  assert.equal(askedQuestion(live), undefined);
+  assert.equal(ask('mcp.request_user_input', 'PreToolUse', { tool_input: { question: 'Plain?' } }), true);
+  assert.equal(askedQuestion(live), 'Plain?');
+  assert.equal(ask('AskUserQuestion', 'PreToolUse', { tool_input: { odd: 1 } }), true);
+  assert.equal(askedQuestion(live), undefined);
+  assert.equal(ask('AskUserQuestion', 'PreToolUse', 'nonsense'), true);
+  assert.equal(askedQuestion(live), undefined);
 });

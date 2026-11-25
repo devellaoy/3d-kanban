@@ -257,3 +257,18 @@ test('a body is only shortened when that saves something; a throwing userText fa
   })!;
   assert.match(c.markdown(), /> raw text/);
 });
+
+test('a recorded terminal question leads its answer, given by comment or through the answer box; unrecorded stays qualified', (t) => {
+  const s = setup(t);
+  const r1 = s.run({ phase: 'implement' });
+  s.agent('questions', 'Which colour?', { runId: r1.id });
+  s.user('blue', { runId: r1.id });
+  s.agent('questions', 'Which size?', { runId: r1.id });
+  s.user('large');
+  s.user('typed blindly', { runId: s.run({ phase: 'implement' }).id });
+  const md = s.conv()!.markdown();
+  assert.match(md, /Which colour\?\n\n## [^\n]* — Ada\n\n> blue\n/);
+  assert.match(md, /Which size\?\n\n## [^\n]* — Ada\n\n> large\n/);
+  assert.equal(md.match(/question was not recorded/g)!.length, 1);
+  assert.match(md, /— Ada \(typed as an answer[^)]*\)\n\n> typed blindly/);
+});

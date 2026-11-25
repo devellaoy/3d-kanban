@@ -896,3 +896,17 @@ test('history: where the file cannot be written the newest part of the conversat
   assert.doesNotMatch(text, /\{\{/);
   assert.ok(text.length < HISTORY_TEXT_MAX + 20_000, 'the text is capped');
 });
+
+test('plan file: a rereview names the plan file, carries the text where the file cannot be written, and adds nothing without a plan', (t) => {
+  const { def, dir, repo, compose, ctx } = setup(t);
+  const task = histTask(repo, { plan: true, comment: true });
+  const re = compose.build('rereview', def, task, 'claude', dir, histX('review'));
+  assert.ok(re.includes(`\`${planFilePath(ctx.filesDir, task.id)}\``));
+  assert.doesNotMatch(re, /Secret plan text/);
+  rmSync(planFilePath(ctx.filesDir, task.id), { force: true });
+  mkdirSync(planFilePath(ctx.filesDir, task.id), { recursive: true });
+  assert.match(compose.build('rereview', def, task, 'claude', dir, histX('review')), /The accepted plan:\n\nSecret plan text/);
+  const bare = histTask(repo);
+  const text = compose.build('rereview', def, bare, 'claude', dir, histX('review'));
+  assert.doesNotMatch(text, /accepted plan|\{\{|\n{3,}/i);
+});

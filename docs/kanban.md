@@ -194,7 +194,7 @@ is long) and a line saying which meeting it came from.
 
    What the reviewer gets besides the description: the accepted plan and the task's conversation as two
    files the office keeps in the task's folder (`accepted-plan.md`, `conversation.md`; the prompt carries
-   only their paths), and the implementer's latest summary in the first round's prompt, as a claim to check
+   only their paths; every round's prompt, the next-round one too, names both), and the implementer's latest summary in the first round's prompt, as a claim to check
    against the diff. The conversation is what you have said since the task was written (comments, changes
    asked of the plan, answers to questions) and the earlier review rounds with the implementer's replies;
    the office rewrites it before every round (a first review of a task with no message and no finding has
@@ -239,7 +239,10 @@ when it asks a question, in the answer box under the Overview's banner (**Open t
 answer is kept as your comment and typed into its terminal, as if you typed it there, and the same run
 carries on (the task is In progress again once the agent goes on; a question with several parts keeps
 it waiting until the last is answered). The box takes files like a comment: their paths are typed in
-after your answer. A comment on the task does the same (its files' paths too). When it asks for a
+after your answer. A comment on the task does the same (its files' paths too). A question asked in the
+terminal is also kept as a comment of the task (with its options, from the hook that announces it), so
+it sits in the task's conversation, and reaches the reviewer's conversation file, right before its
+answer. When it asks for a
 permission (or the office can't tell what it waits on), the task says *answer it in its terminal*
 with **Open the terminal** and no answer box: nothing is typed for you, since Enter would pick the
 prompt's highlighted option. A comment then is kept and goes to the agent once that turn is over.
@@ -952,7 +955,7 @@ criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs t
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line and its note on reading a Jira ticket, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan (as a file reference, and as text), the reviewer's conversation (as a file reference, and as text) and the implementer's summary, what the task did, and the handoff's summary and comments). Each lists
-its `{{placeholders}}`. The instructions come as a block (*Project's instructions*) of one part per file: *general*, *testing* and *a repository's*, each with a file form (the one used) and a text form (only when the file could not be written). A rewritten prompt that has no `{{instructions}}` gets the block at its end, as it does with `{{uiTesting}}`. `{{plan}}` is a reference to the file that holds the accepted plan (the plan's text itself only where that file could not be written), empty for a task without a plan. The review prompts carry `{{history}}`, the reference to the task's conversation file with the rule for reading it (the text form, capped at the newest 30 000 characters, only where the file could not be written; empty when the task has no conversation); *Review* and *Review · next round* both have it, the combining part of a round doesn't. A rewritten review prompt that has no `{{history}}` gets the block at its end, before the held messages and the contract. `{{summary}}` of *Review* (the implementer's latest summary) is **not** added to a rewrite that lacks it. The text that hands a finished meeting's output on is editable too, in the office's
+its `{{placeholders}}`. The instructions come as a block (*Project's instructions*) of one part per file: *general*, *testing* and *a repository's*, each with a file form (the one used) and a text form (only when the file could not be written). A rewritten prompt that has no `{{instructions}}` gets the block at its end, as it does with `{{uiTesting}}`. `{{plan}}` is a reference to the file that holds the accepted plan (the plan's text itself only where that file could not be written), empty for a task without a plan. The review prompts carry `{{history}}`, the reference to the task's conversation file with the rule for reading it (the text form, capped at the newest 30 000 characters, only where the file could not be written; empty when the task has no conversation); *Review* and *Review · next round* both have it, the combining part of a round doesn't. `{{plan}}` is in both too, and a rewrite without it is not given a block. A rewritten review prompt that has no `{{history}}` gets the block at its end, before the held messages and the contract. `{{summary}}` of *Review* (the implementer's latest summary) is **not** added to a rewrite that lacks it. The text that hands a finished meeting's output on is editable too, in the office's
 prompts (group Meetings): *Handing the output on* and its pieces for a review posted on a PR, a stopped meeting and the meeting's branch.
 
 - **Office-wide**: Settings → Workers → **Edit the prompts…**, group **Kanban tasks**
