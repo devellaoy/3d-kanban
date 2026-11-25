@@ -10,10 +10,11 @@ whatever happens to the task shows on the worker. This page is the contract betw
 ## Identity
 
 - `WorkerInfo.kanban` links a worker to its task:
-  `{ taskId, role: 'implementer' | 'reviewer', title?, status?, phase?, round?, rounds?, waitingReason?, retryAt? }`.
+  `{ taskId, role: 'implementer' | 'reviewer', title?, status?, phase?, round?, rounds?, seat?, waitingReason?, retryAt? }`
+  (`seat` 1..4 is an additional reviewer's; the implementer and the main reviewer have none).
   The engine keeps the summary current (`WorkerManager.setKanbanSummary`, which `WorkerManager` takes from `KanbanWorkers` in `src/server/kanban/workers.ts`), so it reaches every 3D and
   /lite client through the ordinary `worker.update` — the 3D client needs no kanban subscription for it.
-- A task has at most one implementer and one reviewer at a time. Most workers have no task; a worker
+- A task has at most one implementer and one main reviewer at a time. During a review round with additional reviewers (Settings → Kanban → Reviews) it also has up to four additional reviewers, each a worker of its own in the task's worktree with `kanban.seat` 1..4 (`KanbanTask.coReviewers`); they go home when the round's result is ready. Most workers have no task; a worker
   gets one only on opt-in (the hire toggle, an issue card turned into a task, or the kanban's Start).
 
 ## 3D actions → task events
@@ -23,7 +24,8 @@ whatever happens to the task shows on the worker. This page is the contract betw
 | **X** send home (any path: WS `worker.kill`, HTTP/CLI home, queue recycle, meetings, leave-on-merge, engine sends) | One path: the intent `{ by, done?, reason }` is recorded on the worker before it goes and read by the engine's `removed()`. Exactly one status comment per departure. |
 | … implementer, no live run | `kanban.done === true` → task **done**. Otherwise it keeps its column (in_progress without a run → waiting). Only X (`reason: 'sent-home'`) clears `retryAt`: a move to done or back to To do or the office's own recycling leaves a usage-limit auto-resume due, and the sweep hires a new worker for it. |
 | … implementer, live run | The run is **stopped** ("<by> sent <name> home"), task → waiting with Retry — or done when `done === true`. |
-| … reviewer | The round is abandoned; queued messages are delivered, otherwise task → review. |
+| … reviewer | The round is abandoned (its additional reviewers' runs end with it); queued messages are delivered, otherwise task → review. |
+| … additional reviewer | Only its seat is left out of the round (its run ends, the conversation says so); the round goes on and the task's state does not change. |
 | … leave-on-merge (`reason: 'merged'`) | Task → done only when every linked PR is merged and none is open or draft. Workers of in_progress tasks or tasks with a live run are never picked. |
 | Worktree cleanup | Forced to `keep` while another worker of the same task sits in that worktree or a run is live. When the worktree was deleted, the task's workspace is dropped; its branch is kept only if it still exists locally or on origin. |
 | **P** / issue card drop / Ask onto the implementer | Only while the task is in progress, waiting or in review: the fork's dialogs (P's "💬 Message task #N", Ask → that worker, the task's own issue card dropped on its desk) send `asComment: true`, and it becomes a task comment (the engine follows the turn and reviews it; the card's issue is still claimed). "Type straight into the terminal instead", the terminal's own say box and every other caller send upstream's plain prompt, typed in. For a task in To do, done or archived the client offers upstream's plain prompt, and the server refuses an `asComment` prompt with a clear message (nothing is stored). A reviewer refuses `asComment` prompts only. |
@@ -55,7 +57,7 @@ instead; the task waits (failed) with upstream's reason, naming whose sign-in is
 - A task that can't get a desk, or finds the office's worker limit full, is **queued** (runState
   `queued`) and starts when a desk or capacity frees, as its creator's account. A task counts once
   against the worker limit: its reviewer is hired past it while its own implementer is at its desk
-  (`SpawnExtra.countsWith`), and counted once there. Moving it to done,
+  (`SpawnExtra.countsWith`), and counted once there; a review round's additional reviewers are hired like any worker (a free desk, their own place under the limit), and one that finds none is left out of the round instead of queued. Moving it to done,
   archived or To do (or the auto-archive) takes it out of the queue (runState `idle`, no `queuedRun`),
   and the drain looks at the task's column again before it hires: a task out of the process is
   dropped from the queue, never hired for.
