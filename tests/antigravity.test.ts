@@ -2,7 +2,7 @@ import test, { mock } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync, spawn } from 'node:child_process';
 import { createServer } from 'node:http';
-import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import {
@@ -12,7 +12,7 @@ import {
   writeAntigravityHook,
   writeAntigravityPlugin,
 } from '../src/server/antigravity.js';
-import { antigravity, HELD_STOP_MS, type AntigravityState } from '../src/server/providers/antigravity.js';
+import { antigravity, antigravityBlocked, HELD_STOP_MS, type AntigravityState } from '../src/server/providers/antigravity.js';
 import { PROVIDERS } from '../src/server/providers/index.js';
 import { ANTIGRAVITY_MODELS, PROVIDER_META } from '../src/shared/providers.js';
 import type { WorkerHandle } from '../src/server/workers/types.js';
@@ -108,6 +108,7 @@ test('launch puts the trust, the phase flags, the resume and the prompt on the c
     const plan = launch(dir, { args: ['--base'], extraArgs: ['--dangerously-skip-permissions', '--mode', 'plan'], resumeSessionId: 'abc', prompt: 'go' });
     assert.deepEqual(plan.args, ['--base', ...trust, '--dangerously-skip-permissions', '--mode', 'plan', '--resume', 'abc', '-i', 'go']);
     assert.equal(plan.rotateToken, true);
+    plan.finishEnv!({});
     assert.equal(antigravity.bootHint, undefined);
     // The helper went to the data dir, the plugin to the workspace.
     assert.ok(readFileSync(path.join(dir, 'data', 'agent-office-antigravity-hook.cjs'), 'utf8').includes('/hooks/antigravity'));
@@ -117,10 +118,16 @@ test('launch puts the trust, the phase flags, the resume and the prompt on the c
   }
 });
 
-test('only its trust screen blocks it, never the sign-in line it prints at start', () => {
+test('its trust, sign-in and first-run screens block it, the banner it prints at every start does not', () => {
   const blocked = antigravity.screen!.blocked!;
   assert.match(blocked('Do you trust the contents of this project?\n Yes, I trust this folder', true) ?? '', /trust/);
-  assert.equal(blocked('You are currently not signed in. Signing in...', true), undefined);
+  for (const line of ['Select login method:', 'Select Google Cloud sign-in method:', 'Open this URL in your local browser to sign in:', 'Enter the authorization code:', 'Sign-in timed out. Try again.', 'No authentication methods available.']) {
+    assert.equal(blocked(`welcome\n  │ ${line}\n  1. Google`, false), 'Open the terminal: sign in to Antigravity', line);
+  }
+  assert.equal(antigravityBlocked('Choose your color scheme:\n 1. Dark'), "Open the terminal: finish Antigravity's first-run setup");
+  assert.equal(blocked('You are currently not signed in.\nSigning in...', true), undefined);
+  assert.equal(blocked('I read the docs on how to sign in and select login method: it is in the guide', false), undefined);
+  assert.equal(blocked('> fix it\nthinking about login...', false), undefined);
 });
 
 test('the helper posts the snake_case body to the authenticated bridge and prints nothing', async () => {
@@ -445,4 +452,158 @@ test('keeps only the transcript and root across a restart', () => {
   antigravity.usage!.restore!(fresh, saved);
   assert.equal(fresh.transcript, '/t.jsonl');
   assert.equal(fresh.root, 'root');
+});
+
+test('a huge prompt loses no event: the helper cuts it and every hook gets through, so the worker finishes', async () => {
+  const dir = temp();
+  const bodies: Record<string, unknown>[] = [];
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (c: Buffer) => chunks.push(c));
+    req.on('end', () => { bodies.push(JSON.parse(Buffer.concat(chunks).toString('utf8'))); res.writeHead(200).end(); });
+  });
+  try {
+    const file = writeAntigravityHook(dir);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const env = { PATH: process.env.PATH ?? '', AGENT_OFFICE_HOOK_URL: `http://127.0.0.1:${address.port}`, AGENT_OFFICE_HOOK_TOKEN: 'tok', AGENT_OFFICE_WORKER_ID: 'w1' };
+    const run = (event: string, input: unknown) => new Promise<void>((resolve, reject) => {
+      const child = spawn(process.execPath, [file, event], { env, stdio: ['pipe', 'ignore', 'ignore'] });
+      child.on('error', reject);
+      child.on('close', () => resolve());
+      child.stdin.on('error', () => {});
+      child.stdin.end(JSON.stringify(input));
+    });
+    const big = 'x'.repeat(300_000);
+    const base = { conversationId: 'c1', lastUserInput: big, transcriptPath: '/t.jsonl' };
+    await run('SessionStart', base);
+    await run('PreInvocation', { ...base, invocationNum: 0 });
+    await run('PreToolUse', { ...base, toolCall: { name: 'write_file', id: 't1', args: { content: 'y'.repeat(200 * 1024) } } });
+    await run('PostToolUse', { ...base, toolCall: { name: 'write_file', id: 't1' } });
+    await run('Stop', { ...base, fullyIdle: true });
+    assert.deepEqual(bodies.map((b) => b.hook_event_name), ['SessionStart', 'PreInvocation', 'PreToolUse', 'PostToolUse', 'Stop']);
+    assert.equal((bodies[1].prompt as string).length, 20_000);
+    assert.equal(bodies[2].prompt, undefined);
+    const { h, info } = handle();
+    const seen: string[] = [];
+    for (const b of bodies) {
+      assert.equal(antigravity.hook!.handle(h, b.hook_event_name as string, b), true);
+      seen.push(info.status);
+    }
+    assert.deepEqual(seen, ['idle', 'working', 'working', 'working', 'done']);
+    // The same cut prompt again is still "the same prompt" for the woken-root rule.
+    assert.equal((h.state as AntigravityState).lastPrompt?.length, 20_000);
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- the plugin folder is the office's own ------------------------------------------------------
+
+const PLUGIN_REL = path.join('.agents', 'plugins', 'agent-office');
+
+test('a plugin folder tracked by git is left byte for byte as it is, and the launch fails with why', () => {
+  const dir = temp();
+  try {
+    execFileSync('git', ['init', '-q'], { cwd: dir });
+    const folder = path.join(dir, PLUGIN_REL);
+    mkdirSync(folder, { recursive: true });
+    writeFileSync(path.join(folder, 'plugin.json'), '{"name":"theirs"}');
+    execFileSync('git', ['add', '-f', '.'], { cwd: dir });
+    assert.throws(() => writeAntigravityPlugin(dir, '/data/hook.cjs'), /Antigravity can't start here: .*not the office's own \(it is tracked by git\)\. Move or remove it, then press R/);
+    assert.equal(readFileSync(path.join(folder, 'plugin.json'), 'utf8'), '{"name":"theirs"}');
+    assert.deepEqual(readdirSyncOf(folder), ['plugin.json']);
+    const plan = launch(dir, {});
+    assert.throws(() => plan.finishEnv!({}), /press R/);
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+function readdirSyncOf(dir: string): string[] {
+  return execFileSync('ls', ['-A', dir], { encoding: 'utf8' }).split('\n').filter(Boolean).sort();
+}
+
+test('a foreign folder without the office marker is left alone; its own, an empty one and a fresh one are written', () => {
+  const dir = temp();
+  try {
+    const folder = path.join(dir, PLUGIN_REL);
+    mkdirSync(folder, { recursive: true });
+    writeAntigravityPlugin(dir, '/data/hook.cjs'); // empty folder: ours to fill
+    assert.ok(existsSync(path.join(folder, '.agent-office-plugin')));
+    writeFileSync(path.join(folder, 'hooks.json'), 'stale');
+    writeAntigravityPlugin(dir, '/data/hook.cjs'); // marked: rewritten
+    assert.notEqual(readFileSync(path.join(folder, 'hooks.json'), 'utf8'), 'stale');
+    const foreign = path.join(temp(), PLUGIN_REL);
+    mkdirSync(foreign, { recursive: true });
+    writeFileSync(path.join(foreign, 'plugin.json'), '{"name":"theirs"}');
+    const root = path.resolve(foreign, '..', '..', '..');
+    try {
+      assert.throws(() => writeAntigravityPlugin(root, '/data/hook.cjs'), /has no office marker/);
+      assert.deepEqual(readdirSyncOf(foreign), ['plugin.json']);
+      assert.equal(readFileSync(path.join(foreign, 'plugin.json'), 'utf8'), '{"name":"theirs"}');
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+});
+
+// --- subagents' questions ------------------------------------------------------------------------
+
+function working() {
+  const x = handle();
+  send(x.h, 'SessionStart', { session_id: 'root' });
+  send(x.h, 'PreInvocation', { session_id: 'root', prompt: 'go', invocation_num: 0 });
+  send(x.h, 'SessionStart', { session_id: 'sub' });
+  return x;
+}
+const ask = (h: WorkerHandle<AntigravityState>, id: string, call: string, tool = 'ask_question') => send(h, 'PreToolUse', { session_id: id, tool_name: tool, tool_use_id: call });
+const answer = (h: WorkerHandle<AntigravityState>, id: string, call: string, tool = 'ask_question') => send(h, 'PostToolUse', { session_id: id, tool_name: tool, tool_use_id: call });
+
+test("a subagent's question needs the person, until it is answered or the subagent stops", () => {
+  const { h, info } = working();
+  ask(h, 'sub', 'q1');
+  assert.equal(info.status, 'needs_input');
+  assert.equal(info.sessionId, 'root');
+  answer(h, 'sub', 'q1');
+  assert.equal(info.status, 'working');
+  ask(h, 'sub', 'p1', 'ask_permission');
+  assert.equal(info.status, 'needs_input');
+  send(h, 'Stop', { session_id: 'sub' });
+  assert.equal(info.status, 'working');
+});
+
+test('a question of the root and one of a subagent both have to be closed', () => {
+  const { h, info } = working();
+  ask(h, 'root', 'r1');
+  ask(h, 'sub', 'q1');
+  answer(h, 'root', 'r1');
+  assert.equal(info.status, 'needs_input');
+  answer(h, 'sub', 'q1');
+  assert.equal(info.status, 'working');
+  ask(h, 'sub', 'q2');
+  ask(h, 'root', 'r2');
+  answer(h, 'sub', 'q2');
+  assert.equal(info.status, 'needs_input');
+  answer(h, 'root', 'r2');
+  assert.equal(info.status, 'working');
+});
+
+test("a held root Stop stays held while a subagent's question is open, and a finished turn is not resurrected", () => {
+  const { h, info } = working();
+  send(h, 'Stop', { session_id: 'root', fully_idle: false });
+  ask(h, 'sub', 'q1');
+  assert.equal(info.status, 'needs_input');
+  assert.ok((h.state as AntigravityState).held);
+  answer(h, 'sub', 'q1');
+  assert.equal(info.status, 'working');
+  send(h, 'Stop', { session_id: 'sub' });
+  assert.equal(info.status, 'done');
+  // A late answer of a gone subagent does not wake the finished turn.
+  answer(h, 'sub', 'q1');
+  assert.equal(info.status, 'done');
 });

@@ -1,4 +1,5 @@
-import { chmodSync, existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { excludeFromGit } from './config.js';
 import { MCP_NAME } from './office-workers.js';
@@ -97,13 +98,18 @@ child.on('error', () => process.exit(1));
 child.on('exit', (code) => process.exit(code ?? 1));
 `;
 
-/** The helper only reads bounded hook stdin and the worker bridge environment; it prints nothing. */
+/**
+ * The helper only reads hook stdin (up to 32 MiB: every payload carries the person's whole prompt, and
+ * tool calls their arguments) and the worker bridge environment; it prints nothing. Long texts are
+ * cut to what the office keeps rather than dropped, so no event is ever lost to a big prompt.
+ */
 export const ANTIGRAVITY_HOOK_SOURCE = String.raw`'use strict';
-const MAX = 64 * 1024;
+const MAX = 32 * 1024 * 1024;
 const EVENTS = new Set(${JSON.stringify(ANTIGRAVITY_HOOK_EVENTS)});
 const MAX_ID = 160;
 const MAX_TEXT = 20000;
 const allowed = (value, max) => typeof value === 'string' && value.trim() && value.trim().length <= max ? value.trim() : undefined;
+const cut = (value, max) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
 const event = process.argv[2];
 let size = 0;
 let overflow = false;
@@ -126,7 +132,7 @@ process.stdin.on('end', async () => {
   const invocation = event === 'PreInvocation' || event === 'PostInvocation';
   const tools = event === 'PreToolUse' || event === 'PostToolUse';
   const call = tools && input.toolCall && typeof input.toolCall === 'object' ? input.toolCall : {};
-  const prompt = event === 'PreInvocation' || event === 'SessionStart' ? allowed(input.lastUserInput, MAX_TEXT) : undefined;
+  const prompt = event === 'PreInvocation' || event === 'SessionStart' ? cut(input.lastUserInput, MAX_TEXT) : undefined;
   const tool = allowed(call.name, MAX_ID);
   const toolUseId = allowed(call.id, MAX_ID);
   const transcript = allowed(input.transcriptPath, 4096);
@@ -139,7 +145,7 @@ process.stdin.on('end', async () => {
     if (typeof input.fullyIdle === 'boolean') body.fully_idle = input.fullyIdle;
     const reason = allowed(input.terminationReason, MAX_ID);
     if (reason) body.termination_reason = reason;
-    const error = allowed(input.error, MAX_TEXT);
+    const error = cut(input.error, MAX_TEXT);
     if (error) body.error = error;
   }
   const base = process.env.AGENT_OFFICE_HOOK_URL;
@@ -174,6 +180,25 @@ function pluginHooks(hookPath: string): Record<string, unknown> {
   return { [MCP_NAME]: block };
 }
 
+/** Written first into the office's plugin folder: only a folder with it (or an empty one) is the office's to rewrite. */
+const PLUGIN_MARKER = '.agent-office-plugin';
+
+/** Why the plugin folder of `cwd` is not the office's own, when it isn't: it must never overwrite a project's files. */
+function foreignPlugin(cwd: string, dir: string): string | undefined {
+  try {
+    const tracked = execFileSync('git', ['ls-files', '--', PLUGIN_EXCLUDE], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] });
+    if (tracked.trim()) return 'it is tracked by git';
+  } catch {
+    // not a git work tree
+  }
+  try {
+    if (existsSync(dir) && readdirSync(dir).length && !existsSync(path.join(dir, PLUGIN_MARKER))) return 'it has no office marker';
+  } catch {
+    return 'it is not a folder';
+  }
+  return undefined;
+}
+
 function writeIfChanged(file: string, content: string) {
   try {
     if (existsSync(file) && readFileSync(file, 'utf8') === content) return;
@@ -186,11 +211,15 @@ function writeIfChanged(file: string, content: string) {
 /**
  * Antigravity takes hooks and MCP servers from `<workspace>/.agents/plugins/<name>/`, once the
  * workspace is trusted (see antigravityTrustArgs). The office's plugin is rewritten at every launch
- * and kept out of git through the repository's info/exclude.
+ * and kept out of git through the repository's info/exclude. A folder of that name that isn't the
+ * office's own (tracked by git, or without its marker) is left alone and the launch fails.
  */
 export function writeAntigravityPlugin(cwd: string, hookPath: string, mcpScript?: string): string {
   const dir = path.join(cwd, PLUGIN_DIR);
+  const foreign = foreignPlugin(cwd, dir);
+  if (foreign) throw new Error(`Antigravity can't start here: ${PLUGIN_EXCLUDE} in this project is not the office's own (${foreign}). Move or remove it, then press R`);
   mkdirSync(dir, { recursive: true });
+  writeIfChanged(path.join(dir, PLUGIN_MARKER), "This folder is written by Agent Office at each launch; the office may rewrite it.\n");
   const json = (value: unknown) => `${JSON.stringify(value, null, 2)}\n`;
   writeIfChanged(path.join(dir, 'plugin.json'), json({ name: MCP_NAME, version: '1.0.0', description: "Agent Office: reports this agent's turns to the office and gives it the office's tools." }));
   writeIfChanged(path.join(dir, 'hooks.json'), json(pluginHooks(hookPath)));

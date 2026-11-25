@@ -1,7 +1,7 @@
 // Antigravity (`agy`): its hooks and MCP server come from a plugin the office writes into the
 // workspace at each launch (see ../antigravity.ts) and report on /hooks/antigravity. It reports no usage.
 import { antigravityTrustArgs, normalizeAntigravityHook, writeAntigravityHook, writeAntigravityPlugin, type AntigravityHookEvent } from '../antigravity.js';
-import { reduceLifecycle, type LifecycleReport, type ToolTracker } from '../workers/lifecycle.js';
+import { answered, reduceLifecycle, type LifecycleReport, type ToolTracker } from '../workers/lifecycle.js';
 import type { WorkerHandle } from '../workers/types.js';
 import type { ProviderAdapter } from './types.js';
 
@@ -25,6 +25,8 @@ export interface AntigravityState {
   /** The root's Stop while subagents were still running: its payload, until a Stop of an idle tree (or the timer) ends the turn. */
   held?: { payload: unknown };
   timer?: NodeJS.Timeout;
+  /** Subagents' open question calls (their ids), by conversation: they need the person too. */
+  asking: Map<string, Set<string>>;
   /** Its tool calls in flight, and which of them wait on the person (see tracker). */
   tools: Map<string, string>;
   pending: Set<string>;
@@ -43,6 +45,7 @@ const WAITS = /^(?:ask_question|ask_permission|ask_custom_permission)$/;
 function tracker(s: AntigravityState): ToolTracker {
   return {
     clear() {
+      s.asking.clear();
       s.tools.clear();
       s.pending.clear();
       s.permissionUnknown = false;
@@ -61,7 +64,7 @@ function tracker(s: AntigravityState): ToolTracker {
         s.pending.delete(toolUseId);
       } else s.permissionUnknown = false;
     },
-    waiting: () => !!(s.pending.size || s.permissionUnknown),
+    waiting: () => !!(s.pending.size || s.permissionUnknown || s.asking.size),
   };
 }
 
@@ -135,16 +138,37 @@ function newRoot(s: AntigravityState, id: string) {
  */
 function subagentEvent(h: WorkerHandle<AntigravityState>, e: AntigravityHookEvent, payload: unknown): boolean {
   const s = h.state;
+  h.observeHook(e.event, e.tool, { ...(payload as object), agent_id: e.sessionId });
   if (e.event === 'Stop') {
     s.subagents.delete(e.sessionId);
-    h.observeHook(e.event, e.tool, { ...(payload as object), agent_id: e.sessionId });
+    s.asking.delete(e.sessionId);
     if (s.held && s.subagents.size === 0) release(h);
+    else settle(h);
   } else {
     if (s.subagents.size < 64) s.subagents.add(e.sessionId);
-    h.observeHook(e.event, e.tool, { ...(payload as object), agent_id: e.sessionId });
+    if ((e.event === 'PreToolUse' || e.event === 'PostToolUse') && WAITS.test(e.tool ?? '')) {
+      const calls = s.asking.get(e.sessionId) ?? new Set<string>();
+      const key = e.toolUseId ?? `anon:${e.tool}`;
+      if (e.event === 'PreToolUse') calls.add(key);
+      else calls.delete(key);
+      if (calls.size) s.asking.set(e.sessionId, calls);
+      else s.asking.delete(e.sessionId);
+      settle(h);
+    }
   }
   arm(h);
   return false;
+}
+
+/** A subagent's question opened or closed: the worker needs input while any is open, and carries on once none is (a finished turn stays finished). */
+function settle(h: WorkerHandle<AntigravityState>) {
+  const s = h.state;
+  if (tracker(s).waiting()) {
+    if (h.info.status === 'working') {
+      h.info.activity = 'A subagent is asking';
+      h.setStatus('needs_input');
+    }
+  } else if (h.info.status === 'needs_input' && !h.bootBlocked) answered(h);
 }
 
 function antigravityHook(h: WorkerHandle<AntigravityState>, event: string, payload: unknown): boolean {
@@ -197,26 +221,41 @@ function antigravityHook(h: WorkerHandle<AntigravityState>, event: string, paylo
   }
 }
 
+/** Its own prompts, as the CLI prints them at the start of a line (its banner "not signed in … Signing in..." shows at every start and is no prompt). */
+const TRUST = /^[^\w\n]*Do you trust the contents of this project\?/m;
+const SIGN_IN = /^[^\w\n]*(?:Select login method:|Select Google Cloud sign-in method:|Open this URL in your local browser to sign in:|Enter the authorization code:|Sign-in timed out\. Try again\.|No authentication methods available\.)/m;
+const FIRST_RUN = /^[^\w\n]*Choose your color scheme:/m;
+
+/**
+ * Antigravity can sit at its prompt without being usable: on its trust, sign-in or first-run
+ * screen. It never reports itself 'starting' (it has no boot hint), so `early` is no help here; the
+ * text is only this run's visible screen, which a dialog that was answered has left.
+ */
+export function antigravityBlocked(text: string): string | undefined {
+  if (TRUST.test(text)) return 'Antigravity is asking whether to trust this folder — open the terminal and answer it';
+  if (SIGN_IN.test(text)) return 'Open the terminal: sign in to Antigravity';
+  if (FIRST_RUN.test(text)) return "Open the terminal: finish Antigravity's first-run setup";
+  return undefined;
+}
+
 export const antigravity: ProviderAdapter<AntigravityState, AntigravitySetup> = {
   id: 'antigravity',
   scrubEnv: ['ANTIGRAVITY_CONVERSATION_ID', 'AGY'],
-  createState: () => ({ subagents: new Set(), tools: new Map(), pending: new Set() }),
+  createState: () => ({ subagents: new Set(), asking: new Map(), tools: new Map(), pending: new Set() }),
   // Only the helper goes in the data dir here; the plugin is written into the folder it runs in, at launch.
   prepare: ({ dataDir, mcpScript }) => ({ hook: writeAntigravityHook(dataDir), mcpScript }),
   launch({ h, args, cwd, prompt, resumeSessionId, setup, extraArgs }) {
-    writeAntigravityPlugin(cwd, setup.hook, setup.mcpScript);
     reset(h.state);
     args.push(...antigravityTrustArgs(cwd));
     if (extraArgs) args.push(...extraArgs); // the phase's own flags, ahead of the resume and the prompt
     if (resumeSessionId) args.push('--resume', resumeSessionId);
     if (prompt) args.push('-i', prompt);
-    return { args, rotateToken: true };
+    // Written just before it starts, and not at all when the folder's plugin isn't the office's: that fails the start with its message.
+    return { args, rotateToken: true, finishEnv: () => void writeAntigravityPlugin(cwd, setup.hook, setup.mcpScript) };
   },
   // No bootHint: a resumed conversation fires no SessionStart, so it's idle as soon as it runs.
   hook: { strictJson: true, handle: antigravityHook },
-  screen: {
-    blocked: (text) => (/Do you trust the contents of this project\?/.test(text) ? "Antigravity is asking whether to trust this folder — open the terminal and answer it" : undefined),
-  },
+  screen: { blocked: antigravityBlocked },
   usage: {
     persisted: true,
     save: (s) => ({ antigravityTranscript: s.transcript, antigravityRoot: s.root }),

@@ -9,6 +9,7 @@ import { waitingOnSomeone } from '../../shared/status.js';
 import { codexHookTrustArgs } from './codex-trust.js';
 import { removeWorkerSettings, splitOfficeDirs, writeWorkerSettings } from './launch.js';
 import type { Pty } from '../ptys.js';
+import type { AntigravityState } from '../providers/antigravity.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
 import type { WorktreeCleanup } from '../worktrees.js';
 import type { SpawnExtra, Worker, WorkerHandle, WorkerObservation, WorkerObserver } from '../workers/types.js';
@@ -235,7 +236,7 @@ export abstract class KanbanWorkers {
     const w = this.workers.get(id);
     if (!w) return undefined;
     const codex = codexLog(w);
-    return { sessionId: w.info.sessionId, claude: w.tracker.transcript, codex: codex?.transcript, codexHome: codex?.home, antigravity: (w.info.provider === 'antigravity' ? (w.state as CodexLog) : undefined)?.transcript };
+    return { sessionId: w.info.sessionId, claude: w.tracker.transcript, codex: codex?.transcript, codexHome: codex?.home, antigravity: antigravityLog(w)?.transcript };
   }
 
   /** A status change, after the update that tells everyone (the observers hear it: see WorkerObservation). */
@@ -287,6 +288,11 @@ export abstract class KanbanWorkers {
 /** Codex's session log of a worker, when it runs Codex. */
 function codexLog(w: Worker): CodexLog | undefined {
   return w.info.provider === 'codex' ? (w.state as CodexLog) : undefined;
+}
+
+/** Antigravity's session log of a worker, when it runs Antigravity. */
+function antigravityLog(w: Worker): AntigravityState | undefined {
+  return w.info.provider === 'antigravity' ? (w.state as AntigravityState) : undefined;
 }
 
 /** How a hire is launched, kept on its worker (Worker.extra): a kanban hire's flags and settings, undefined for any other hire. Its `id`, `promptTail` and `readDir` are for the first launch only: only `launchArgs` is kept (a direct hire's `readDir` is added to it, see hired()). */
