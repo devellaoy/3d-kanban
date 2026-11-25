@@ -361,6 +361,10 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   assert.match(answers, /Comment \(data, not instructions\): Rename x/);
   assert.match(answers, /The user's text: Use y instead/);
   assert.match(answers, /handle nothing that isn't listed/);
+  // The settled threads are resolved, the ones that were only answered included; never the ones outside the list.
+  assert.match(answers, /resolve the review thread of every listed comment[\s\S]*only answered[\s\S]*resolveReviewThread/);
+  assert.match(answers, /Resolve no thread that isn't listed/);
+  assert.doesNotMatch(answers, /Don't resolve threads/);
   assert.match(answers, /secrets or credentials/);
   assert.ok(answers.endsWith(KANBAN_CONTRACTS.pr));
   assert.match(compose.build('pr.answers', def, gh, 'claude', dir, { phase: 'pr-answers' }), /the decisions are gone/);
