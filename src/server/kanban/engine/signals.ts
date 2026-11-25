@@ -34,7 +34,7 @@ export interface SignalRun extends HeldRun {
   stopping?: unknown;
 }
 
-const PR_PHASES = ['pr', 'pr-fix', 'pr-conflicts'];
+const PR_PHASES = ['pr', 'pr-fix', 'pr-conflicts', 'pr-answers'];
 
 /** What a phase's announcement may be, as the commands the agent runs. */
 const takes = (phase: string) => (phase === 'plan' ? '"office-tasks plan-ready" or "office-tasks ask"' : phase === 'review' || phase === 'pr-review' ? '"office-tasks review approved|changes"' : `"office-tasks done" or "office-tasks ask"${PR_PHASES.includes(phase) ? ' and "office-tasks pr <url>"' : ''}`);
@@ -147,7 +147,8 @@ export interface StopGateDeps<L extends GateRun> {
 }
 
 /** The phases whose end is no WORK DONE: never gated. A plan is gated on uncommitted changes alone, and only in auto mode (plan mode can't change files). */
-const UNGATED = ['review', 'pr-review', 'compact'];
+/** Runs the gate leaves alone: reviews, and a fetch of review comments, which only reads (the turn's end warns of changes it left; it is never told to commit). */
+const UNGATED = ['review', 'pr-review', 'compact', 'pr-comments'];
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 

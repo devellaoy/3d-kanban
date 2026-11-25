@@ -1,5 +1,6 @@
 // The task view's Pull requests tab: the buttons that work on the task's pull requests (fix them, resolve
-// their conflicts, find them, review them together) and the table of them with their review marks (taskview.ts, prmarks.ts). Creating and
+// their conflicts, fetch their review comments, find them, review them together), the table of them with their review marks
+// (taskview.ts, prmarks.ts) and, under it, the review comments the implementer fetched (taskprcomments.ts). Creating and
 // pushing them is the footer's button. Which buttons show is taskactions.ts's.
 
 import { h, timeAgo } from '../ui/dom';
@@ -10,9 +11,11 @@ import { prMarkPills } from './prmarks';
 import { unlinkButton } from './prbuttons';
 import { actionButton, tabActionIds } from './taskactionbar';
 import type { TaskCtx } from './taskctx';
+import type { PrComments } from './taskprcomments';
 
-export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
+export function prsPane(c: TaskCtx, task: KanbanTask, comments: PrComments): HTMLElement[] {
   const project = c.project(task.project);
+  const repoName = (p: Pick<KanbanTask['prs'][number], 'repo' | 'repoId'>) => project?.repos.find((r) => r.id === p.repoId)?.name ?? p.repo ?? p.repoId;
   const out: HTMLElement[] = [];
   const bar = h('div.kb-actions');
   // Create / Push & update PRs are the footer's; what needs a pull request to look at is here.
@@ -35,7 +38,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
             h(
               'tr',
               {},
-              h('td', {}, project?.repos.find((r) => r.id === p.repoId)?.name ?? p.repo ?? p.repoId),
+              h('td', {}, repoName(p)),
               h('td', {}, h('a.kb-pr-link', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, `#${p.number}`, icon('external-link', { size: 12 }))),
               h('td', {}, prPill(p.state)),
               h('td.kb-pr-review', {}, ...prMarkPills(p)),
@@ -47,6 +50,8 @@ export function prsPane(c: TaskCtx, task: KanbanTask): HTMLElement[] {
         ),
       ),
     );
+  const list = comments.section(task, repoName);
+  if (list) out.push(list);
   return out;
 }
 

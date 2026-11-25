@@ -24,19 +24,20 @@ import { launchDirs, prReviewDirs, prReviewRepoIds } from './launchdirs.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
 import { sameRepo } from '../../../shared/floors.js';
-import { prOwners } from '../integrations/pulls/bundle.js';
 import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { ReadOpts, TaskAgentAdapter, TurnResult } from './adapters/types.js';
 import { Composer, isFolderProject, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
-import { canFixPrs, isPrPhase, onPrBranches, type PrMode } from '../../../shared/kanban/prs.js';
+import { canFixPrs, isPrPhase, onPrBranches, type PrRunMode } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
 import { next, prPrompt, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
-import { backoffMs, looksInterrupted, notUpdatedLines, planOutcome, prLines, reviewFindings, reviewVerdict, stripPlanMarkers, stripWorkDone } from './markers.js';
+import { backoffMs, looksInterrupted, planOutcome, reviewFindings, reviewVerdict, stripPlanMarkers, stripWorkDone } from './markers.js';
 import { limitReset } from './limitreset.js';
 import { endStop, type StopRun } from './stopping.js';
 import { branchExists, checkoutLines, currentBranch, homeCleanup, hasChanges, missingFolders, uncommitted } from './workspace.js';
 import { Handoffs } from './handoff.js';
+import { PrCommentsRuns } from './prcomments.js';
+import { PrTurn } from './prturn.js';
 import { Departures } from './departures.js';
 import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
@@ -105,7 +106,7 @@ const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const SUMMARY_MAX = 20_000;
 const PENDING_MAX = 50;
 /** The prompts a fresh session taking over work under way is handed off with. */
-const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'pr.create', 'pr.fix', 'pr.conflicts']);
+const HANDOFF_KINDS = new Set<PromptKind>(['fix', 'resume', 'continue', 'restarted', 'pr.create', 'pr.fix', 'pr.conflicts', 'pr.answers']);
 const ESC = '\x1b';
 const RESTING = new Set(['done', 'idle', 'needs_input', 'exited']);
 /** Why an answer from the kanban isn't typed into a terminal that isn't asking a question (answer). */
@@ -137,6 +138,8 @@ export class Orchestrator {
   private adapters: Record<KanbanTool, TaskAgentAdapter>;
   private compose: Composer;
   private handoffs: Handoffs;
+  private prComments: PrCommentsRuns;
+  private prTurn: PrTurn;
   private departures: Departures<Live>;
   private holds: Holds;
   private turnHolds: TurnHolds<Live>;
@@ -154,6 +157,8 @@ export class Orchestrator {
     this.adapters = { claude: claudeAdapter, codex: codexAdapter, ...options.adapters };
     this.compose = new Composer(ctx);
     this.handoffs = new Handoffs(ctx, (p) => this.folder(p), (id, patch) => this.update(id, patch));
+    this.prComments = new PrCommentsRuns(ctx, () => this.opts.now());
+    this.prTurn = new PrTurn(ctx, { update: (id, patch) => this.update(id, patch), note: (task, text, runId) => this.note(task, text, runId), pushTask: (task) => this.pushTask(task) }, this.prComments);
     this.departures = new Departures<Live>({
       live: (workerId) => this.live.get(workerId),
       liveOf: (taskId) => this.liveOf(taskId),
@@ -496,7 +501,9 @@ export class Orchestrator {
    * One stopped with no worker never started (see queuedStopped): it goes again as it would have.
    */
   private lastRun(taskId: number): LastRun | undefined {
-    const runs = this.ctx.repo.listRuns(taskId).filter((r) => r.phase !== 'compact');
+    // A fetch of review comments is no work to carry on (the task went back to where it was), unless it is what is parked.
+    const fetching = this.ctx.repo.getTask(taskId)?.phase === 'pr-comments';
+    const runs = this.ctx.repo.listRuns(taskId).filter((r) => r.phase !== 'compact' && (fetching || r.phase !== 'pr-comments'));
     const last = runs[runs.length - 1];
     const fresh = last?.status === 'stopped' && !last.workerId && !last.sessionId;
     return last && { phase: last.phase, ...(last.round !== undefined ? { round: last.round } : {}), role: last.role, ...(fresh ? { fresh } : {}) };
@@ -670,6 +677,7 @@ export class Orchestrator {
   private async apply(taskId: number, e: MachineEvent, via: Via = {}): Promise<string | undefined> {
     const task = this.ctx.repo.getTask(taskId);
     if (!task) return 'No such task';
+    e = this.prComments.ending(task, e); // a fetch of review comments that ends leaves the task where it was
     const review = this.reviewSettings(task);
     const defaultAnswer = this.compose.text('kanban.defaultAnswer', task.project, { taskId: task.id });
     const tr = next(stateOf(task), e, { type: task.type, usePlan: task.usePlan, useReview: task.useReview, planApproval: task.planApproval }, { rounds: review.rounds, reReviewLastFix: review.reReviewLastFix, ...(defaultAnswer ? { defaultAnswer } : {}) });
@@ -747,6 +755,9 @@ export class Orchestrator {
         return undefined;
       case 'note':
         this.note(task, eff.text);
+        return undefined;
+      case 'commentsOrigin':
+        this.prComments.origin(taskId, eff.back);
         return undefined;
       case 'finished':
         this.update(taskId, { finishedAt: this.opts.now() });
@@ -840,7 +851,7 @@ export class Orchestrator {
       fixSummary: eff.prompt === 'rereview' ? this.latestSummary(task.id, 'fix') : undefined,
       refsFile,
       fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.lastPrReview(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
-      held,
+      held, prAnswers: eff.phase === 'pr-answers' ? this.prComments.answersFor(task.id) : undefined,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);
@@ -1529,16 +1540,11 @@ export class Orchestrator {
         break;
       case 'pr':
       case 'pr-fix':
-      case 'pr-conflicts': {
-        say('result', text);
-        this.recordPrs(task, text);
-        this.refreshPrBoards(task);
-        const missed = live.phase === 'pr-conflicts' ? notUpdatedLines(text).length : 0;
-        if (missed) this.note(task, `${missed} pull request${missed === 1 ? ' was' : 's were'} not updated: read the result for why`, live.runId);
-        if (live.phase === 'pr') this.update(task.id, { flags: { ...(this.ctx.repo.getTask(task.id)?.flags ?? task.flags), prRequested: true } });
-        event = { type: 'prDone', pending };
+      case 'pr-conflicts':
+      case 'pr-answers':
+      case 'pr-comments':
+        event = await this.prTurn.ended(task, live, text, pending, (t) => say('result', t));
         break;
-      }
       case 'pr-review':
         verdict = reviewVerdict(text);
         say('review', text);
@@ -1553,41 +1559,6 @@ export class Orchestrator {
     this.finishRun(live.runId, task.project, { status: 'succeeded', summary: clip(text, SUMMARY_MAX), ...(verdict ? { verdict } : {}), ...(sessionId ? { sessionId } : {}) });
     await this.apply(task.id, event, { who: OFFICE });
     void this.drain(task.project);
-  }
-
-  /**
-   * The pull requests a PR turn reported with a `PR:` line, kept on the task by repository: only a
-   * GitHub PR of one of the task's repositories that no other task (of any project) has. A PR the
-   * answer names otherwise is left to the board sync, which links it by the task's branch.
-   */
-  private recordPrs(task: KanbanTask, text: string) {
-    const def = this.ctx.project(task.project);
-    const repos = def ? taskRepos(def, task) : [];
-    const branches = this.ctx.repo.repoBranches(task.id);
-    const remoteOf = (project: string, repoId: string) => this.ctx.repos(project).find((r) => r.id === repoId)?.remote;
-    let changed = false;
-    for (const pr of prLines(text)) {
-      if (pr.number === undefined || !pr.repo) continue;
-      const repo = repos.find((r) => r.remote && sameRepo(r.remote, pr.repo!));
-      if (!repo || prOwners(this.ctx.repo.prLinksMatching(pr.number, pr.url), remoteOf, { repo: pr.repo, number: pr.number, url: pr.url }).some((id) => id !== task.id)) continue;
-      // A link already knows its PR's head branch (Fix PRs checks it out): an answer doesn't move it to the task's.
-      const branch = task.prs.find((p) => p.repoId === repo.id && p.number === pr.number)?.branch ?? branches[repo.id] ?? task.branch;
-      this.ctx.repo.upsertPrLink(task.id, { repoId: repo.id, repo: pr.repo, number: pr.number, url: pr.url, state: 'OPEN', ...(branch ? { branch } : {}) });
-      changed = true;
-    }
-    if (changed) this.pushTask(this.ctx.repo.getTask(task.id));
-  }
-
-  /** After a PR turn the floor's PR board lists the new PR at once (its sync then links it by branch, whatever the answer said). */
-  private refreshPrBoards(task: KanbanTask) {
-    try {
-      const def = this.ctx.project(task.project);
-      const floor = this.ctx.floor(task.project);
-      if (!def || !floor) return;
-      for (const r of taskRepos(def, task)) if (r.kind === 'git' && r.remote) void floor.githubFor(r.remote)?.refresh().catch(() => {});
-    } catch {
-      /* a missing floor or board is no reason to fail the turn */
-    }
   }
 
   /** A usage limit or lost connection: retry later, within autoResume's limits. */
@@ -1802,7 +1773,8 @@ export class Orchestrator {
     });
   }
 
-  pr(taskId: number, who: KanbanCaller, mode: PrMode): Promise<string | void> {
+  /** The PR runs, the review comments' fetch and answers among them (only the engine's own callers may name those two, see PrRunMode). */
+  prRun(taskId: number, who: KanbanCaller, mode: PrRunMode): Promise<string | void> {
     return this.op(taskId, (task) => {
       // Fixing or resolving conflicts, the shared rule answers first: the server gives the reason the button does.
       const def = this.ctx.project(task.project);
@@ -1998,7 +1970,7 @@ export class Orchestrator {
     if (!floor) return 'No such floor';
     const info = floor.workers.get(workerId);
     if (!info) return 'No such worker';
-    if (info.kanban) return this.pr(info.kanban.taskId, who, 'create');
+    if (info.kanban) return this.prRun(info.kanban.taskId, who, 'create');
     if (info.kind === 'shell') return 'fallback';
     if (info.status === 'needs_input') return `${info.name} is waiting on an answer in its terminal`;
     const text = this.compose.workerPr(floor, info);

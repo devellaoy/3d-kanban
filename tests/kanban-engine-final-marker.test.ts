@@ -9,7 +9,7 @@ import { readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
 import { KANBAN_CONTRACTS, PROMPT_CONTRACT, finishNudge } from '../src/shared/kanban/prompts.js';
 
 test('finalMarker: WORK DONE on its own line among the last three, for every phase but plan and review', () => {
-  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts'] as const) {
+  for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts', 'pr-comments', 'pr-answers'] as const) {
     assert.equal(finalMarker(phase, 'Fixed the redirect.\n\nWORK DONE'), true, phase);
     assert.equal(finalMarker(phase, 'Fixed the redirect.'), false, phase);
   }

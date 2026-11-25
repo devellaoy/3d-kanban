@@ -88,6 +88,8 @@ const KINDS: [PromptKind, RunPhase][] = [
   ['pr.fix', 'pr-fix'],
   ['pr.conflicts', 'pr-conflicts'],
   ['pr.review', 'pr-review'],
+  ['pr.comments', 'pr-comments'],
+  ['pr.answers', 'pr-answers'],
 ];
 
 test('every prompt the engine sends is filled in completely and ends with its phase contract', (t) => {
@@ -101,7 +103,7 @@ test('every prompt the engine sends is filled in completely and ends with its ph
     const text = compose.build(kind, def, withPrs, 'claude', dir, { phase, round: 1, rounds: 2, text: 'An answer', author: 'Ada', findings: 'A finding', fixSummary: 'Fixed', refsFile: '/refs/task-1/referenced-tasks.md', prs: '- acme/api#12 https://github.com/acme/api/pull/12' });
     assert.doesNotMatch(text, /\{\{\s*\w+\s*\}\}/, `${kind} left a placeholder`);
     assert.ok(text.trim(), kind);
-    const contract = phase === 'plan' ? 'plan' : phase === 'review' ? 'review' : phase === 'pr-review' ? 'prReview' : phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts' ? 'pr' : 'implementSafety';
+    const contract = phase === 'plan' ? 'plan' : phase === 'review' ? 'review' : phase === 'pr-review' ? 'prReview' : phase === 'pr-comments' ? 'prComments' : phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts' || phase === 'pr-answers' ? 'pr' : 'implementSafety';
     assert.ok(text.endsWith(KANBAN_CONTRACTS[contract]), `${kind} ends with the ${contract} contract`);
   }
   const impl = compose.build('implement', def, withPrs, 'claude', dir, { phase: 'implement' });

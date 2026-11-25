@@ -102,6 +102,7 @@ function legacy(t: Case['task'], ctx: ActionCtx) {
   if (t.type === 'implement' && !running && prStatus) at('prs', t.prs.length ? 'push-prs' : 'create-prs');
   if (openPr && prStatus) {
     at('prs', 'fix-prs');
+    at('prs', 'fetch-pr-comments');
     at('prs', 'resolve-conflicts');
   }
   if (t.status !== 'archived') at('prs', 'find-prs');
@@ -153,10 +154,10 @@ test('representative tasks: the Plan and PRs tabs', () => {
   assert.deepEqual(idsOf(currentActions(plan, ctx0), 'plan'), [], 'no draft plan, no box');
   assert.deepEqual(idsOf(currentActions(base({ status: 'waiting', runState: 'running' }), { ...ctx0, planDraft: true }), 'plan'), []);
   const done = base({ status: 'done', prs: PR_SETS.mixed });
-  assert.deepEqual(idsOf(currentActions(done, ctx0), 'prs'), ['push-prs', 'fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs']);
+  assert.deepEqual(idsOf(currentActions(done, ctx0), 'prs'), ['push-prs', 'fix-prs', 'fetch-pr-comments', 'resolve-conflicts', 'find-prs', 'review-prs']);
   // The tab draws what the footer doesn't have: Create / Push & update PRs are the footer's in every state.
-  assert.deepEqual(tabActions(done, ctx0), ['fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs']);
-  assert.deepEqual(tabActions(base({ status: 'review', prs: PR_SETS.mixed }), ctx0), ['fix-prs', 'resolve-conflicts', 'find-prs', 'review-prs']);
+  assert.deepEqual(tabActions(done, ctx0), ['fix-prs', 'fetch-pr-comments', 'resolve-conflicts', 'find-prs', 'review-prs']);
+  assert.deepEqual(tabActions(base({ status: 'review', prs: PR_SETS.mixed }), ctx0), ['fix-prs', 'fetch-pr-comments', 'resolve-conflicts', 'find-prs', 'review-prs']);
   assert.deepEqual(tabActions(base({ status: 'waiting', waitingReason: 'failed' }), ctx0), ['find-prs']);
   assert.deepEqual(idsOf(currentActions(base({ status: 'archived' }), ctx0), 'prs'), []);
   assert.deepEqual(idsOf(currentActions(base({ status: 'waiting', waitingReason: 'failed' }), ctx0), 'prs'), ['create-prs', 'find-prs']);
@@ -261,5 +262,5 @@ test('a draft plan waiting for anything keeps its Approve and Request changes in
 test('every action id the lists use is one of the declared ones, so a button’s data-focus is stable', () => {
   const seen = new Set<string>();
   for (const c of cases()) for (const a of currentActions(c.task, c.ctx)) seen.add(a.id);
-  assert.deepEqual([...seen].sort(), ['approve', 'continue', 'continue-unanswered', 'create-prs', 'delete', 'edit', 'find-prs', 'fix-prs', 'hold', 'move', 'push-prs', 'request-changes', 'resolve-conflicts', 'resume', 'retry', 'retry-now', 'review-prs', 'review-round', 'send-plan-feedback', 'start', 'stop']);
+  assert.deepEqual([...seen].sort(), ['approve', 'continue', 'continue-unanswered', 'create-prs', 'delete', 'edit', 'fetch-pr-comments', 'find-prs', 'fix-prs', 'hold', 'move', 'push-prs', 'request-changes', 'resolve-conflicts', 'resume', 'retry', 'retry-now', 'review-prs', 'review-round', 'send-plan-feedback', 'start', 'stop']);
 });

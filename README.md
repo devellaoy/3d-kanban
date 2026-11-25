@@ -119,7 +119,9 @@ What the office does for you:
 - **Issue sources**: GitHub, GitHub Projects v2, Jira and Azure Boards, made into tasks in a click
   ([docs/kanban.md](docs/kanban.md#issue-sources)).
 - **Agent-written pull requests**: **O** at a desk, or the task's PR phase, has the agent push and open (or
-  fix, or update) the PRs ([docs/kanban.md](docs/kanban.md#pull-requests)).
+  fix, or update) the PRs ([docs/kanban.md](docs/kanban.md#pull-requests)). **Fetch review comments** on a
+  task's Pull requests tab has the agent list and judge every unresolved comment, from anyone; you then decide
+  per comment (fix, don't fix, or your own instruction) and send the decisions back.
 - **Multi-PR reviews, review panels and meetings** across repositories ([features](docs/features.md)).
 - **UI testing**: the implementer saves before and after screenshots, the reviewer looks at them, and they go
   into the pull request description ([docs/kanban.md](docs/kanban.md#ui-testing)).

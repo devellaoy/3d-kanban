@@ -20,6 +20,7 @@ import { openFor, taskFolders, workerFolders } from './vscode.js';
 import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
 import { firstLinkingComments, linkedAttachmentIds } from './engine/inlinefiles.js';
+import { removePrComments } from './engine/prcomments.js';
 import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, removeGrant, sweepOrphanUploads, uploadsDir, uploadRoutes } from './uploads.js';
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -313,6 +314,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       ctx.repo.deleteTask(task.id);
       removeAttachmentFiles(ctx.filesDir, files);
       removeGrant(ctx.filesDir, task.id);
+      removePrComments(ctx.filesDir, task.id);
       ctx.taskChanged(task.id);
       if (task.ticket) wallChanged(task.project);
       ok(c, m.rid, { taskId: task.id });

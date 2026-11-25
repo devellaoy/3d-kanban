@@ -74,6 +74,15 @@ test('a Stop after an announced done or a WORK DONE line with a clean worktree i
   assert.equal(l.gateBlocks, 1);
 });
 
+test('a fetch of review comments is let through with a dirty worktree, even announced done: the gate never tells it to commit', async () => {
+  const dirty = gateOf({ log: turn({ text: DONE }), dirty: ['wt/a'] });
+  const l = live({ phase: 'pr-comments', signal: { kind: 'done' } });
+  assert.deepEqual(await dirty.gate.decide(l, stop(DONE)), {});
+  assert.equal(l.gateBlocks, undefined);
+  assert.deepEqual(await gateOf({ log: turn({ text: 'Still looking.' }), dirty: ['wt/a'] }).gate.decide(live({ phase: 'pr-comments' }), stop('Still looking.')), {});
+  assert.ok((await gateOf({ log: turn({ text: DONE }), dirty: ['wt/a'] }).gate.decide(live({ phase: 'pr-answers' }), stop(DONE))).block, 'the answers run, which commits, is gated as before');
+});
+
 test('the cap: a run gets two blocks, the third Stop goes through with one note per run', async () => {
   const { gate, notes } = gateOf({ log: turn({ text: 'Still looking.' }) });
   const l = live();

@@ -1,5 +1,5 @@
 // The buttons of the task view's PRs tab: the two that send an agent to the task's open pull requests
-// (Fix PRs, Resolve conflicts), Find PRs, and a row's unlink.
+// (Fix PRs, Resolve conflicts), Fetch review comments, Find PRs, and a row's unlink.
 
 import { toast } from '../ui/dom';
 import { iconButton } from '../ui/icons';
@@ -28,6 +28,18 @@ export function prModeButton(task: KanbanTask, id: 'fix-prs' | 'resolve-conflict
       : ['Resolve conflicts', 'The agent merges each open PR’s target branch into its branch, resolves any conflicts and pushes; it doesn’t merge'];
   const b = btn(label, { icon: id === 'fix-prs' ? 'wrench' : 'git-merge', attrs: { disabled: !can.ok, title: can.ok ? title : can.reason, 'data-focus': `act-${id}` } });
   b.addEventListener('click', () => void req({ t: 'kanban.task.pr', id: task.id, mode }, b, 'An agent is on the pull requests'));
+  return b;
+}
+
+/**
+ * Fetch review comments: the implementer lists the open PRs' unresolved comments and judges each (the list is taskprcomments.ts's).
+ * Greyed out, with why, like the two above.
+ */
+export function fetchCommentsButton(task: KanbanTask, req: Req): HTMLButtonElement {
+  const can = canFixPrs(task);
+  const title = 'The implementer reads every unresolved review comment on the task’s open PRs and judges each; it changes no code, and a new fetch replaces the list below';
+  const b = btn('Fetch review comments', { icon: 'message-square-text', attrs: { disabled: !can.ok, title: can.ok ? title : can.reason, 'data-focus': 'act-fetch-pr-comments' } });
+  b.addEventListener('click', () => void req({ t: 'kanban.pr.comments.fetch', taskId: task.id }, b, 'The implementer reads the review comments'));
   return b;
 }
 
