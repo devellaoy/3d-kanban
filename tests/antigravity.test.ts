@@ -367,6 +367,32 @@ test('a conversation the person starts becomes the root; a restored state waits 
   assert.deepEqual([...(kept.h.state as AntigravityState).subagents], ['sub']);
 });
 
+test("a held Stop is not ended by the silence while a subagent's question waits for its answer, however long", () => {
+  mock.timers.enable({ apis: ['setTimeout'] });
+  try {
+    const { h, info } = handle();
+    send(h, 'SessionStart', { session_id: 'root' });
+    send(h, 'PreInvocation', { session_id: 'root', prompt: 'go', invocation_num: 0 });
+    send(h, 'SessionStart', { session_id: 'sub' });
+    send(h, 'PreToolUse', { session_id: 'sub', tool_name: 'ask_question', tool_use_id: 'q' });
+    send(h, 'Stop', { session_id: 'root', fully_idle: false });
+    assert.equal(info.status, 'needs_input');
+    mock.timers.tick(HELD_STOP_MS * 3 + 1000); // the person is away for half an hour
+    assert.equal(info.status, 'needs_input');
+    assert.ok((h.state as AntigravityState).held);
+    assert.equal((h.state as AntigravityState).asking.size, 1);
+    send(h, 'PostToolUse', { session_id: 'sub', tool_name: 'ask_question', tool_use_id: 'q' });
+    assert.equal(info.status, 'working');
+    // Answered: from here the silence counts again.
+    mock.timers.tick(HELD_STOP_MS - 1000);
+    assert.equal(info.status, 'working');
+    mock.timers.tick(1000);
+    assert.equal(info.status, 'done');
+  } finally {
+    mock.timers.reset();
+  }
+});
+
 test('subagent events reach the observers marked with their agent_id and change nothing of the worker', () => {
   const { h, info, observed } = handle();
   send(h, 'SessionStart', { session_id: 'root' });

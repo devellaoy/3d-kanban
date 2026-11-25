@@ -295,7 +295,7 @@ Design decisions that follow (`src/server/antigravity.ts`, `src/server/providers
 6. `PreInvocation` 0 of the root is the office's `UserPromptSubmit`, except while a root `Stop` is held and the prompt is the same as the root's last:
    that is the root woken by a subagent, which drops the hold and reports nothing (a different prompt is a person's, and is reported).
 7. A root `Stop` is reported at once when no subagent conversation is live, whatever `fully_idle` says. With one live it is held, and released when the
-   last live subagent's `Stop` arrives, or (for a subagent `Stop` hook that never came) after 10 minutes without any hook event of the tree. A timer on
+   last live subagent's `Stop` arrives, or (for a subagent `Stop` hook that never came) after 10 minutes without any hook event of the tree (never while a subagent's question is open: then the wait starts over). A timer on
    silence alone ended turns in the middle of a subagent's long tool call, so the tree is counted instead. Subagent events are passed on to the office's
    observers with `agent_id` set, so the kanban knows the run is alive. A `SessionStart` of an unknown conversation with a non-empty prompt is a new root
    (a person started a new conversation in the terminal; subagents start with an empty one).

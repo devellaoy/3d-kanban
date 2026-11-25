@@ -111,14 +111,17 @@ function release(h: WorkerHandle<AntigravityState>, fallback?: unknown): boolean
   return report(h, { sessionId: s.root, event: 'Stop' }, payload ?? {});
 }
 
-/** While a Stop is held, any hook event shows the tree is alive (see HELD_STOP_MS). */
+/** While a Stop is held, any hook event shows the tree is alive (see HELD_STOP_MS); the silence never ends the turn while a subagent's question is open. */
 function arm(h: WorkerHandle<AntigravityState>) {
   const s = h.state;
   if (!s.held) return;
   if (s.timer) clearTimeout(s.timer);
   s.timer = setTimeout(() => {
     s.timer = undefined;
-    if (s.held && h.running) release(h);
+    if (!s.held || !h.running) return;
+    // A subagent's open question is the person's silence, not the tree's: the wait starts over, and the turn can't end under the dialog.
+    if (s.asking.size) arm(h);
+    else release(h);
   }, HELD_STOP_MS);
   s.timer.unref();
 }
