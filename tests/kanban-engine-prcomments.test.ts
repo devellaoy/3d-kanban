@@ -165,3 +165,68 @@ test('a fetch that left uncommitted files in the checkout says so in a warning, 
   assert.equal(got.items.length, 1);
   assert.match(prCommentsState(fx.ctx.filesDir, fx.task(task.id)).warning ?? '', /uncommitted/);
 });
+
+// --- Review round 1 ------------------------------------------------------------------------------------
+
+async function implemented(fx: EngineFixture) {
+  fx.setRules([{ when: 'You are working on kanban task', reply: 'Done.' }, { when: 'mplement', reply: 'Done.' }]);
+  const task = fx.newTask({ usePlan: false, useReview: false });
+  assert.equal(await fx.engine.start(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the work done');
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 7, url: PR, state: 'OPEN', branch: 'fix/own' });
+  return task;
+}
+
+test('a fetch ending with a dirty worktree keeps its list and warns', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await implemented(fx);
+  const ws = fx.task(task.id).workspace!;
+  fx.setRules([{ when: 'List the unresolved review comments', reply: 'Fetched.', delayMs: 500 }]);
+  const calls = fx.invocations().length;
+  assert.equal(await fx.engine.prRun(task.id, ADA, 'comments'), undefined);
+  await writeWhileRunning(fx, task.id, JSON.stringify({ items: [item()] }));
+  writeFileSync(path.join(worktreeDir(fx.dir, ws.worktree.path), 'stray.txt'), 'oops');
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-comments' && r.status === 'succeeded'), 'fetch done');
+  assert.doesNotMatch(promptsSince(fx, calls), /uncommitted changes/, 'no commit instruction came');
+  assert.equal(fx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-comments').length, 1);
+  assert.match(readPrComments(fx.ctx.filesDir, task.id)?.warning ?? '', /changed files during the fetch/);
+});
+
+test('a stopped pr-fix that was fetched over is continued as pr-fix, by the implementer', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await reviewed(fx, []);
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Fixing.', delayMs: 5000 }, { when: 'List the unresolved review comments', reply: 'Fetched.' }, { when: 'carry on|Continue', reply: 'Carried on.' }]);
+  assert.equal(await fx.engine.prRun(task.id, ADA, 'fix'), undefined);
+  await fx.waitTask(task.id, (x) => x.runState === 'running' && x.phase === 'pr-fix', 'pr-fix running');
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped' && x.runState === 'idle', 'stopped');
+  assert.equal(await fx.engine.prRun(task.id, ADA, 'comments'), undefined);
+  await writeWhileRunning(fx, task.id, JSON.stringify({ items: [] }));
+  const back = await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-comments' && r.status === 'succeeded'), 'back, stopped');
+  assert.equal(back.phase, 'pr-fix');
+  const runs = fx.repo.listRuns(task.id).length;
+  assert.equal(await fx.engine.continue(task.id, ADA), undefined);
+  await fx.waitTask(task.id, () => fx.repo.listRuns(task.id).length > runs, 'a run started');
+  const next = fx.repo.listRuns(task.id)[runs];
+  assert.deepEqual([next.phase, next.role], ['pr-fix', 'implementer']);
+});
+
+test('the decisions reach an answers run that falls back to a fresh session (Retry with no session)', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await reviewed(fx, []);
+  const items = [item() as never];
+  const answers = [{ id: 'thread:1', decision: 'custom' as const, text: 'Use widget' }];
+  writePrComments(fx.ctx.filesDir, task.id, { fetchedAt: 9, items, dropped: 0, sent: { items, answers, at: 10 } });
+  fx.repo.createRun({ taskId: task.id, phase: 'pr-answers', role: 'implementer', tool: 'claude', status: 'failed' });
+  fx.repo.updateTask(task.id, { status: 'waiting', waitingReason: 'failed', waitingText: 'x', phase: 'pr-answers', sessionId: null, workerId: null });
+  fx.setRules([{ when: 'The user has decided what to do about the review comments', reply: 'Answered.' }, { when: '.', reply: 'Hm.' }]);
+  const calls = fx.invocations().length;
+  assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-answers' && r.status === 'succeeded'), 'the answers run');
+  const prompt = promptsSince(fx, calls);
+  assert.match(prompt, /The user's text: Use widget/);
+  assert.doesNotMatch(prompt, /the decisions are gone/);
+});

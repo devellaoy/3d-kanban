@@ -501,7 +501,9 @@ export class Orchestrator {
    * One stopped with no worker never started (see queuedStopped): it goes again as it would have.
    */
   private lastRun(taskId: number): LastRun | undefined {
-    const runs = this.ctx.repo.listRuns(taskId).filter((r) => r.phase !== 'compact');
+    // A fetch of review comments is no work to carry on (the task went back to where it was), unless it is what is parked.
+    const fetching = this.ctx.repo.getTask(taskId)?.phase === 'pr-comments';
+    const runs = this.ctx.repo.listRuns(taskId).filter((r) => r.phase !== 'compact' && (fetching || r.phase !== 'pr-comments'));
     const last = runs[runs.length - 1];
     const fresh = last?.status === 'stopped' && !last.workerId && !last.sessionId;
     return last && { phase: last.phase, ...(last.round !== undefined ? { round: last.round } : {}), role: last.role, ...(fresh ? { fresh } : {}) };
@@ -849,7 +851,7 @@ export class Orchestrator {
       fixSummary: eff.prompt === 'rereview' ? this.latestSummary(task.id, 'fix') : undefined,
       refsFile,
       fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.lastPrReview(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
-      held, prAnswers: eff.prompt === 'pr.answers' ? this.prComments.answersFor(task.id) : undefined,
+      held, prAnswers: eff.phase === 'pr-answers' ? this.prComments.answersFor(task.id) : undefined,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
     const build = (kind: PromptKind) => this.compose.build(kind, def, fresh, tool, floor.dir, x);

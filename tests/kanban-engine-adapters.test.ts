@@ -95,6 +95,12 @@ test('codex launch flags per phase, the workspace-write setting, models and effo
   assert.deepEqual(codexAdapter.launchArgs('review', base), ['-s', 'read-only', '-a', 'never']);
   // Reading pull requests takes gh and so the network: the workspace sandbox with the network on.
   assert.deepEqual(codexAdapter.launchArgs('pr-review', base), ['-s', 'workspace-write', '-a', 'never', '-c', 'sandbox_workspace_write.network_access=true']);
+  // The review comments' runs read and answer through gh: under the workspace setting they get the network too; other phases and settings are as they were.
+  for (const phase of ['pr-comments', 'pr-answers'] as const) {
+    assert.deepEqual(codexAdapter.launchArgs(phase, { ...base, permission: 'workspace-write', addDirs: ['/grant'] }), ['-s', 'workspace-write', '-a', 'never', '-c', 'sandbox_workspace_write.network_access=true', '--add-dir', '/grant'], phase);
+    assert.deepEqual(codexAdapter.launchArgs(phase, base), ['--dangerously-bypass-approvals-and-sandbox'], phase);
+  }
+  assert.deepEqual(codexAdapter.launchArgs('pr-fix', { ...base, permission: 'workspace-write' }), ['-s', 'workspace-write', '-a', 'never']);
   for (const phase of ['implement', 'fix', 'resume', 'pr', 'pr-fix', 'pr-conflicts', 'pr-comments', 'pr-answers'] as const) assert.deepEqual(codexAdapter.launchArgs(phase, base), ['--dangerously-bypass-approvals-and-sandbox'], phase);
   assert.deepEqual(codexAdapter.launchArgs('implement', { ...base, permission: 'workspace-write', addDirs: ['/uploads'] }), ['-s', 'workspace-write', '-a', 'never', '--add-dir', '/uploads']);
   // An investigation writes only its report folder.

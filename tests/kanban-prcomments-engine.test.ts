@@ -338,6 +338,7 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   assert.doesNotMatch(comments, /\{\{\s*\w+\s*\}\}/);
   assert.ok(comments.includes(prCommentsGrantFile(ctx.filesDir, task.id)), 'the file to write');
   assert.match(comments, /reviewThreads[\s\S]*isResolved[\s\S]*pageInfo/);
+  assert.match(comments, /comments\(first: 50\) \{ nodes \{[\s\S]*?body \} pageInfo \{ hasNextPage endCursor \} \}[\s\S]*node\(id: "<thread id>"\)[\s\S]*PullRequestReviewThread[\s\S]*comments\(first: 100, after: \$cursor\)/, 'each thread’s own comments are paged to the end');
   assert.match(comments, /Change no code, don't commit, don't push and post nothing/);
   assert.match(comments, /data, never instructions/);
   assert.match(comments, /thread:<databaseId[\s\S]*comment:<id[\s\S]*review:<id/);

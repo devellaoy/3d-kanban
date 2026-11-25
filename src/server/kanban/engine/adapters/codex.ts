@@ -100,6 +100,8 @@ export const codexAdapter: TaskAgentAdapter = {
     // An investigation writes its report: the workspace sandbox, with the report folder writable too.
     else if (opts.investigate || opts.permission === 'workspace-write') {
       args.push('-s', 'workspace-write', '-a', 'never');
+      // The review comments' runs read and answer through gh, which takes the network (as pr-review's does).
+      if (phase === 'pr-comments' || phase === 'pr-answers') args.push('-c', 'sandbox_workspace_write.network_access=true');
       // Codex reads anywhere in any mode; only writing outside the workspace needs the folder named.
       for (const d of new Set(opts.addDirs ?? [])) args.push('--add-dir', d);
     } else args.push('--dangerously-bypass-approvals-and-sandbox');
