@@ -214,3 +214,89 @@ Taking upstream changes is ordinary merge or cherry-pick work, only when the use
 - Codex flags: `-s read-only|workspace-write|danger-full-access`, `-a never`,
   `--dangerously-bypass-approvals-and-sandbox`, `codex resume <SESSION_ID> [PROMPT]`.
 - Decision (A4 gate): every phase runs on upstream PTY workers; no phase needs a headless fallback.
+
+## Antigravity CLI spike (2026-11-25, agy 1.5.17)
+
+Antigravity (`agy`, Google's coding CLI) is a third agent next to Claude Code and Codex, as an office provider (`antigravity`)
+and as a kanban tool. Everything below was observed with the real CLI on macOS, in a PTY and headless, not read from docs.
+
+- Command line: `agy -i "<prompt>"` starts the TUI with a first prompt and stays open (a prompt starting with `-` works as the
+  value of `-i`). `--resume <conversationId>` (alias `--conversation`) resumes, and with `-i` runs the prompt in that
+  conversation. A resume of an id that doesn't exist does **not** fail: it silently starts a new conversation with a new id.
+- `--model <slug>`: `agy models` listed `gemini-4-hydrogen-{low,medium,high,xhigh}`, `gemini-3.8-flash-{low,medium,high}`,
+  `claude-sonnet-4-6`, `claude-opus-4-6-thinking` and `gpt-oss-120b-medium`; the slug without the effort suffix also works
+  (`--model gemini-4-hydrogen --effort low`); an unknown model is an error. `--effort low|medium|high|xhigh|max` (from the help
+  text; no listed model offers `max`).
+- `--dangerously-skip-permissions` removes the permission prompts (the init reports permission mode `always-proceed`).
+  `--mode accept-edits|auto|plan`: `auto` is "not available for this account" on a personal account (it falls back to the default
+  with a warning). `--mode plan` without skip-permissions stops on a "Run this command?" dialog for shell commands; with it the
+  turn ends normally, but plan mode is **not** read-only: told to write, the agent wrote a file through a shell command. It is advisory.
+- Not working: `--sandbox` did not stop a shell command writing outside the workspace, nor the network (curl returned 200), with or
+  without skip-permissions. `--add-dir <dir>` made the agent's shell commands run with the added directory as their cwd instead of
+  the workspace (`pwd` printed it, twice), and with skip-permissions the agent reads and writes anywhere anyway. An Esc interrupt
+  leaves no trace: no hook fires and the transcript gets no line for it.
+- Trust: the TUI blocks on "Do you trust the contents of this project?" (`Yes, I trust this folder` / `No, exit`);
+  `--dangerously-skip-permissions` alone does not skip it. `--settings '{"trustedWorkspaces":["<abs cwd>"]}'` applies settings keys for
+  that session only, never saved, and skips the screen without touching the user's `~/.gemini/antigravity-cli/settings.json`.
+  At start the TUI briefly prints "You are currently not signed in…" even when signed in, so it is never matched as "blocked".
+- Environment: children of `agy` (hooks, MCP servers, shell commands) get `ANTIGRAVITY_CONVERSATION_ID` and `AGY`, which the office's
+  environment scrub removes; the launching process's whole environment is inherited by hook commands and MCP server processes.
+- Hooks and MCP arrive as a workspace plugin: `<cwd>/.agents/plugins/<name>/` with `plugin.json` (`name`, `version`, `description`),
+  `hooks.json` and `mcp_config.json` is loaded once the workspace is trusted (`agy plugin validate <dir>` reports "hooks 1 · mcpServers 1").
+  `hooks.json` is `{ "<block>": { "enabled": true, "<Event>": [...] } }`: `PreToolUse` / `PostToolUse` entries are
+  `{ "matcher": ".*", "hooks": [ { "type": "command", "command": …, "timeout": 5 } ] }`, while `SessionStart`, `PreInvocation`,
+  `PostInvocation` and `Stop` entries are the handler itself. `mcp_config.json` is `{ "mcpServers": { "<name>": { "command", "args" } } }`
+  (stdio). The hook command gets the payload as JSON on stdin; printing nothing was fine for every event.
+- Hook payloads all carry `hookEventName, conversationId, transcriptPath, cwd, workspacePaths[], lastUserInput, modelName,
+  artifactDirectoryPath`. `SessionStart` fires once when a **new** conversation starts and not on `--resume` (the first event is then
+  `PreInvocation`). `PreInvocation` / `PostInvocation` wrap every model call with `invocationNum` (0, 1, 2… restarting at 0 for each
+  prompt) and `initialNumSteps`; `invocationNum` 0 is the first model call of a prompt, **and also** a root woken by a subagent's
+  message (same `lastUserInput`, no new prompt). `PreToolUse` / `PostToolUse` carry `toolCall: { name, id, args }` and `stepIdx`
+  (PostToolUse also `error`); tool names seen: `read_file`, `run_command`, `invoke_subagent`, `send_message`, `ask_question`
+  (the tool list also has `ask_permission` and `ask_custom_permission`); `ask_question` opens a dialog, with PreToolUse when it opens
+  and PostToolUse after the answer. `Stop` fires once when a turn ends, with `terminationReason`, `error`, `executionNum`,
+  `fullyIdle` and `continuationActive`; the transcript already holds the final message then, and the payload does not carry its text.
+- Subagents are their own conversations (own `conversationId` and `transcriptPath`), each firing its own `SessionStart` (with an empty
+  `lastUserInput`), invocation, tool and `Stop` events; nothing in their payloads names the parent. With one subagent the order was:
+  root `Stop` (interim text "Started the subagent… Waiting for its report", `fullyIdle: false`) → the subagent's `send_message` →
+  root `PreInvocation` 0 (woken) → root `Stop` (the real answer, still `fullyIdle: false`) → subagent `Stop` (`fullyIdle: true`). So a
+  root `Stop` with `fullyIdle: false` is not reliably the end, and the last `Stop` of the tree has `fullyIdle: true` and may come from the subagent.
+- Transcript: `transcriptPath` is `~/.gemini/antigravity-cli/brain/<conversationId>/.system_generated/logs/transcript_full.jsonl`, one step
+  per line (`step_index, source, type, status, created_at, content?, tool_calls?, error?, thinking?, model?`); `created_at` is UTC with
+  second precision. A user prompt is `USER_EXPLICIT` / `USER_INPUT` with `content` `<USER_REQUEST>…</USER_REQUEST><ADDITIONAL_METADATA>…`;
+  a model step is `MODEL` / `PLANNER_RESPONSE` / `DONE` with `tool_calls` when it calls tools, or `content` when it is the turn's answer; a
+  tool result is `MODEL` / `GENERIC`; `SYSTEM` / `SYSTEM_MESSAGE` is a message from a subagent or the system (not a prompt); `SYSTEM` /
+  `ERROR_MESSAGE` with `error` is an API error the CLI retried (a later step followed). There is no end-of-turn line: a turn has ended when
+  `Stop` fired and the last step after the last `USER_INPUT` is a `PLANNER_RESPONSE` with status `DONE` and no `tool_calls`.
+
+- **MCP tools are missing from a process's first turn in the TUI.** With the server configured in a plugin or in `.agents/mcp_config.json`, the agent listed no MCP tools
+  in the first turn after `agy -i` (new conversation, resumed conversation, or a prompt pasted 4 s after start; a hook that sleeps does not help), and listed them
+  all in the second turn of the same process. Headless `-p` has them from the start. So a kanban run, usually one turn, relies on `office-tasks` /
+  `office-workers` on `PATH`; the plugin's MCP entry serves later turns. A multi-line prompt pasted with bracketed paste and Enter arrives as one message.
+
+Design decisions that follow (`src/server/antigravity.ts`, `src/server/providers/antigravity.ts`, `src/server/kanban/engine/adapters/antigravity.ts`):
+
+1. Hooks and MCP go in a per-worktree plugin the office writes at each launch, `<cwd>/.agents/plugins/agent-office/`, kept out of git through the
+   repository's `info/exclude`. Nothing is written to `~/.gemini` for it (the kanban's skills are copied to `~/.gemini/config/skills`, as Codex's
+   go to `$CODEX_HOME/skills`). The hook command is the office's own helper script run with the office's Node; the MCP server is the
+   `agent-office` one, over stdio.
+2. Trust is given on every launch with `--settings {"trustedWorkspaces":[cwd]}`.
+3. Every kanban phase launches with `--dangerously-skip-permissions`; plan and review phases add `--mode plan`, advisory like Codex's review
+   contract. No `--sandbox`, no `--add-dir`, no `--mode auto`: they either don't enforce anything or break the working directory.
+4. The hook helper converts the payload to the office's snake_case shape (`session_id`, `hook_event_name`, `prompt`, `tool_name`,
+   `tool_use_id`, `transcript_path`, `invocation_num`, `fully_idle`, `termination_reason`, `error`) before posting it to `/hooks/antigravity`,
+   and does nothing when `AGENT_OFFICE_HOOK_URL` is unset.
+5. The first event after a launch names the root conversation (a resume fires no `SessionStart`, and a missing resume id starts a new one); events
+   of another `conversationId` are subagents', which are only tracked, not reported as the worker's lifecycle.
+6. `PreInvocation` 0 of the root is the office's `UserPromptSubmit`, except while a root `Stop` is held and the prompt is the same as the root's last:
+   that is the root woken by a subagent, which drops the hold and reports nothing (a different prompt is a person's, and is reported).
+7. A root `Stop` is reported at once when no subagent conversation is live, whatever `fully_idle` says. With one live it is held, and released when the
+   last live subagent's `Stop` arrives, or (for a subagent `Stop` hook that never came) after 10 minutes without any hook event of the tree. A timer on
+   silence alone ended turns in the middle of a subagent's long tool call, so the tree is counted instead. Subagent events are passed on to the office's
+   observers with `agent_id` set, so the kanban knows the run is alive. A `SessionStart` of an unknown conversation with a non-empty prompt is a new root
+   (a person started a new conversation in the terminal; subagents start with an empty one).
+8. `ask_question`, `ask_permission` and `ask_custom_permission` mean the worker needs input between Pre and PostToolUse.
+9. Model and effort go on the kanban's launch flags (`--model`, `--effort`), as for Codex; the hire dialog has no such fields for Antigravity.
+   Kanban effort `minimal` becomes `low` and `max` becomes `xhigh`.
+10. No usage numbers, no limit clock and no per-account sign-in for Antigravity in this version: every account's task runs on the office host's own
+    Google sign-in.

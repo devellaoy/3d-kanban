@@ -1,21 +1,22 @@
 # user-skills
 
 Skills for the people who develop with this repository. They are not the skills the office delivers to
-its task workers (those are in `skills/`); they are meant for your own Claude Code and Codex.
+its task workers (those are in `skills/`); they are meant for your own Claude Code, Codex and Antigravity.
 
 ```
 user-skills/
   claude/<skill>/SKILL.md   -> <claude home>/skills/<skill>/    (CLAUDE_CONFIG_DIR, else ~/.claude)
   codex/<skill>/SKILL.md    -> <codex home>/skills/<skill>/     (CODEX_HOME, else ~/.codex)
+  antigravity/<skill>/SKILL.md -> ~/.gemini/config/skills/<skill>/
 ```
 
 Now: `claude/kanban-dev`, `claude/kanban-dev-sonnet`, `claude/kanban-ui-screenshots`, `codex/kanban-dev`,
-`codex/kanban-ui-screenshots`.
+`codex/kanban-ui-screenshots`, `antigravity/kanban-dev`, `antigravity/kanban-ui-screenshots`.
 
 ## Adding a skill
 
 Add a folder with a `SKILL.md` (frontmatter `name` equal to the folder name, and a `description`) under
-`claude/` or `codex/`, plus any scripts or references it needs. Do not commit `node_modules`.
+`claude/`, `codex/` or `antigravity/`, plus any scripts or references it needs. Do not commit `node_modules`.
 Right under the `# title`, add a `## Contents` list naming every heading with a few words on what it
 covers, so an agent that reads only the start of the file still knows what the rest holds.
 `tests/kanban-integrations-user-skills.test.ts` lists the skills this folder is expected to hold; update it
@@ -38,7 +39,7 @@ Settings -> Kanban -> Skills runs it too).
 - `AGENT_OFFICE_USER_SKILLS=off` turns the sync off (start-up and the admin's 🔄 Sync). A source in a linked
   git worktree (an agent's checkout) is skipped by both, so a branch doesn't overwrite your skills, unless
   `AGENT_OFFICE_USER_SKILLS=on`. A main checkout and an install without git sync.
-- `kanban-ui-screenshots` is kept in both `claude/` and `codex/`; apart from `SKILL.md` and `agents/` the
+- `kanban-ui-screenshots` is kept in `claude/`, `codex/` and `antigravity/`; apart from `SKILL.md` and `agents/` (Codex's `openai.yaml`; Antigravity has none) the
   files must be identical (a test checks it).
 
 `kanban-ui-screenshots` needs `npm install` in its folder (`<home>/skills/kanban-ui-screenshots`) the first
