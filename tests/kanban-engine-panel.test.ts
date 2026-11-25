@@ -570,3 +570,70 @@ for (const when of ['the main reviewer`s own review', 'the combine'] as const) {
     await until('no co-reviewer worker left', () => !coWorker(fx, 1));
   });
 }
+
+// --- Review round 2: an open round comes from the rows; a new round replaces its seats ---------------------
+
+const NO_EXTRA = { review: { tool: 'claude' as const, rounds: 1, reReviewLastFix: false } };
+
+test('the list emptied before Retry: a combine that failed to start still combines, with the co-reviewer`s finding', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: s.ts:1.')), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: s.ts:1.'))]);
+  const w = fx.workers as unknown as { prompt: (...a: unknown[]) => unknown; spawn: (...a: unknown[]) => unknown };
+  const prompt = w.prompt.bind(fx.workers), spawn = w.spawn.bind(fx.workers);
+  let broken = true;
+  w.prompt = (...a) => (broken && /Combine them/.test(String(a[1])) ? 'The terminal is gone' : prompt(...a));
+  w.spawn = (...a) => (broken && /Combine them/.test(String(a[2])) ? 'There is no free desk' : spawn(...a));
+  const id = await start(fx);
+  await fx.waitTask(id, (x) => x.status === 'waiting' && x.waitingReason === 'failed', 'the combine failing to start', 40_000);
+  broken = false;
+  fx.settings.setProject('proj', NO_EXTRA);
+  assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.deepEqual(shape(runs(fx, id)), ['0:solo:succeeded', '1:co:succeeded', '0:combine:failed', '0:combine:succeeded']);
+  assert.match(prompts(fx).find((p) => /asks for changes/.test(p.prompt))!.prompt, /Confirmed: s\.ts:1\./);
+});
+
+test('the list emptied before Retry: an interrupted combine still combines', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: s.ts:1.')), MAIN1(APPROVED), COMBINE('x', { exit: true })]);
+  const id = await start(fx);
+  await until('the combine interrupted', () => runs(fx, id).some((r) => r.panel === 'combine' && r.status === 'interrupted'));
+  await fx.waitTask(id, (x) => x.status === 'waiting', 'the task waiting', 20_000);
+  fx.settings.setProject('proj', NO_EXTRA);
+  fx.setRules([IMPLEMENT, FIX, COMBINE(CHANGES('Confirmed: s.ts:1.')), MAIN1(APPROVED)]);
+  assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.deepEqual(shape(runs(fx, id)), ['0:solo:succeeded', '1:co:succeeded', '0:combine:interrupted', '0:combine:succeeded']);
+  assert.match(prompts(fx).find((p) => /asks for changes/.test(p.prompt))!.prompt, /Confirmed: s\.ts:1\./);
+});
+
+async function twoRounds(t: { after(fn: () => unknown): void }, first: { tool: 'claude' | 'codex'; model?: string; effort?: 'low' | 'medium' | 'high' }, then: { tool: 'claude' | 'codex' }) {
+  const fx = await setup(t, { rounds: 2, extra: [first] });
+  const R2 = 'round 2 of 2[\\s\\S]*';
+  fx.setRules([IMPLEMENT, FIX, { when: `${R2}Combine them into the review`, reply: APPROVED }, { when: `${R2}${CO}`, reply: APPROVED }, { when: 'Review the changes again \\(round 2 of 2\\)', reply: APPROVED }, co(CHANGES('Co: u.ts:1.')), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: u.ts:1.'))]);
+  const id = await start(fx);
+  await fx.sawTask(id, (x) => x.phase === 'fix', 'the fix', 40_000);
+  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 2, reReviewLastFix: false, extra: [then] } });
+  await fx.waitTask(id, inReview, 'the review column', 60_000);
+  return { fx, id, seat: runs(fx, id).filter((r) => r.seat === 1) };
+}
+const args = (fx: EngineFixture, kind: string) => fx.invocations().filter((i) => i.kind === kind && !i.prompt).map((i) => i.args.join(' '));
+
+test('a co-reviewer`s model and effort reset to the defaults between rounds reach the re-review', async (t) => {
+  const { fx, seat } = await twoRounds(t, { tool: 'codex', model: 'gpt-special', effort: 'high' }, { tool: 'codex' });
+  assert.equal(seat[0].model, 'gpt-special');
+  assert.equal(seat[1].model, undefined);
+  assert.equal(seat[1].effort, undefined);
+  const launches = args(fx, 'codex');
+  assert.ok(/gpt-special/.test(launches[0]), 'the first round ran on the model');
+  assert.ok(!/gpt-special/.test(launches[1]), `the re-review's launch has no model: ${launches[1]}`);
+  assert.equal(seat[1].sessionId, seat[0].sessionId, 'the same session, relaunched with the new model');
+});
+
+test('a co-reviewer whose tool changes between rounds: the new tool, no model carried over, a fresh session', async (t) => {
+  const { fx, seat } = await twoRounds(t, { tool: 'codex', model: 'gpt-special' }, { tool: 'claude' });
+  assert.deepEqual(seat.map((r) => r.tool), ['codex', 'claude']);
+  assert.equal(seat[1].model, undefined);
+  assert.notEqual(seat[1].sessionId, seat[0].sessionId);
+  assert.ok(!args(fx, 'claude').some((a) => /gpt-special/.test(a)));
+});

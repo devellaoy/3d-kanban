@@ -56,6 +56,8 @@ interface Round {
   /** The latest run of each additional reviewer's seat since the solo run began. */
   co: Map<number, KanbanRun>;
   combine?: KanbanRun;
+  /** The solo run is one the office relaunched after a restart: the round began earlier. */
+  resumed?: boolean;
 }
 
 const toolName = (tool: KanbanTool) => (tool === 'codex' ? 'Codex' : 'Claude');
@@ -82,18 +84,18 @@ export class ReviewPanel {
   /** What a launch of the main reviewer's review is in a round with several reviewers (none when the task has no additional reviewers, or it is another run). */
   plan(task: KanbanTask, eff: RunEffect): { part: ReviewPanelPart; eff: RunEffect; more?: Partial<ComposeExtra> } | undefined {
     if (eff.role !== 'reviewer' || eff.phase !== 'review') return undefined;
-    // The settings decide when a round opens; one the office relaunched after a restart goes on with the seats it was opened with.
+    // A round that is already open comes from the run rows and the task's stored seats, whatever the settings say now; the settings only decide whether a NEW round has additional reviewers.
     const last = this.d.ctx.repo.listRuns(task.id).filter((r) => !r.seat && r.phase !== 'compact').at(-1);
-    const goingOn = eff.prompt === 'restarted' && !!last?.panel && !!task.coReviewers?.length;
-    if (!goingOn && !this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra?.length) return undefined;
     if (eff.prompt === 'restarted' || eff.prompt === 'continue') {
-      // A combine run that did not end (a usage limit, a crash, an office restart: failed or interrupted, not stopped by a person) goes again as a combine
+      // A combine run that did not end (it never started, a usage limit, a crash, an office restart: failed or interrupted, not stopped by a person) goes again as a combine
       // from the round's results, not as a round of its own. A Stop followed by Retry runs the whole round again.
       const round = last?.panel === 'combine' && (last.status === 'failed' || last.status === 'interrupted') ? this.view(task.id) : undefined;
       if (round && [...round.co.values()].some((r) => r.status === 'succeeded' && r.summary)) return { part: 'combine', eff: { ...eff, prompt: 'rereview' }, more: { panel: 'combine', reviews: this.reviews(task, round) } };
-      return eff.prompt === 'continue' || eff.prompt === 'restarted' ? { part: 'solo', eff } : undefined;
+      // A solo run the office relaunched after a restart is the same round, with its stored seats.
+      if (eff.prompt === 'restarted' && last?.panel === 'solo' && task.coReviewers?.length) return { part: 'solo', eff };
     }
-    return ['review', 'rereview'].includes(eff.prompt) ? { part: 'solo', eff } : undefined;
+    if (!this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra?.length) return undefined; // a new round without additional reviewers
+    return ['review', 'rereview', 'continue', 'restarted'].includes(eff.prompt) ? { part: 'solo', eff } : undefined;
   }
 
   /** The round of the task's latest main-reviewer run that began one (a 'solo' run), from the run rows. */
@@ -117,7 +119,7 @@ export class ReviewPanel {
       if (r.seat && r.panel === 'co') co.set(r.seat, r);
       else if (!r.seat && r.panel === 'combine') combine = r;
     }
-    return { solo: runs[at], co, ...(combine ? { combine } : {}) };
+    return { solo: runs[at], co, ...(combine ? { combine } : {}), ...(first !== at ? { resumed: true } : {}) };
   }
 
   /** The task is in review with the main reviewer's own review in and nobody running: between the solo run and the combine (or the published result). */
@@ -136,8 +138,15 @@ export class ReviewPanel {
     // The settings are read when a round opens: the seats are then kept on the task. A solo run the office relaunched after a restart is the same round:
     // it goes on with those seats, keeping the ones that are running here or have their result in.
     const stored = task.coReviewers ?? [];
-    const goingOn = eff.prompt === 'restarted' && stored.length > 0;
-    const seats = goingOn ? stored : (this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra ?? []).map((spec, i) => ({ ...stored.find((c) => c.seat === i + 1), seat: i + 1, ...spec }));
+    const goingOn = eff.prompt === 'restarted' && stored.length > 0 && !!this.view(task.id)?.resumed;
+    const floor = this.d.ctx.floor(task.project);
+    // A new round's seats are its settings wholesale (an absent model or effort is the default); only what is needed to come back is carried over from the seat's last round.
+    // The stored session is used when the tool is unchanged: a changed model or effort relaunches the same session with them.
+    const seats = goingOn ? stored : (this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra ?? []).map((spec, i) => {
+      const old = stored.find((c) => c.seat === i + 1);
+      const same = old?.tool === spec.tool;
+      return { seat: i + 1, tool: spec.tool, ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}), ...(old?.workerId && floor?.workers.get(old.workerId) ? { workerId: old.workerId } : {}), ...(same && old?.sessionId ? { sessionId: old.sessionId } : {}) };
+    });
     if (!goingOn) this.d.update(task.id, { coReviewers: seats.length ? seats : null });
     const kept = goingOn ? this.view(task.id)?.co : undefined;
     for (const { seat, tool, model } of seats) {
