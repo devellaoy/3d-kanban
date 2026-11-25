@@ -32,16 +32,25 @@ export function planModeOf(phase: string, args: readonly string[] | undefined): 
   return phase === 'plan' && !inAutoMode(args) ? { planMode: true } : {};
 }
 
+/** The office's own announcement tool (mcp__<server>__report_turn): Claude may call it in the same message as ExitPlanMode, which is no "going on". */
+const ANNOUNCE_TOOL = /__report_turn$/;
+
 /**
  * What a lead's hook tells of its run's mode: Claude asked to leave plan mode (ExitPlanMode: its needs_input is the finished plan), or went on
- * with another tool; and, in auto mode, whether auto mode is there at all.
+ * with another tool; and, in auto mode, whether auto mode is there at all. ExitPlanMode's tool calls of one message are all hooked before its
+ * approval dialog (PermissionRequest) shows, so a sibling's PreToolUse (report_turn, which the contract asks for next to the plan) is no
+ * "going on": the plan is dropped only by a tool that comes before the dialog is up, and by the dialog's answer or the next prompt. A Stop
+ * does not clear: nothing runs after it that a plan would be wrong for (the next prompt clears), and a needs_input already queued still needs it.
  */
 export function observeLeadHook(live: Live, o: WorkerObservation, args: () => readonly string[] | undefined, note: (text: string) => void) {
-  if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') {
+  const exit = o.tool === 'ExitPlanMode';
+  if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && exit) {
     live.exitPlan = true;
+    if (o.hookEvent === 'PermissionRequest') live.planAsked = true;
     const plan = (o.payload as { tool_input?: { plan?: unknown } } | undefined)?.tool_input?.plan;
     if (typeof plan === 'string' && plan.trim()) live.hookPlan = plan;
-  } else if (o.hookEvent === 'PreToolUse' && o.tool) [live.exitPlan, live.hookPlan] = [false, undefined];
+  } else if (o.hookEvent === 'UserPromptSubmit' || ((o.hookEvent === 'PostToolUse' || o.hookEvent === 'PostToolUseFailure') && exit)) [live.exitPlan, live.hookPlan, live.planAsked] = [false, undefined, false];
+  else if (o.hookEvent === 'PreToolUse' && o.tool && !live.planAsked && !ANNOUNCE_TOOL.test(o.tool)) [live.exitPlan, live.hookPlan] = [false, undefined];
   autoModeUnavailable(live, o, args, note);
 }
 

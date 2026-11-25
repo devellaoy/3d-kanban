@@ -75,3 +75,40 @@ test("ExitPlanMode's hook carries the plan: it stands in when the session log do
   assert.equal(l.hookPlan, undefined);
   assert.equal(planFromHook(l, undefined, true), undefined);
 });
+
+test("a sibling tool of ExitPlanMode (report_turn) is not Claude going on; the dialog's answer or the next prompt ends the plan", () => {
+  const REPORT = 'mcp__agent-office__report_turn';
+  const run = (events: [string, string, Record<string, unknown>?][]) => {
+    const l = live();
+    for (const [event, tool, input] of events) observeLeadHook(l, hook('plan', input ? { tool_input: input } : {}, event, tool), () => undefined, () => {});
+    return l;
+  };
+  const plan = { plan: 'The plan' };
+  // The order Claude Code hooks a message in: ExitPlanMode, its sibling, then the approval dialog.
+  for (const events of [
+    [['PreToolUse', 'ExitPlanMode', plan], ['PermissionRequest', 'ExitPlanMode', plan], ['PreToolUse', REPORT]],
+    [['PreToolUse', 'ExitPlanMode', plan], ['PreToolUse', REPORT]],
+    [['PreToolUse', 'ExitPlanMode', plan], ['PreToolUse', REPORT], ['PermissionRequest', 'ExitPlanMode', plan]],
+  ] as [string, string, Record<string, unknown>?][][]) {
+    const l = run(events);
+    assert.equal(l.exitPlan, true, JSON.stringify(events));
+    assert.equal(l.hookPlan, 'The plan');
+  }
+  // Another tool before the dialog is up is Claude going on; the dialog's own PermissionRequest brings the plan back.
+  const went = run([['PreToolUse', 'ExitPlanMode', plan], ['PreToolUse', 'Read']]);
+  assert.deepEqual([went.exitPlan, went.hookPlan], [false, undefined]);
+  const back = run([['PreToolUse', 'ExitPlanMode', plan], ['PreToolUse', 'Read'], ['PermissionRequest', 'ExitPlanMode', plan]]);
+  assert.deepEqual([back.exitPlan, back.hookPlan, back.planAsked], [true, 'The plan', true]);
+  // With the dialog up, even another tool is no going on; a payload without a plan keeps an earlier one.
+  const asked = run([['PreToolUse', 'ExitPlanMode', plan], ['PermissionRequest', 'ExitPlanMode'], ['PreToolUse', 'Read']]);
+  assert.deepEqual([asked.exitPlan, asked.hookPlan], [true, 'The plan']);
+  // The dialog answered, or the next prompt: all of it is cleared, and a tool is what it was before.
+  for (const end of [['PostToolUse', 'ExitPlanMode'], ['PostToolUseFailure', 'ExitPlanMode'], ['UserPromptSubmit', '']] as [string, string][]) {
+    const l = run([['PreToolUse', 'ExitPlanMode', plan], ['PermissionRequest', 'ExitPlanMode', plan], end]);
+    assert.deepEqual([l.exitPlan, l.hookPlan, l.planAsked], [false, undefined, false], end[0]);
+    observeLeadHook(l, hook('plan', {}, 'PreToolUse', REPORT), () => undefined, () => {});
+    assert.equal(l.exitPlan, false);
+  }
+  // A Stop alone changes nothing (a needs_input queued behind it still needs the plan).
+  assert.equal(run([['PreToolUse', 'ExitPlanMode', plan], ['PermissionRequest', 'ExitPlanMode', plan], ['Stop', '']]).hookPlan, 'The plan');
+});
