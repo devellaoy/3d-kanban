@@ -107,5 +107,5 @@ that the task view's Changes tab mounts (`mountChangesView`; destroyed when anot
 live watch ends with it). An agent asking a question in its terminal gets
 the **Answer the agent** box in both (typed into its terminal, the same run carrying on; a permission
 prompt only says to answer it in the terminal); its **⌨️ Open
-its terminal** is the window's 🖥️ Terminal tab in 3D (the task's other worker: a toast says to open it
-at its desk).
+its terminal** is the window's 🖥️ Terminal tab in 3D (another worker of the task: its window opens in
+this one's place, as its tab in the terminal's tab row does, `kanban/tasktabs.ts`).

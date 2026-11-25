@@ -16,7 +16,7 @@ import type { Net } from '../net';
 import type { Modal } from '../ui/dom';
 import type { TerminalOptions } from '../ui/terminal';
 import type { KanbanTask } from '../../shared/kanban/types.js';
-import { CloseGuard, planAfterWorkerGone, planTaskWindow, type TaskTab } from './model';
+import { CloseGuard, planAfterWorkerGone, planTaskWindow, workerWindowClosed, type TaskTab } from './model';
 import { kstore } from './store';
 import { openTaskChanges } from './changeswindow';
 import { openTaskModal, type TaskView } from './taskview';
@@ -155,7 +155,11 @@ export class TaskWindows {
           workerId,
           {
             tab,
-            onClosed: (why) => (why === 'gone' ? this.workerGone(entry, gen, workerId) : this.windowClosed(entry, gen)),
+            onClosed: (why) => {
+              const what = workerWindowClosed(why);
+              if (what === 'handover') this.workerGone(entry, gen, workerId);
+              else if (what === 'close') this.windowClosed(entry, gen);
+            },
             task: {
               tab: tab === 'task' && asked !== 'terminal' && asked !== 'changes' ? asked : undefined,
               onTab: (t) => this.tabChanged(entry, gen, t),
@@ -163,7 +167,7 @@ export class TaskWindows {
               openTask: (other) => this.o.openTask(other),
               edit: (task) => this.o.edit(task),
               moveMenu: (task) => this.o.moveMenu(task),
-              // The task's other worker (the reviewer): its window, on the Terminal tab.
+              // Another worker of the task (a reviewer, the implementer; a worker tab or "Open the terminal"): its window, on the Terminal tab.
               openTerminal: (id, proj) => this.showWorker(entry, id, proj, 'terminal', undefined, false),
               onKanban: true,
             },

@@ -11,6 +11,7 @@ import type { Parts } from '../core/parts';
 import { store } from '../state';
 import { rememberFloor } from '../state/persist';
 import { toast } from '../ui/dom';
+import { setTerminalSwitcher } from '../ui/terminal';
 import { kanbanUrl, parseOfficeLink, withoutOfficeLink, type OfficeLink } from './office';
 import { tickRetryCountdown } from '../features/workers/views';
 import { installLounge3d } from './lounge3d';
@@ -66,6 +67,9 @@ export function installKanban3d(ctx: Ctx, core: CoreState, parts: Kanban3dParts)
   }
   ctx.messages.on('welcome', followOfficeLink);
   ctx.messages.on('floor.enter', followOfficeLink);
+
+  // A worker tab of a task worker's window (tasktabs.ts) opens that worker's window as E at its desk does.
+  setTerminalSwitcher((id) => parts.waiting.openWorkerTerminal(id));
 
   tickRetryCountdown(parts.views.workerViews, parts.views.meetingCard);
 

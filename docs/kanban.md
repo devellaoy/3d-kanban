@@ -440,7 +440,11 @@ Click a card (or Enter on it, or follow a `#123` link). A task with a worker ope
 terminal window, the one **E** opens in the 3D office: tabs **Terminal** and **Task #N**, and in
 the header Esc, **Changes**, **VSCode** and the close button (a task on another project's floor takes you to that
 floor first). The worker is the one at work: the reviewer while the task is in a review, else the
-implementer; the task's **Open its terminal** switches to the other worker's window. **Changes**
+implementer; the task's **Open its terminal** switches to the other worker's window, and so do the
+worker tabs in the terminal's tab row, one for each worker of the task (**Terminal** for the implementer,
+**Reviewer · Claude** for the main reviewer, **Reviewer 2 · Codex** and so on for the additional reviewers).
+When the window's worker goes home the task stays open in another worker's window (an additional
+reviewer hands over to the main reviewer, else to the implementer). **Changes**
 opens the task's Changes window and its **Terminal** comes back; all of these stay the same open
 task, so `?task=` stays in the link. `&tab=terminal` opens the Terminal tab and `&tab=changes` the
 Changes window (any other tab, `&tab=images` say, opens on the Task tab); the link's `&tab=` follows the window's tabs. A task without a worker, or whose worker

@@ -8,25 +8,31 @@ import { toolName } from './labels';
 import { field, select } from './ui';
 
 export function extraReviewersField(list: ReviewerSpec[] | undefined): { el: HTMLElement; value(): ReviewerSpec[] } {
-  type Row = { el: HTMLElement; read(): ReviewerSpec };
+  type Row = { el: HTMLElement; name: HTMLElement; read(): ReviewerSpec };
   const rows: Row[] = [];
   const box = h('div.kb-repos');
-  const add = h('button.btn.kb-admin', { type: 'button' }, ...withIcon('plus', 'Add a reviewer'));
-  const paint = () => add.classList.toggle('hidden', rows.length >= MAX_EXTRA_REVIEWERS);
+  const add = h('button.btn.small.kb-admin', { type: 'button', title: `Up to ${MAX_EXTRA_REVIEWERS} besides the main reviewer` }, ...withIcon('plus', 'Add a reviewer'));
+  const paint = () => {
+    add.classList.toggle('hidden', rows.length >= MAX_EXTRA_REVIEWERS);
+    // Numbered from 2 (the main reviewer is the first), as on their terminals' tabs (tasktabs.ts).
+    rows.forEach((r, i) => r.name.replaceChildren(...withIcon('bot', `Reviewer ${i + 2}`)));
+  };
   const makeRow = (spec: ReviewerSpec): Row => {
     const tool = select<KanbanTool>(KANBAN_TOOLS.map((t) => [t, toolName(t)] as const), spec.tool, { 'aria-label': 'Reviewer' });
     const model = modelInput(spec.model ?? '', () => tool.value as KanbanTool);
     const effort = effortSelect(spec.effort, 'Default');
     tool.addEventListener('change', () => model.refresh());
-    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': 'Remove this reviewer' }, icon('x', { size: 14 }));
+    const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': 'Remove this reviewer', title: 'Remove this reviewer' }, icon('x', { size: 14 }));
+    const name = h('b.kb-icon-row');
     const el = h(
       'div.kb-repo',
       {},
-      h('div.kb-repo-head', {}, h('b', {}, 'Reviewer'), h('span.grow'), remove),
+      h('div.kb-repo-head', {}, name, h('span.grow'), remove),
       h('div.kb-three', {}, field('Reviewer', tool), field('Model', model.el), field('Effort', effort)),
     );
     const row: Row = {
       el,
+      name,
       read: () => ({
         tool: tool.value as KanbanTool,
         ...(model.input.value.trim() ? { model: model.input.value.trim() } : {}),

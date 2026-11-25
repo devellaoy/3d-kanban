@@ -4,7 +4,8 @@
 
 import type { KanbanRun, KanbanTask } from '../../shared/kanban/types.js';
 
-type Subject = Pick<KanbanTask, 'phase' | 'workerId' | 'reviewerWorkerId' | 'askingKind'>;
+type Subject = Pick<KanbanTask, 'phase' | 'workerId' | 'reviewerWorkerId' | 'askingKind'> & { coReviewers?: readonly { seat: number; workerId?: string }[] };
+type Runs = readonly Pick<KanbanRun, 'status' | 'workerId'>[];
 
 /** What the view shows of an asking task. */
 export interface AskingView {
@@ -24,9 +25,17 @@ export interface AskingView {
   sendTitle: string;
 }
 
-/** The asking worker: the reviewer during a review round, else the implementer. */
-function askingWorker(task: Subject): string | undefined {
-  return task.phase === 'review' || task.phase === 'pr-review' ? task.reviewerWorkerId : task.workerId;
+/**
+ * The asking worker: a reviewer during a review round, else the implementer. A round with additional
+ * reviewers has several at once, and the task doesn't say which of them asked: the first one whose run
+ * is still going (the main reviewer before the others, by seat), else the first one at a desk.
+ */
+function askingWorker(task: Subject, runs?: Runs): string | undefined {
+  if (task.phase !== 'review' && task.phase !== 'pr-review') return task.workerId;
+  const co = [...(task.coReviewers ?? [])].sort((a, b) => a.seat - b.seat).map((r) => r.workerId);
+  const reviewers = [task.reviewerWorkerId, ...co].filter((id): id is string => !!id);
+  const running = new Set(runs?.filter((r) => r.status === 'running').map((r) => r.workerId));
+  return reviewers.find((id) => running.has(id)) ?? reviewers[0];
 }
 
 /**
@@ -34,11 +43,11 @@ function askingWorker(task: Subject): string | undefined {
  * (a live run gets it typed into its terminal; with none, the answer starts the agent again). `runs` are
  * the task's runs when the view has them; without them (a card), a hired worker stands for a live run.
  */
-export function askingLive(task: Subject, runs?: readonly Pick<KanbanRun, 'status'>[]): boolean {
+export function askingLive(task: Subject, runs?: Runs): boolean {
   return runs ? runs.some((r) => r.status === 'running') : !!askingWorker(task);
 }
 
-export function askingView(task: Subject, runs?: readonly Pick<KanbanRun, 'status'>[]): AskingView {
+export function askingView(task: Subject, runs?: Runs): AskingView {
   if (!askingLive(task, runs)) {
     return {
       live: false,
@@ -49,7 +58,7 @@ export function askingView(task: Subject, runs?: readonly Pick<KanbanRun, 'statu
     };
   }
   const title = 'The agent is asking in its terminal';
-  const terminalOf = askingWorker(task);
+  const terminalOf = askingWorker(task, runs);
   // From here only a question is answered: typed text and Enter would pick a permission prompt's highlighted option.
   if (task.askingKind === 'question') {
     return { live: true, title, answerBox: true, terminalOf, note: 'Your answer is typed into its terminal, as if you typed it there.', sendTitle: 'Type your answer into the agent’s terminal: it carries on with it' };

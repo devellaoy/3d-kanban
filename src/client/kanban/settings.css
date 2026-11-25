@@ -36,8 +36,14 @@
 .kb-set .kb-two > .kb-check, .kb-set .kb-three > .kb-check { align-self: center; }
 .kb-set .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper); }
 .kb-set .kb-subfields .kb-check, .kb-set .kb-subfields .kb-extra-reviewers { grid-column: 1 / -1; }
-.kb-set .kb-extra-reviewers { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; }
+/* The additional reviewers (reviewers-field.ts): a heading as a field's label with its hint right under it, then
+   rows like the Repositories', on the field colour since the box they sit in is paper already. */
+.kb-set .kb-extra-reviewers { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }
+.kb-set .kb-extra-reviewers > b { font-size: var(--fs-sm); }
+.kb-set .kb-extra-reviewers > .kb-hint { margin: -6px 0 0; }
 .kb-set .kb-extra-reviewers .kb-repos { align-self: stretch; }
+.kb-set .kb-extra-reviewers .kb-repos:empty { display: none; }
+.kb-set .kb-extra-reviewers .kb-repo { background: var(--field); }
 /* ⚙️ Project's name: the box grows, its Rename button sits level with it */
 .kb-set .kb-rename { align-items: flex-end; }
 .kb-set .kb-rename > .kb-field { flex: 1 1 16em; }
