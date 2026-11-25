@@ -2,4 +2,4 @@
 
 import type { KanbanTool } from './types.js';
 
-export const KANBAN_TOOL_NAMES: Record<KanbanTool, string> = { claude: 'Claude', codex: 'Codex' };
+export const KANBAN_TOOL_NAMES: Record<KanbanTool, string> = { claude: 'Claude', codex: 'Codex', antigravity: 'Antigravity' };

@@ -14,8 +14,8 @@ import { inAutoMode } from './automode.js';
 
 /** How much of a Stop hook's final answer is kept (it becomes a comment, a summary, a PR comment). */
 const STOP_TEXT_MAX = 100_000;
-/** A tool that asks the user a question in the terminal: Claude's AskUserQuestion, Codex's request_user_input. */
-export const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|request_user_input)$/;
+/** A tool that asks the user a question in the terminal: Claude's AskUserQuestion, Codex's request_user_input, Antigravity's ask_question. */
+export const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|request_user_input|ask_question)$/;
 
 /** A hook payload from a subagent or a teammate: Claude Code adds `agent_id` only to those. */
 export const agentHook = (payload: unknown): boolean => typeof (payload as { agent_id?: unknown } | undefined)?.agent_id === 'string';

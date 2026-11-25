@@ -1,4 +1,4 @@
-// Test fixture for the kanban engine (not a test itself): a git project, fake `claude` and `codex`
+// Test fixture for the kanban engine (not a test itself): a git project, fake `claude`, `codex` and `agy`
 // CLIs that answer prompts by rules, write transcripts in the real CLIs' shapes and post their hooks
 // to a local hook server, a real WorkerManager, and a KanbanContext around them.
 
@@ -30,8 +30,8 @@ import type { DepartureIntent, KanbanTask } from '../src/shared/kanban/types.js'
 /** How a fake agent answers a prompt: the first rule whose `when` (a regex) matches it. */
 export interface Rule {
   when: string;
-  /** Only this fake CLI answers by the rule (claude or codex), so two reviewers of different tools can be told apart. */
-  kind?: 'claude' | 'codex';
+  /** Only this fake CLI answers by the rule (claude, codex or agy), so two reviewers of different tools can be told apart. */
+  kind?: 'claude' | 'codex' | 'agy';
   reply: string;
   /** Claude only: end the turn in ExitPlanMode with this plan (PermissionRequest, no Stop). */
   exitPlan?: string;
@@ -159,14 +159,20 @@ if (args.includes('--output-format')) {
   process.exit(0);
 }
 record({});
-const at = kind === 'claude' ? args.indexOf('--resume') : args.indexOf('resume');
+const at = kind === 'claude' || kind === 'agy' ? args.indexOf('--resume') : args.indexOf('resume');
 const session = at >= 0 ? args[at + 1] : kind + '-' + process.pid + '-' + Date.now();
 // A conversation the CLI no longer has (a session id starting with stale-): it exits before it starts, as the real one does.
 if (at >= 0 && /^stale-/.test(session)) { process.stderr.write('No conversation found with session ID: ' + session + '\n'); process.exit(1); }
 const transcript = path.join(process.env.FAKE_TRANSCRIPTS, session + '.jsonl');
 const append = (o) => fs.appendFileSync(transcript, JSON.stringify(o) + '\n');
 const post = (event, payload) => new Promise((resolve) => {
-  const url = new URL(process.env.AGENT_OFFICE_HOOK_URL + '/hooks/' + (kind === 'codex' ? 'codex' : 'claude'));
+  // Antigravity's hook helper posts its own events in snake_case: a prompt is the first model call (PreInvocation 0), a Stop says the whole tree is idle.
+  if (kind === 'agy') {
+    if (event === 'UserPromptSubmit') { event = 'PreInvocation'; payload = { ...payload, invocation_num: 0 }; }
+    else if (event === 'Stop') payload = { ...payload, fully_idle: true, termination_reason: 'NO_TOOL_CALL', error: '' };
+    payload = { ...payload, hook_event_name: event };
+  }
+  const url = new URL(process.env.AGENT_OFFICE_HOOK_URL + '/hooks/' + (kind === 'codex' ? 'codex' : kind === 'agy' ? 'antigravity' : 'claude'));
   url.searchParams.set('worker', process.env.AGENT_OFFICE_WORKER_ID);
   url.searchParams.set('event', event);
   const req = http.request(url, { method: 'POST', headers: { authorization: 'Bearer ' + process.env.AGENT_OFFICE_HOOK_TOKEN, 'content-type': 'application/json' } }, (res) => { res.resume(); res.on('end', resolve); });
@@ -375,6 +381,17 @@ async function turn(prompt, answered) {
       await post('PermissionRequest', { tool_name: 'ExitPlanMode' });
       return;
     }
+  } else if (kind === 'agy') {
+    // Steps as Antigravity logs them, with second-precision UTC times.
+    let step = fs.existsSync(transcript) ? fs.readFileSync(transcript, 'utf8').split('\n').filter(Boolean).length : 0;
+    const now = () => new Date().toISOString().replace(/\.\d+Z$/, 'Z');
+    const put = (o) => append({ step_index: step++, status: 'DONE', created_at: now(), ...o });
+    put({ source: 'USER_EXPLICIT', type: 'USER_INPUT', content: '<USER_REQUEST>\n' + prompt + '\n</USER_REQUEST>\n<ADDITIONAL_METADATA>\nThe current local time is fake.\n</ADDITIONAL_METADATA>' });
+    if (rule.earlier) {
+      put({ source: 'MODEL', type: 'PLANNER_RESPONSE', content: rule.earlier, tool_calls: [{ name: 'view_file', args: { path: 'README.md' } }] });
+      put({ source: 'MODEL', type: 'GENERIC', content: 'Created At: now\n# test' });
+    }
+    put({ source: 'MODEL', type: 'PLANNER_RESPONSE', content: rule.reply });
   } else {
     append({ type: 'event_msg', timestamp: new Date().toISOString(), payload: { type: 'user_message', message: prompt } });
     if (rule.earlier) append({ type: 'response_item', payload: { type: 'message', role: 'assistant', content: [{ type: 'output_text', text: rule.earlier }] } });
@@ -384,8 +401,9 @@ async function turn(prompt, answered) {
   await post('Stop', kind === 'claude' ? { last_assistant_message: rule.reply } : {});
   if (kind === 'claude' && rule.typedAfterStop && rule.typedLagMs !== undefined && rule.lateLogMs === undefined) { await new Promise((r) => setTimeout(r, 400)); await typedAfter(rule, 'm' + Date.now()); }
 }
-let chain = post('SessionStart', { source: at >= 0 ? 'resume' : 'startup' });
-const dash = args.indexOf('--');
+// A resumed Antigravity conversation fires no SessionStart: its first event is the prompt's PreInvocation.
+let chain = kind === 'agy' && at >= 0 ? Promise.resolve() : post('SessionStart', { source: at >= 0 ? 'resume' : 'startup' });
+const dash = args.indexOf(kind === 'agy' ? '-i' : '--');
 if (dash >= 0) chain = chain.then(() => turn(args[dash + 1]));
 let buf = '';
 // Raw, as the real TUI is: a lone Esc reaches it without a newline.
@@ -511,7 +529,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
   makeRepo(dir);
   const bin = path.join(root, 'bin');
   mkdirSync(bin, { recursive: true });
-  for (const name of ['claude', 'codex']) {
+  for (const name of ['claude', 'codex', 'agy']) {
     writeFileSync(path.join(bin, name), FAKE_AGENT, { mode: 0o755 });
     if (process.platform === 'win32') {
       writeFileSync(path.join(bin, name + '.cmd'), '@echo off\r\n"' + process.execPath + '" "%~dp0' + name + '" %*\r\n');
@@ -543,7 +561,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
       } catch {
         // counts as the event anyway
       }
-      const ok = url.pathname === '/hooks/codex' ? workers.handleCodexHook(worker, token, event, payload) : workers.handleHook(worker, token, event, payload);
+      const ok = url.pathname === '/hooks/codex' ? workers.handleCodexHook(worker, token, event, payload) : url.pathname === '/hooks/antigravity' ? workers.handleProviderHook('antigravity', worker, token, event, payload) : workers.handleHook(worker, token, event, payload);
       res.writeHead(ok ? 200 : 401).end('{}');
     });
   });

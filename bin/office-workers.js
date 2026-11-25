@@ -268,7 +268,7 @@ export const TOOLS = [
       type: 'object',
       properties: {
         prompt: { type: 'string', description: 'The task, complete on its own.' },
-        provider: { type: 'string', description: "Which agent runs it (claude, codex, opencode...; list_workers' providers). Default: the office's." },
+        provider: { type: 'string', description: "Which agent runs it (claude, codex, antigravity, opencode...; list_workers' providers). Default: the office's." },
         model: { type: 'string', description: "A model for it, instead of the provider's default." },
         effort: { type: 'string', enum: EFFORTS, description: 'Reasoning effort, for agents that take one.' },
         worktree: { type: 'boolean', description: 'Its own git worktree and branch (default true in a git checkout).' },

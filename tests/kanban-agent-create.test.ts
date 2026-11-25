@@ -231,7 +231,7 @@ test('bad requests are answered with 400 and make nothing', async () => {
   await bad({ title: 't' }, /description is required/);
   await bad({ title: 't', description: 'd', project: 'nope' }, /no project nope/);
   await bad({ title: 't', description: 'd', repos: ['nope'] }, /nope isn't one of the project's repositories/);
-  await bad({ title: 't', description: 'd', provider: 'gpt' }, /provider must be claude or codex/);
+  await bad({ title: 't', description: 'd', provider: 'gpt' }, /provider must be claude, codex or antigravity/);
   await bad({ title: 't', description: 'd', effort: 'huge' }, /effort must be one of/);
   await bad({ title: 't', description: 'd', type: 'fix' }, /type must be/);
   await bad({ title: 't', description: 'd', start: 'yes' }, /start must be/);

@@ -1,14 +1,16 @@
-// Skills management: the registry (kanban.skills.list), syncing the bundled Codex skills
+// Skills management: the registry (kanban.skills.list), syncing the bundled Codex and Antigravity skills
 // (kanban.skills.sync, admins), and a task worker's picked skills (ProjectSettings.skills, a task's
-// overrides.skills) by phase and tool: delivered with workerArgs (claude: --plugin-dir; codex:
-// copied to its home), and named in the prompts through skillHint ({{skills}}).
+// overrides.skills) by phase and tool: delivered with workerArgs (claude: --plugin-dir; codex and
+// antigravity: copied to their homes), and named in the prompts through skillHint ({{skills}}).
 
+import { existsSync } from 'node:fs';
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
 import { KANBAN_TOOLS, type KanbanTool, type RunPhase, type SkillInfo, type SkillPhase, type SkillSelection } from '../../../../shared/kanban/types.js';
+import { KANBAN_TOOL_NAMES } from '../../../../shared/kanban/tools.js';
 import { isPrPhase } from '../../../../shared/kanban/prs.js';
 import { projectRepos } from '../../projects.js';
 import { fail } from '../util.js';
-import { pluginDir, syncCodexSkills, type SyncResult } from './delivery.js';
+import { pluginDir, syncHomeSkills, type SyncResult } from './delivery.js';
 import { defaultRoots, discoverSkills, findSkill, type SkillRoots } from './registry.js';
 
 const syncHooks = new Set<() => SyncResult[]>();
@@ -110,19 +112,20 @@ export function createSkills(ctx: KanbanContext, opts: SkillsOptions = {}) {
       if (!deliver.length) return [];
       return ['--plugin-dir', pluginDir(ctx.filesDir, deliver)];
     }
-    if (tool === 'codex') {
-      const bundled = [...ALWAYS_BUNDLED.map((n) => skills.find((s) => s.tool === 'codex' && s.origin === 'bundled' && s.name === n)), ...got.found.filter((s) => s.origin === 'bundled')].filter((s): s is SkillInfo => !!s);
-      for (const r of syncCodexSkills(roots(got.task.project).codexHome, bundled)) {
-        if (r.status === 'update-available' || r.status === 'failed') ctx.toast(got.task.project, `Codex skill ${r.name}: ${r.status === 'failed' ? `couldn't be installed (${r.detail})` : 'a newer version is available, but the installed copy was changed by hand, so it was left as it is'}`, 'warn');
+    if (tool === 'codex' || tool === 'antigravity') {
+      const bundled = [...ALWAYS_BUNDLED.map((n) => skills.find((s) => s.tool === tool && s.origin === 'bundled' && s.name === n)), ...got.found.filter((s) => s.origin === 'bundled')].filter((s): s is SkillInfo => !!s);
+      const r0 = roots(got.task.project);
+      for (const r of syncHomeSkills(tool === 'codex' ? r0.codexHome : r0.antigravityHome, bundled)) {
+        if (r.status === 'update-available' || r.status === 'failed') ctx.toast(got.task.project, `${KANBAN_TOOL_NAMES[tool]} skill ${r.name}: ${r.status === 'failed' ? `couldn't be installed (${r.detail})` : 'a newer version is available, but the installed copy was changed by hand, so it was left as it is'}`, 'warn');
       }
     }
     return [];
   };
 
   const sync = (): SyncResult[] => {
-    const skills = registry().filter((s) => s.tool === 'codex' && s.origin === 'bundled');
+    const bundled = (tool: KanbanTool) => registry().filter((s) => s.tool === tool && s.origin === 'bundled');
     const r = roots();
-    const out = syncCodexSkills(r.codexHome, skills);
+    const out = [...syncHomeSkills(r.codexHome, bundled('codex')), ...(existsSync(r.antigravityHome) ? syncHomeSkills(r.antigravityHome, bundled('antigravity')) : [])]; // Antigravity's config folder isn't made for someone who doesn't run it
     for (const hook of syncHooks) {
       try {
         out.push(...hook());

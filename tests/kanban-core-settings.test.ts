@@ -64,6 +64,13 @@ test('every field is clamped or dropped into range', () => {
   assert.deepEqual(sanitizePartialReview({ rounds: 40, tool: 'codex', sandbox: false }), { rounds: 10, tool: 'codex', sandbox: false });
 });
 
+test('antigravity is a tool wherever codex is', () => {
+  assert.equal(sanitizeKanbanSettings({ defaults: { tool: 'antigravity' } }).defaults.tool, 'antigravity');
+  assert.equal(sanitizeReview({ tool: 'antigravity' }).tool, 'antigravity');
+  assert.deepEqual(sanitizePartialReview({ extra: [{ tool: 'antigravity', effort: 'max' }, { tool: 'x' }] }), { extra: [{ tool: 'antigravity', effort: 'max' }] });
+  assert.deepEqual(sanitizeSkillSelection({ review: { antigravity: ['a'] } }), { review: { antigravity: ['a'] } });
+});
+
 test('project settings: texts capped, issue sources checked, prompts only the kanban ones', () => {
   const p = sanitizeProjectSettings({
     branchInstructions: 'x'.repeat(30_000),

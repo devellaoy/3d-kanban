@@ -288,12 +288,12 @@ test('🗂️ Kanban offers every way the plan and implementation phases run, sa
   assert.deepEqual(impl.options, IMPLEMENT_PERMISSIONS.map((v) => [v, IMPLEMENT_PERMISSION_INFO[v].name]));
   assert.equal(plan.pick.value, 'plan');
   assert.equal(impl.pick.value, 'auto');
-  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.plan.claude} · Codex: ${PLAN_PERMISSION_INFO.plan.codex}`);
-  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex}`);
+  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.plan.claude} · Codex: ${PLAN_PERMISSION_INFO.plan.codex} · Antigravity: ${PLAN_PERMISSION_INFO.plan.antigravity}`);
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex} · Antigravity: ${IMPLEMENT_PERMISSION_INFO.auto.antigravity}`);
   plan.choose('auto');
   impl.choose('workspace-write');
-  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.auto.claude} · Codex: ${PLAN_PERMISSION_INFO.auto.codex}`, 'the hint follows the choice');
-  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].claude} · Codex: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].codex}`);
+  assert.equal(plan.hint.textContent, `Claude: ${PLAN_PERMISSION_INFO.auto.claude} · Codex: ${PLAN_PERMISSION_INFO.auto.codex} · Antigravity: ${PLAN_PERMISSION_INFO.auto.antigravity}`, 'the hint follows the choice');
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].claude} · Codex: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].codex} · Antigravity: ${IMPLEMENT_PERMISSION_INFO['workspace-write'].antigravity}`);
   assert.ok(all.some((el) => el.className === 'kb-hint' && /implement, fix, resume and PR phases\. Reviews are not affected/.test(el.textContent)), 'says what implementation covers');
   assert.ok(!all.some((el) => /always read-only/.test(el.className === 'kb-hint' ? el.textContent : '')), 'plans are no longer called read-only');
   const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
@@ -314,7 +314,7 @@ test('⚙️ Project overrides how the phases run, or leaves them to the office:
   assert.deepEqual(plan.options.slice(1).map((o) => o[0]), ['plan', 'auto']);
   assert.deepEqual(impl.options.slice(1).map((o) => o[0]), ['auto', 'bypass', 'workspace-write']);
   assert.equal(plan.pick.value, '');
-  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex}`, 'Default: what the office’s value means');
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.auto.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.auto.codex} · Antigravity: ${IMPLEMENT_PERMISSION_INFO.auto.antigravity}`, 'Default: what the office’s value means');
   const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
   const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
   const saved = () => (sent.pop() as { settings: Record<string, unknown> }).settings;
@@ -324,7 +324,7 @@ test('⚙️ Project overrides how the phases run, or leaves them to the office:
   assert.equal(settings.implementPermission, null);
   plan.choose('auto');
   impl.choose('bypass');
-  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.bypass.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.bypass.codex}`);
+  assert.equal(impl.hint.textContent, `Claude: ${IMPLEMENT_PERMISSION_INFO.bypass.claude} · Codex: ${IMPLEMENT_PERMISSION_INFO.bypass.codex} · Antigravity: ${IMPLEMENT_PERMISSION_INFO.bypass.antigravity}`);
   await click();
   settings = saved();
   assert.equal(settings.planPermission, 'auto');
@@ -367,7 +367,7 @@ test('🗂️ Kanban lists the additional reviewers: add rows, fill them, remove
   assert.equal(now.rows.length, 3);
   const [a, b] = now.rows;
   const toolOf = (r: FakeEl) => now.control(r, 'Reviewer');
-  assert.deepEqual([...toolOf(a).children].map((o) => (o as FakeEl).getAttribute('value')), ['claude', 'codex'], 'every agent is a choice');
+  assert.deepEqual([...toolOf(a).children].map((o) => (o as FakeEl).getAttribute('value')), ['claude', 'codex', 'antigravity'], 'every agent is a choice');
   toolOf(a).value = 'codex';
   toolOf(a).fire('change');
   now.control(a, 'Model').value = ' gpt-5 ';

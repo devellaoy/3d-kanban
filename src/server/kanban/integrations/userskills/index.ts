@@ -1,4 +1,4 @@
-// Syncs the repository's user-skills/ into the machine's Claude and Codex homes when the server
+// Syncs the repository's user-skills/ into the machine's Claude, Codex and Antigravity homes when the server
 // starts (see ./sync.ts) and on the admin's 🔄 Sync (through the skills integration's onSkillsSync).
 // AGENT_OFFICE_USER_SKILLS=off turns both off; a source in a linked git worktree (an agent's checkout)
 // is skipped unless it is =on, so a branch's skills don't overwrite the ones of the main checkout.
@@ -15,6 +15,7 @@ export interface UserSkillsHomes {
   source?: string;
   claudeHome: string;
   codexHome: string;
+  antigravityHome: string;
 }
 
 export interface UserSkillsOptions {
@@ -46,7 +47,7 @@ export function syncUserSkillsNow(homes: UserSkillsHomes): SyncResult[] {
     console.log('agent-office: user skills sync skipped (git worktree; AGENT_OFFICE_USER_SKILLS=on forces it)');
     return [];
   }
-  return syncUserSkills({ source, claudeHome: homes.claudeHome, codexHome: homes.codexHome });
+  return syncUserSkills({ source, claudeHome: homes.claudeHome, codexHome: homes.codexHome, antigravityHome: homes.antigravityHome });
 }
 
 export function createUserSkillsPlugin(ctx: KanbanContext, opts: UserSkillsOptions = {}): KanbanPlugin {

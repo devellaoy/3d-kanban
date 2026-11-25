@@ -29,7 +29,8 @@ function setup() {
   skill(path.join(source, 'codex'), 'beta');
   const claudeHome = path.join(tmp, 'claude');
   const codexHome = path.join(tmp, 'codex');
-  return { tmp, source, claudeHome, codexHome, run: () => syncUserSkills({ source, claudeHome, codexHome }) };
+  const antigravityHome = path.join(tmp, 'antigravity');
+  return { tmp, source, claudeHome, codexHome, antigravityHome, run: () => syncUserSkills({ source, claudeHome, codexHome, antigravityHome }) };
 }
 
 test('installs claude and codex skills with a marker, leaving node_modules and .DS_Store behind', () => {
@@ -45,6 +46,24 @@ test('installs claude and codex skills with a marker, leaving node_modules and .
   const marker = JSON.parse(readFileSync(path.join(a, USER_MARKER), 'utf8'));
   assert.equal(marker.source, '3d-kanban');
   assert.equal(marker.hash, skillHash(path.join(s.source, 'claude', 'alpha'), { exclude: USER_SKILL_EXCLUDES }));
+});
+
+test('antigravity skills go to <antigravityHome>/skills like the others, and the registry lists them as the user\'s own', () => {
+  const s = setup();
+  skill(path.join(s.source, 'antigravity'), 'gamma');
+  // Without Antigravity's config folder nobody here runs it: nothing is made for it.
+  assert.deepEqual(statuses(s.run()), ['alpha (claude):installed', 'beta (codex):installed']);
+  assert.ok(!existsSync(s.antigravityHome));
+  mkdirSync(s.antigravityHome, { recursive: true });
+  assert.deepEqual(statuses(s.run()), ['alpha (claude):current', 'beta (codex):current', 'gamma (antigravity):installed']);
+  assert.ok(existsSync(path.join(s.antigravityHome, 'skills', 'gamma', USER_MARKER)));
+  assert.deepEqual(statuses(s.run()), ['alpha (claude):current', 'beta (codex):current', 'gamma (antigravity):current']);
+  const found = discoverSkills({ claudeHome: s.claudeHome, codexHome: s.codexHome, antigravityHome: s.antigravityHome, accountHomes: [], repoDirs: [] });
+  assert.equal(found.find((x) => x.tool === 'antigravity' && x.name === 'gamma')?.origin, 'user');
+  // Nothing of the user's own in that home is touched.
+  skill(path.join(s.antigravityHome, 'skills'), 'mine');
+  assert.ok(!s.run().some((r) => r.name.startsWith('mine')));
+  assert.ok(!existsSync(path.join(s.antigravityHome, 'skills', 'mine', USER_MARKER)));
 });
 
 test('a second run changes nothing', () => {
@@ -178,7 +197,7 @@ test("a dead process's leftovers in the tmp root are cleaned, a living one's sta
 test('the registry lists a synced Codex skill as the user\'s own', () => {
   const s = setup();
   s.run();
-  const found = discoverSkills({ claudeHome: s.claudeHome, codexHome: s.codexHome, accountHomes: [], repoDirs: [] });
+  const found = discoverSkills({ claudeHome: s.claudeHome, codexHome: s.codexHome, antigravityHome: s.antigravityHome, accountHomes: [], repoDirs: [] });
   const beta = found.find((x) => x.tool === 'codex' && x.name === 'beta');
   assert.equal(beta?.origin, 'user');
   assert.ok(found.some((x) => x.tool === 'claude' && x.name === 'alpha' && x.origin === 'user'));
@@ -227,7 +246,7 @@ test('the plugin: off blocks, a linked git worktree blocks unless on, a main che
   const plain = mk('plain', 'none');
   const start = async (source: string) => {
     const home = path.join(tmpDir(), 'claude');
-    const p = createUserSkillsPlugin(ctx, { homes: () => ({ source, claudeHome: home, codexHome: path.join(home, '..', 'codex') }) });
+    const p = createUserSkillsPlugin(ctx, { homes: () => ({ source, claudeHome: home, codexHome: path.join(home, '..', 'codex'), antigravityHome: path.join(home, '..', 'antigravity') }) });
     p.start!();
     await tick();
     p.stop!();
@@ -246,8 +265,8 @@ test('the plugin: off blocks, a linked git worktree blocks unless on, a main che
 test('the admin sync runs the user-skills sync through the skills hook, under the same guards', async () => {
   const ctx = makeCtx();
   const s = setup();
-  const roots = { claudeHome: s.claudeHome, codexHome: s.codexHome, accountHomes: [], repoDirs: [] };
-  const plugin = createUserSkillsPlugin(ctx, { homes: () => ({ source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome }) });
+  const roots = { claudeHome: s.claudeHome, codexHome: s.codexHome, antigravityHome: s.antigravityHome, accountHomes: [], repoDirs: [] };
+  const plugin = createUserSkillsPlugin(ctx, { homes: () => ({ source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome, antigravityHome: s.antigravityHome }) });
   const skills = createSkills(ctx, { roots: () => roots });
   await withMode(undefined, async () => {
     plugin.start!();
@@ -262,7 +281,7 @@ test('the admin sync runs the user-skills sync through the skills hook, under th
 
 test('the admin sync respects off', async () => {
   const s = setup();
-  const homes = { source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome };
+  const homes = { source: s.source, claudeHome: s.claudeHome, codexHome: s.codexHome, antigravityHome: s.antigravityHome };
   await withMode('off', () => {
     assert.deepEqual(syncUserSkillsNow(homes), []);
     assert.ok(!existsSync(s.claudeHome));
@@ -274,7 +293,8 @@ test("the repository's user-skills/ holds the agreed skills, well named, without
   const folders = (tool: string) => readdirSync(path.join(REPO, 'user-skills', tool), { withFileTypes: true }).filter((e) => e.isDirectory()).map((e) => e.name).sort();
   assert.deepEqual(folders('claude'), ['kanban-dev', 'kanban-dev-sonnet', 'kanban-ui-screenshots']);
   assert.deepEqual(folders('codex'), ['kanban-dev', 'kanban-ui-screenshots']);
-  for (const tool of ['claude', 'codex']) {
+  assert.deepEqual(folders('antigravity'), ['kanban-dev', 'kanban-ui-screenshots']);
+  for (const tool of ['claude', 'codex', 'antigravity']) {
     for (const f of folders(tool)) {
       const name = parseFrontmatter(readFileSync(path.join(REPO, 'user-skills', tool, f, 'SKILL.md'), 'utf8')).name;
       assert.ok(name && SKILL_NAME_RE.test(name), `${tool}/${f} has a valid name`);

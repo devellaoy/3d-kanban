@@ -1,6 +1,7 @@
 // The model box and the effort select an agent's choice is made of (a task's, a reviewer's).
 import { h } from '../ui/dom';
 import { CLAUDE_MODELS } from '../../shared/protocol';
+import { ANTIGRAVITY_MODELS } from '../../shared/providers';
 import { KANBAN_EFFORTS, type KanbanEffort, type KanbanTool } from '../../shared/kanban/types.js';
 import { KANBAN_LIMITS } from '../../shared/kanban/protocol.js';
 import { effortName } from './labels';
@@ -12,7 +13,8 @@ export function modelInput(value: string, tool: () => KanbanTool): { el: HTMLEle
   const id = `kb-models-${++listSeq}`;
   const list = h('datalist', { id });
   const input = textInput(value, { list: id, maxlength: KANBAN_LIMITS.model, placeholder: 'Default', 'aria-label': 'Model' });
-  const refresh = () => list.replaceChildren(...(tool() === 'claude' ? CLAUDE_MODELS : []).map((m) => h('option', { value: m })));
+  const suggestions = (t: KanbanTool): readonly string[] => (t === 'claude' ? CLAUDE_MODELS : t === 'antigravity' ? ANTIGRAVITY_MODELS : []);
+  const refresh = () => list.replaceChildren(...suggestions(tool()).map((m) => h('option', { value: m })));
   refresh();
   return { el: h('span.kb-model', {}, input, list), input, refresh };
 }

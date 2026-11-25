@@ -22,10 +22,10 @@ import { kstore } from './store';
 import { extraReviewersField } from './reviewers-field';
 import { checkbox, field, numberInput, numberValue, select, textInput } from './ui';
 
-type PermissionInfo = { name: string; claude: string; codex: string };
+type PermissionInfo = { name: string; claude: string; codex: string; antigravity: string };
 
 /** What a permission value means for each agent, as the line under its select. */
-export const permissionHint = (info: PermissionInfo) => `Claude: ${info.claude} · Codex: ${info.codex}`;
+export const permissionHint = (info: PermissionInfo) => `Claude: ${info.claude} · Codex: ${info.codex} · Antigravity: ${info.antigravity}`;
 
 /**
  * A permission select with a hint under it that says what the chosen value means for each agent.

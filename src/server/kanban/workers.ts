@@ -231,11 +231,11 @@ export abstract class KanbanWorkers {
   }
 
   /** Where a worker's session is logged, for the engine to read its turns (see docs/fork.md, M0 spike results). */
-  transcripts(id: string): { sessionId?: string; claude?: string; codex?: string; codexHome?: string } | undefined {
+  transcripts(id: string): { sessionId?: string; claude?: string; codex?: string; codexHome?: string; antigravity?: string } | undefined {
     const w = this.workers.get(id);
     if (!w) return undefined;
     const codex = codexLog(w);
-    return { sessionId: w.info.sessionId, claude: w.tracker.transcript, codex: codex?.transcript, codexHome: codex?.home };
+    return { sessionId: w.info.sessionId, claude: w.tracker.transcript, codex: codex?.transcript, codexHome: codex?.home, antigravity: (w.info.provider === 'antigravity' ? (w.state as CodexLog) : undefined)?.transcript };
   }
 
   /** A status change, after the update that tells everyone (the observers hear it: see WorkerObservation). */
@@ -254,7 +254,8 @@ export abstract class KanbanWorkers {
     w.owner = owner;
     w.extra = kanbanExtra(extra);
     w.launchTail = extra?.promptTail;
-    if (extra?.readDir && w.extra && isKanbanTool(w.info.provider)) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
+    // Claude and Codex only: with --add-dir Antigravity's shell commands run with their cwd in the added folder.
+    if (extra?.readDir && w.extra && (w.info.provider === 'claude' || w.info.provider === 'codex')) w.extra.launchArgs = [...(w.extra.launchArgs ?? []), '--add-dir', extra.readDir];
     if (extra?.resumeSessionId) w.info.sessionId = extra.resumeSessionId;
     if (extra?.kanban) w.info.kanban = { taskId: extra.kanban.taskId, role: extra.kanban.role, ...(extra.kanban.seat ? { seat: extra.kanban.seat } : {}) };
   }

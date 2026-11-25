@@ -37,7 +37,7 @@ export interface HandoffWindow {
 /** One hand-off at a time on the page: a second press while the first is fetching does nothing. */
 const gate = handoffGate();
 
-/** Whether this floor can have a kanban task made from a meeting (a project's floor, Claude Code or Codex as the worker). */
+/** Whether this floor can have a kanban task made from a meeting (a project's floor, Claude Code, Codex or Antigravity as the worker). */
 export const canMakeTask = (): boolean => !!store.floor && !!store.project && !!kanbanTool(officeChoice(store.project).provider);
 
 /**
@@ -76,7 +76,7 @@ async function handOff(net: Net, id: string, kind: 'task' | 'worker', host: Hand
   const desk = host.freeDesk();
   const base = hireOption(net, () => desk?.id, desk?.label ?? 'the next free desk');
   if (kind === 'task') {
-    if (!base || !kanbanTool(officeChoice(store.project).provider)) return void toast('A kanban task needs a project’s floor and Claude Code or Codex as the worker', 'warn');
+    if (!base || !kanbanTool(officeChoice(store.project).provider)) return void toast('A kanban task needs a project’s floor and Claude Code, Codex or Antigravity as the worker', 'warn');
   } else if (!desk) return void toast('Every desk and bean bag is taken — send a worker home first, or put a bean bag down in build mode (U)', 'warn');
 
   const shortTitle = clip(record.title.split('\n')[0], 60);

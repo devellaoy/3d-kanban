@@ -1,0 +1,10 @@
+{
+  "name": "kanban-ui-screenshots-skill",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Helper scripts for the kanban-ui-screenshots skill (browser automation and UI screenshots).",
+  "dependencies": {
+    "playwright-core": "^1.49.0"
+  }
+}

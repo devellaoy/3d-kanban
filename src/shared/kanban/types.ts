@@ -67,8 +67,8 @@ export const WAITING_REASONS: readonly WaitingReason[] = ['plan_questions', 'pla
 export type AskingKind = 'question' | 'permission';
 
 /** The agent CLIs the kanban process drives. Other providers stay ordinary office workers. */
-export type KanbanTool = 'claude' | 'codex';
-export const KANBAN_TOOLS: readonly KanbanTool[] = ['claude', 'codex'];
+export type KanbanTool = 'claude' | 'codex' | 'antigravity';
+export const KANBAN_TOOLS: readonly KanbanTool[] = ['claude', 'codex', 'antigravity'];
 export const isKanbanTool = (v: unknown): v is KanbanTool => KANBAN_TOOLS.includes(v as KanbanTool);
 
 /**

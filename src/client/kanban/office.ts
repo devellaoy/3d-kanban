@@ -207,7 +207,7 @@ export function officeLink(link: OfficeLink): string {
 
 // --- Hiring as a kanban task ----------------------------------------------------------------------
 
-/** Only Claude Code and Codex run the kanban process; other providers stay ordinary workers. */
+/** Only Claude Code, Codex and Antigravity run the kanban process; other providers stay ordinary workers. */
 export function kanbanTool(provider: AgentProvider | undefined): KanbanTool | undefined {
   return isKanbanTool(provider) ? provider : undefined;
 }
@@ -270,7 +270,7 @@ export function hireTaskMsg(f: HireTaskForm): { msg: Omit<TaskCreateMsg, 'rid'> 
   const title = (f.title?.trim() ? clipText(f.title, 120) : titleFrom(text)).slice(0, KANBAN_LIMITS.title);
   if (!title && !f.issueKey) return { error: 'Say what the task is: its first line is the title' };
   const tool = kanbanTool(f.provider);
-  if (f.provider && !tool) return { error: 'The kanban process runs on Claude Code or Codex only' };
+  if (f.provider && !tool) return { error: 'The kanban process runs on Claude Code, Codex or Antigravity only' };
   // The primary repository always, whatever was ticked; every one ticked is the same as all (null).
   const picked = new Set(f.repoIds);
   if (f.primaryId) picked.add(f.primaryId);

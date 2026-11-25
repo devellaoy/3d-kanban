@@ -165,7 +165,7 @@ export function readCreateRequest(body: unknown, ctx: KanbanContext, floorId: st
 
   let tool: KanbanTool | undefined;
   if (b.provider !== undefined && b.provider !== null) {
-    if (!isKanbanTool(b.provider)) return `provider must be ${KANBAN_TOOLS.join(' or ')}, not ${String(b.provider).slice(0, 40)}`;
+    if (!isKanbanTool(b.provider)) return `provider must be ${KANBAN_TOOLS.slice(0, -1).join(', ')} or ${KANBAN_TOOLS[KANBAN_TOOLS.length - 1]}, not ${String(b.provider).slice(0, 40)}`;
     tool = b.provider;
   }
   let effort: KanbanEffort | undefined;
