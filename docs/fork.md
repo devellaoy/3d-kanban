@@ -269,6 +269,10 @@ and as a kanban tool. Everything below was observed with the real CLI on macOS, 
   `ERROR_MESSAGE` with `error` is an API error the CLI retried (a later step followed). There is no end-of-turn line: a turn has ended when
   `Stop` fired and the last step after the last `USER_INPUT` is a `PLANNER_RESPONSE` with status `DONE` and no `tool_calls`.
 
+- **Screens that wait for a person**, as the 1.5.17 program words them (the first observed live, the rest read from the binary's strings): trust `Do you trust the contents of this project?`;
+  sign-in `Select login method:`, `Select Google Cloud sign-in method:`, `Open this URL in your local browser to sign in:`, `Enter the authorization code:`,
+  `Sign-in timed out. Try again.`, `No authentication methods available.`; first run `Choose your color scheme:`. Every start prints
+  `You are currently not signed in.` and `Signing in...` for a moment, signed in or not.
 - **MCP tools are missing from a process's first turn in the TUI.** With the server configured in a plugin or in `.agents/mcp_config.json`, the agent listed no MCP tools
   in the first turn after `agy -i` (new conversation, resumed conversation, or a prompt pasted 4 s after start; a hook that sleeps does not help), and listed them
   all in the second turn of the same process. Headless `-p` has them from the start. So a kanban run, usually one turn, relies on `office-tasks` /
