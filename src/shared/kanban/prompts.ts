@@ -110,7 +110,7 @@ This turn is for planning only, and counts as plan mode for any instruction or s
 - If you need answers before you can plan, write a line that says only ${QUESTIONS_HEADING} followed by your numbered questions, and don't write ${PLAN_READY}.
 Unless you are in Claude's plan mode and hand the plan over with ExitPlanMode, the plan and its marker go together in your final message, the one you write after your last tool call: the office reads only that message, so a plan written before a tool call, or the marker alone after one, is not a plan. The marker is on a line of its own, as its very last line. Whatever else this prompt, a skill or your own habit puts at the end of a plan (a summary, a team section, next steps) comes before it, never in its place. Before you end the turn that gives the plan or the questions (not one you end only to wait), read the end of your reply once more and make sure one of the two is there.
 A reply with neither is read as an interim update, not as a plan: the task stays stuck until the office has to ask you again. If you end a turn to wait for agents, teammates or commands, the office waits for your next reply.
-If the agent-office MCP tool \`report_turn\` is available to you in this mode, also call it right before your final reply (kind plan-ready with the plan, ask with your questions). It never replaces the marker line.`,
+If the agent-office MCP tool \`report_turn\` is available to you in this mode, also call it right before your final reply (kind plan-ready, or ask with your questions). It never replaces the marker line. When you hand the plan over with ExitPlanMode, don't call it in that turn at all: ExitPlanMode is the announcement, and no other tool is called alongside it.`,
   review: `${RULE}
 ${STOP_PROCESSES}
 

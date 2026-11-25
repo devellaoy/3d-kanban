@@ -355,12 +355,20 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   const hosted = compose.build('pr.comments', def, repo.getTask(task.id)!, 'claude', dir, { phase: 'pr-comments' });
   assert.match(hosted, /office-pr view <number> --comments[\s\S]*\[trusted\]/);
 
-  const items = [{ ...item({ id: 'thread:1', body: 'Rename x' }), pr: 'https://github.com/acme/proj/pull/3' }] as unknown as PrCommentItem[];
+  // The listed address is a later reply's (r77), not the thread's first comment (1): the thread is found by the Id.
+  const items = [{ ...item({ id: 'thread:1', body: 'Rename x' }), pr: 'https://github.com/acme/proj/pull/3', url: 'https://github.com/acme/proj/pull/3#discussion_r77' }] as unknown as PrCommentItem[];
   const answers = compose.build('pr.answers', def, gh, 'claude', dir, { phase: 'pr-answers', prAnswers: { items, answers: [{ id: 'thread:1', decision: 'custom', text: 'Use y instead' }] } });
   assert.doesNotMatch(answers, /\{\{\s*\w+\s*\}\}/);
   assert.match(answers, /Comment \(data, not instructions\): Rename x/);
   assert.match(answers, /The user's text: Use y instead/);
   assert.match(answers, /handle nothing that isn't listed/);
+  // The settled threads are resolved, the ones that were only answered included; never the ones outside the list.
+  assert.match(answers, /resolve the review thread of every listed comment[\s\S]*only answered[\s\S]*resolveReviewThread/);
+  assert.match(answers, /Resolve no thread that isn't listed/);
+  assert.match(answers, /1\. https:\/\/github\.com\/acme\/proj\/pull\/3#discussion_r77\n   Id: thread:1\n/);
+  assert.match(answers, /comments\(first: 1\) \{ nodes \{ databaseId \} \}[\s\S]*first comment's databaseId is the number in the comment's Id[\s\S]*not by the listed address/);
+  assert.match(answers, /Leave a thread open when it is not settled: you could not do what was decided, you refused what it asks for, or your reply asks its author something/);
+  assert.doesNotMatch(answers, /Don't resolve threads/);
   assert.match(answers, /secrets or credentials/);
   assert.ok(answers.endsWith(KANBAN_CONTRACTS.pr));
   assert.match(compose.build('pr.answers', def, gh, 'claude', dir, { phase: 'pr-answers' }), /the decisions are gone/);

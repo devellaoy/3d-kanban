@@ -361,3 +361,21 @@ test('a pull-request review: its own run, then the review column; comments meanw
   assert.equal(cut.state.waitingReason, 'interrupted');
   assert.equal(runOf(drive([{ type: 'retry', last: { phase: 'pr-review', role: 'reviewer' } }], {}, {}, cut.state).last.effects)?.phase, 'pr-review');
 });
+
+test('a comment on a plan run that ended without a plan carries on planning; after an accepted plan it resumes the work', () => {
+  const planning = drive([{ type: 'start', slot: true }]).state;
+  for (const event of [{ type: 'failed', error: 'boom' }, { type: 'stopped' }, { type: 'interrupted' }] as MachineEvent[]) {
+    const waiting = drive([event], {}, {}, planning).state;
+    const r = drive([{ type: 'comment', text: 'Also cover b' }], {}, {}, waiting);
+    assert.deepEqual(runOf(r.last.effects), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text: 'Also cover b' }, event.type);
+    assert.equal(r.state.phase, 'plan');
+    // The run row says the same.
+    const withLast = drive([{ type: 'comment', text: 'x', last: { phase: 'plan', role: 'implementer' } }], {}, {}, waiting);
+    assert.equal(runOf(withLast.last.effects)?.prompt, 'replan', event.type);
+  }
+  // The plan was accepted and the implement run failed to launch (no run row: the last run is still the plan's): the work resumes.
+  const accepted = drive([{ type: 'start', slot: true }, { type: 'planned', outcome: 'ready' }, { type: 'failed', error: 'no launch' }]).state;
+  assert.equal(accepted.phase, 'implement');
+  const r = drive([{ type: 'comment', text: 'go on', last: { phase: 'plan', role: 'implementer' } }], {}, {}, accepted);
+  assert.deepEqual(runOf(r.last.effects), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text: 'go on' });
+});

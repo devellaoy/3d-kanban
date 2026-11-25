@@ -254,6 +254,9 @@ function afterWork(s: MachineState, t: MachineTask, changes: boolean, since?: 'h
 /** Phases whose agent's question is answered in the same phase (their turn-end handling is their own). */
 const ASKED_IN_PLACE: readonly RunPhase[] = ['review', 'pr-review', 'fix', 'pr', 'pr-fix', 'pr-conflicts', 'pr-comments', 'pr-answers'];
 
+/** Waits that come from a run's end without its result: with the plan phase as the task's phase, the plan run was what ended. */
+const PLAN_ENDED: readonly (WaitingReason | undefined)[] = RETRYABLE.filter((r) => r !== 'agent_asking');
+
 /** The phase a comment or an answer resumes with, from where the task waits. */
 function resumeWith(s: MachineState, text: string, pending = false, last?: LastRun): { state: MachineState; effects: Effect[] } {
   if (s.status === 'waiting' && PLAN_WAITING.includes(s.waitingReason)) {
@@ -268,6 +271,12 @@ function resumeWith(s: MachineState, text: string, pending = false, last?: LastR
   if (asked && ASKED_IN_PLACE.includes(asked)) {
     const round = last ? last.round : s.reviewRound || undefined;
     return ok(running(s, asked), { type: 'run', phase: asked, role: last?.role ?? (asked === 'review' || asked === 'pr-review' ? 'reviewer' : 'implementer'), prompt: 'resume', text, ...(round !== undefined && (asked === 'review' || asked === 'fix') ? { round } : {}) });
+  }
+  // A plan run that ended without a plan (failed, stopped, interrupted, a usage limit that gave up): a comment carries on planning, there is no
+  // work to resume. Both phase checks are needed: after an accepted plan a failed launch of the implement run leaves no run row, so `last` is still
+  // the plan run while the task's phase is already implement (that one resumes the implementation).
+  if (s.status === 'waiting' && PLAN_ENDED.includes(s.waitingReason) && s.phase === 'plan' && (!last || last.phase === 'plan')) {
+    return ok(running(s, 'plan'), { type: 'run', phase: 'plan', role: 'implementer', prompt: 'replan', text, ...(pending ? { pending } : {}) });
   }
   return ok(running(s, 'resume'), { type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', text, ...(pending ? { pending } : {}) });
 }

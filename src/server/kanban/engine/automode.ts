@@ -32,16 +32,27 @@ export function planModeOf(phase: string, args: readonly string[] | undefined): 
   return phase === 'plan' && !inAutoMode(args) ? { planMode: true } : {};
 }
 
+/** The office's own announcement tool (mcp__<server>__report_turn): Claude may call it in the same message as ExitPlanMode, which is no "going on". */
+const ANNOUNCE_TOOL = /__report_turn$/;
+
 /**
  * What a lead's hook tells of its run's mode: Claude asked to leave plan mode (ExitPlanMode: its needs_input is the finished plan), or went on
- * with another tool; and, in auto mode, whether auto mode is there at all.
+ * with another tool; and, in auto mode, whether auto mode is there at all. A tool called in the same message as ExitPlanMode (an agent's
+ * report_turn, a todo update) is hooked beside it, in an order the office does not rely on, and is no "going on": once the approval dialog
+ * is up (ExitPlanMode's PermissionRequest) no other tool's PreToolUse counts, and one heard before it never drops the plan the hook carried
+ * (`hookPlan` goes only with the dialog's answer or the next prompt, and is used only for a turn that ended in ExitPlanMode: planFromHook).
+ * Another tool's own permission dialog is a dialog that is not the plan's. A Stop does not clear: a needs_input already queued still needs it.
  */
 export function observeLeadHook(live: Live, o: WorkerObservation, args: () => readonly string[] | undefined, note: (text: string) => void) {
-  if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && o.tool === 'ExitPlanMode') {
+  const exit = o.tool === 'ExitPlanMode';
+  if ((o.hookEvent === 'PreToolUse' || o.hookEvent === 'PermissionRequest') && exit) {
     live.exitPlan = true;
+    if (o.hookEvent === 'PermissionRequest') live.planAsked = true;
     const plan = (o.payload as { tool_input?: { plan?: unknown } } | undefined)?.tool_input?.plan;
     if (typeof plan === 'string' && plan.trim()) live.hookPlan = plan;
-  } else if (o.hookEvent === 'PreToolUse' && o.tool) [live.exitPlan, live.hookPlan] = [false, undefined];
+  } else if (o.hookEvent === 'UserPromptSubmit' || ((o.hookEvent === 'PostToolUse' || o.hookEvent === 'PostToolUseFailure') && exit)) [live.exitPlan, live.hookPlan, live.planAsked] = [false, undefined, false];
+  else if (o.hookEvent === 'PermissionRequest' && o.tool) [live.exitPlan, live.planAsked] = [false, false];
+  else if (o.hookEvent === 'PreToolUse' && o.tool && !live.planAsked && !ANNOUNCE_TOOL.test(o.tool)) live.exitPlan = false;
   autoModeUnavailable(live, o, args, note);
 }
 

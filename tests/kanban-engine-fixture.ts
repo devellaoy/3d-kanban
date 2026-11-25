@@ -35,6 +35,12 @@ export interface Rule {
   reply: string;
   /** Claude only: end the turn in ExitPlanMode with this plan (PermissionRequest, no Stop). */
   exitPlan?: string;
+  /**
+   * With `exitPlan`, as Claude Code 2.1.x really does it: the call is NOT in the session log (it writes it after the approval dialog), the PreToolUse hook
+   * carries the plan (the PermissionRequest does not, as the existing exitPlan rules' does not), and the office's report_turn is hooked in the same message before the dialog (PermissionRequest) shows, this many ms later
+   * (time for the test to send the plan-ready signal in between).
+   */
+  exitPlanLate?: number;
   /** Make an empty commit with this message first (the work). */
   commit?: string;
   /** Wait this long before answering (to type a comment meanwhile). */
@@ -369,6 +375,13 @@ async function turn(prompt, answered) {
     }
     if (rule.ask) {
       await post('PermissionRequest', { tool_name: 'Bash', tool_input: { command: 'rm -rf build' } });
+      return;
+    }
+    if (rule.exitPlan && rule.exitPlanLate !== undefined) {
+      await post('PreToolUse', { tool_name: 'ExitPlanMode', tool_input: { plan: rule.exitPlan } });
+      await post('PreToolUse', { tool_name: 'mcp__agent-office__report_turn', tool_input: { kind: 'plan-ready' } });
+      await new Promise((r) => setTimeout(r, rule.exitPlanLate));
+      await post('PermissionRequest', { tool_name: 'ExitPlanMode' });
       return;
     }
     if (rule.exitPlan) {
