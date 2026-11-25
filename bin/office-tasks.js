@@ -468,7 +468,7 @@ export const TASK_TOOLS = [
       'kind: plan-ready (your plan is complete), ask (you need an answer from the user before you can go on; end your reply with your questions), done (everything is finished and committed), ' +
       'review with verdict approved or changes (your review verdict), pr with url (a pull request you opened or updated). ' +
       'Call it right before your final reply, never when you only end a turn to wait. It never replaces the marker line your final reply ends with. ' +
-      'Never call it together with or after ExitPlanMode: that call is itself the announcement of a plan.',
+      'In a turn that hands a plan over with ExitPlanMode, do not call it: that call is itself the announcement of the plan.',
     inputSchema: {
       type: 'object',
       properties: {

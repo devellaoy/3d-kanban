@@ -255,7 +255,7 @@ function afterWork(s: MachineState, t: MachineTask, changes: boolean, since?: 'h
 const ASKED_IN_PLACE: readonly RunPhase[] = ['review', 'pr-review', 'fix', 'pr', 'pr-fix', 'pr-conflicts', 'pr-comments', 'pr-answers'];
 
 /** Waits that come from a run's end without its result: with the plan phase as the task's phase, the plan run was what ended. */
-const PLAN_ENDED: readonly (WaitingReason | undefined)[] = ['stopped', 'failed', 'interrupted', 'usage_limit'];
+const PLAN_ENDED: readonly (WaitingReason | undefined)[] = RETRYABLE.filter((r) => r !== 'agent_asking');
 
 /** The phase a comment or an answer resumes with, from where the task waits. */
 function resumeWith(s: MachineState, text: string, pending = false, last?: LastRun): { state: MachineState; effects: Effect[] } {

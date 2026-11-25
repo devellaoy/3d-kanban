@@ -131,12 +131,15 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
     - A plan in plan mode ends on ExitPlanMode. Claude Code (2.1.327) runs that call's hooks, and shows its approval dialog, before the call is in
       the session log, so the plan is also taken from the hook's `tool_input.plan` (`Live.hookPlan`, `planFromHook` in `engine/automode.ts`):
       without it such a run failed with "The turn ended without a reply the office could read". The hook state is `Live.exitPlan`, `hookPlan` and
-      `planAsked` (the approval dialog's PermissionRequest was heard). The plan call may share its message with the agent's `report_turn` (the contract
-      tells it not to, but a model does): that sibling's PreToolUse is not "Claude went on", and neither is any tool once `planAsked` is set; a tool before
-      the dialog still clears them, as do ExitPlanMode's PostToolUse(Failure) and the next UserPromptSubmit. A Stop does not clear them: a needs_input
-      already queued behind it still needs the plan, and the next prompt clears anyway. The log reader (`readClaudeTurn`) does the same by message id: a
-      tool call in the message of an ExitPlanMode (either block order) neither clears `exitPlan` nor leaves a tool pending; a later message's call does.
-      The plan contract tells the agent not to call `report_turn` together with or after ExitPlanMode (it is the announcement itself).
+      `planAsked` (the approval dialog's PermissionRequest was heard). The plan call may share its message with another tool call, typically the agent's
+      `report_turn` (the contract tells it not to, but a model does): that sibling is hooked beside it and is not "Claude went on". Once `planAsked` is
+      set no other tool's PreToolUse counts; one heard before the dialog (other than `report_turn`) clears `exitPlan` but never `hookPlan`, so the
+      dialog's PermissionRequest makes the plan the turn's end again even when its payload has no plan. Another tool's own PermissionRequest clears
+      `exitPlan` and `planAsked` (that dialog is not the plan's); ExitPlanMode's PostToolUse(Failure) and the next UserPromptSubmit clear all three. A
+      Stop clears nothing: a needs_input already queued behind it still needs the plan. `hookPlan` is only read for a turn that ended in ExitPlanMode.
+      The log reader (`readClaudeTurn`) does the same by message id: a tool call in the message of an ExitPlanMode (either block order) neither clears
+      `exitPlan` nor leaves a tool pending; a later message's call does. The plan contract tells the agent not to call `report_turn` in the turn it
+      hands the plan over with ExitPlanMode (that call is the announcement itself).
     - Auto mode unavailable: Claude puts `permission_mode` in every hook payload; a lead hook (no `agent_id`) of a run launched with
       `--permission-mode auto` that says `default` means Claude started in Manual mode (`engine/automode.ts`): one note per run, no switch to bypass.
     - Claude kanban workers get the task's own office folders (`<filesDir>/grants|refs|reports/task-<id>`) not as `--add-dir` (that asks
