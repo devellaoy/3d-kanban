@@ -481,17 +481,26 @@ test('a huge prompt loses no event: the helper cuts it and every hook gets throu
     await run('PreInvocation', { ...base, invocationNum: 0 });
     await run('PreToolUse', { ...base, toolCall: { name: 'write_file', id: 't1', args: { content: 'y'.repeat(200 * 1024) } } });
     await run('PostToolUse', { ...base, toolCall: { name: 'write_file', id: 't1' } });
+    // A question tool's question is the one tool input that goes on (bounded), as Antigravity shapes it: options are plain strings.
+    await run('PreToolUse', { ...base, toolCall: { name: 'ask_question', id: 't2', args: { questions: [{ question: 'Which colour?', options: ['red', 'blue'], is_multi_select: false }] } } });
+    await run('PostToolUse', { ...base, toolCall: { name: 'ask_question', id: 't2' } });
     await run('Stop', { ...base, fullyIdle: true });
-    assert.deepEqual(bodies.map((b) => b.hook_event_name), ['SessionStart', 'PreInvocation', 'PreToolUse', 'PostToolUse', 'Stop']);
+    assert.deepEqual(bodies.map((b) => b.hook_event_name), ['SessionStart', 'PreInvocation', 'PreToolUse', 'PostToolUse', 'PreToolUse', 'PostToolUse', 'Stop']);
     assert.equal((bodies[1].prompt as string).length, 20_000);
     assert.equal(bodies[2].prompt, undefined);
+    assert.equal(bodies[2].tool_input, undefined);
+    assert.deepEqual(bodies[4].tool_input, { questions: [{ question: 'Which colour?', options: ['red', 'blue'] }] });
+    const { heardQuestion, askedQuestion } = await import('../src/server/kanban/engine/signals.js');
+    const live = {};
+    assert.equal(heardQuestion(live, { tool: 'ask_question', hookEvent: 'PreToolUse', payload: bodies[4] }), true);
+    assert.equal(askedQuestion(live), 'Which colour?\n- red\n- blue');
     const { h, info } = handle();
     const seen: string[] = [];
     for (const b of bodies) {
       assert.equal(antigravity.hook!.handle(h, b.hook_event_name as string, b), true);
       seen.push(info.status);
     }
-    assert.deepEqual(seen, ['idle', 'working', 'working', 'working', 'done']);
+    assert.deepEqual(seen, ['idle', 'working', 'working', 'working', 'needs_input', 'working', 'done']);
     // The same cut prompt again is still "the same prompt" for the woken-root rule.
     assert.equal((h.state as AntigravityState).lastPrompt?.length, 20_000);
   } finally {

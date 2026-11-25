@@ -2,6 +2,7 @@ import { execFileSync } from 'node:child_process';
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import { excludeFromGit } from './config.js';
+import { QUESTION_INPUT_SOURCE } from './hookquestion.js';
 import { MCP_NAME } from './office-workers.js';
 
 // Antigravity (`agy`) has no hook flags: it loads hooks and MCP servers from a plugin folder in the
@@ -110,7 +111,7 @@ const MAX_ID = 160;
 const MAX_TEXT = 20000;
 const allowed = (value, max) => typeof value === 'string' && value.trim() && value.trim().length <= max ? value.trim() : undefined;
 const cut = (value, max) => typeof value === 'string' && value.trim() ? value.trim().slice(0, max) : undefined;
-const event = process.argv[2];
+${QUESTION_INPUT_SOURCE}const event = process.argv[2];
 let size = 0;
 let overflow = false;
 const chunks = [];
@@ -139,6 +140,9 @@ process.stdin.on('end', async () => {
   if (prompt) body.prompt = prompt;
   if (tool) body.tool_name = tool;
   if (toolUseId) body.tool_use_id = toolUseId;
+  // A question tool's question goes on, bounded, for the kanban to keep as a task comment; no other tool's arguments do.
+  const asked = event === 'PreToolUse' && tool && QUESTION_TOOL.test(tool) ? questionInput(call.args) : undefined;
+  if (asked) body.tool_input = asked;
   if (transcript) body.transcript_path = transcript;
   if (invocation && Number.isInteger(input.invocationNum)) body.invocation_num = input.invocationNum;
   if (event === 'Stop') {
