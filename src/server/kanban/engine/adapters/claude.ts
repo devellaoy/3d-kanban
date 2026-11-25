@@ -212,12 +212,22 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
   let toolPending = false;
   // The last message's tool calls still without a result in the log.
   let running = new Set<unknown>();
+  // The last message has an ExitPlanMode call: its other tool calls (the office's report_turn, written in the same message) are no "going on".
+  // Claude logs a message's blocks as separate lines sharing its id, so the sibling may come before or after the ExitPlanMode line.
+  let planMessage = false;
   // A plan, or an ExitPlanMode answered (approved or not: the plan is no longer what the turn ended on).
   const planned = (b: Record<string, unknown>) => {
     const input = isObj(b.input) ? b.input : {};
     plan = typeof input.plan === 'string' ? input.plan : plan;
     exitPlan = true;
+    planMessage = true;
+    toolPending = false;
     planToolId = typeof b.id === 'string' ? b.id : undefined;
+  };
+  // Another tool call than ExitPlanMode: Claude went on with it, unless it is a sibling of the plan's own message.
+  const wentOn = (b: Record<string, unknown>, pends: boolean) => {
+    if (!planMessage) [exitPlan, toolPending] = [false, toolPending || pends];
+    running.add(b.id);
   };
   const answeredPlan = (content: Record<string, unknown>[]) => {
     if (planToolId && content.some((b) => b.type === 'tool_result' && b.tool_use_id === planToolId)) exitPlan = false;
@@ -236,6 +246,7 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
         apiError = undefined;
         toolPending = false;
         running = new Set();
+        planMessage = false;
       }
       message = id;
       for (const b of content) {
@@ -244,11 +255,7 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
           if (line.isApiErrorMessage === true) apiError = b.text.trim();
         } else if (b.type === 'tool_use') {
           if (b.name === 'ExitPlanMode') planned(b);
-          else {
-            exitPlan = false;
-            toolPending = true;
-            running.add(b.id);
-          }
+          else wentOn(b, true);
         }
       }
     } else if (line.type === 'user') {
@@ -268,17 +275,14 @@ export function readClaudeTurn(file: string, opts?: ReadOpts): TurnResult | unde
     const msg = isObj(line.message) ? line.message : undefined;
     const content = Array.isArray(msg?.content) ? msg.content.filter(isObj) : [];
     if (line.type === 'assistant') {
-      if (msg?.id === undefined || msg.id !== message) running = new Set();
+      if (msg?.id === undefined || msg.id !== message) [running, planMessage] = [new Set(), false];
       message = msg?.id;
       for (const b of content) {
         if (b.type !== 'tool_use') continue;
         if (b.name === 'ExitPlanMode') {
           planned(b);
           typedPlan = true;
-        } else {
-          exitPlan = false;
-          running.add(b.id);
-        }
+        } else wentOn(b, false);
       }
     } else if (line.type === 'user') {
       for (const b of content) if (b.type === 'tool_result') running.delete(b.tool_use_id);

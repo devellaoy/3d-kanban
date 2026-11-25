@@ -81,7 +81,8 @@ test('the contracts also ask for the announcement, and say the text marker stays
     assert.match(KANBAN_CONTRACTS[id], /If the agent-office MCP tool `report_turn` is available to you in this mode, also call it right before your final reply/, id);
     assert.doesNotMatch(KANBAN_CONTRACTS[id], /office-tasks/, id);
   }
-  assert.match(KANBAN_CONTRACTS.plan, /kind plan-ready with the plan, ask with your questions\)\. It never replaces the marker line/);
+  assert.match(KANBAN_CONTRACTS.plan, /kind plan-ready, or ask with your questions\)\. It never replaces the marker line/);
+  assert.match(KANBAN_CONTRACTS.plan, /When you hand the plan over with ExitPlanMode, don't call it in that turn at all: ExitPlanMode is the announcement/);
   assert.match(KANBAN_CONTRACTS.review, /kind review, verdict approved or changes\)\. It never replaces the verdict line: the verdict line in your reply is what counts for an approval/);
   assert.doesNotMatch(KANBAN_CONTRACTS.panel, /report_turn|office-tasks/);
   assert.match(finishNudge('implement'), /office-tasks done/);

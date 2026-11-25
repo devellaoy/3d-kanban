@@ -19,6 +19,8 @@ export interface Live extends HeldRun {
   exitPlan: boolean;
   /** The plan of that ExitPlanMode, as its hook gave it: Claude writes the call to its session log later than the hook comes (see planFromHook). */
   hookPlan?: string;
+  /** ExitPlanMode's approval dialog is up (its PermissionRequest was heard): no other tool's hook is Claude going on until it is answered. */
+  planAsked?: boolean;
   /** The run was told that Claude's auto mode is not available (see autoModeUnavailable): once per run. */
   autoModeNoted?: boolean;
   /** What its agent's needs_input waits on, as its hooks last said (heardAsk); unknown when unset. */

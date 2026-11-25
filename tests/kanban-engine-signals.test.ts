@@ -311,3 +311,19 @@ test('implement ask: Continue with an answer resumes too, and a comment made whi
   assert.ok(fx.invocations().concat([]).some((i) => /Also add a README/.test(`${i.prompt ?? ''}${i.args.join(' ')}`)), 'the comment reached it too');
   assert.equal(fx.task(task.id).pendingMessages.length, 0);
 });
+
+test("ExitPlanMode with report_turn in one message, the call not in the log yet: the hook's plan is the plan (the failed run of task #476)", async (t) => {
+  const fx = await engineFixture({ engine: { nudgeIdleMs: 60_000 } });
+  t.after(() => fx.close());
+  fx.settings.set({ defaults: { planPermission: 'plan' } } as never);
+  fx.setRules([{ when: 'Plan kanban task|You are planning kanban task', reply: 'Plan.\n\nPLAN READY', exitPlan: '1. Change it\n2. Test it', exitPlanLate: 1500 }]);
+  const task = fx.newTask({ usePlan: true, useReview: true, planApproval: 'manual' });
+  await fx.engine.start(task.id, ADA);
+  const w = (await fx.waitTask(task.id, (x) => !!x.workerId && x.runState === 'running', 'the planner at work')).workerId!;
+  // Between the sibling's hook and the approval dialog the announcement arrives, as it did.
+  await sleep(600);
+  assert.equal(fx.engine.signal(w, { kind: 'plan-ready' }), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan waiting for approval');
+  assert.deepEqual(fx.repo.listPlans(task.id).map((p) => p.text), ['1. Change it\n2. Test it']);
+  assert.deepEqual(fx.repo.listRuns(task.id).map((r) => `${r.phase}/${r.status}`), ['plan/succeeded']);
+});
