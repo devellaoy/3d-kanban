@@ -71,9 +71,11 @@ export function canFixPrs<P extends Pick<KanbanPrLink, 'state'>>(task: PrSubject
 /** What the task's PR action does: open the pull requests, fix their review comments and checks, or merge their target branches in and resolve the conflicts. */
 export const PR_MODES = ['create', 'fix', 'conflicts'] as const;
 export type PrMode = (typeof PR_MODES)[number];
+/** The runs only the engine starts (the Pull requests tab's review-comment flow, see prcomments.ts): never in PR_MODES, so `kanban.task.pr` refuses them. */
+export type PrRunMode = PrMode | 'comments' | 'answers';
 
 /** The runs of the PR actions. */
-export const isPrPhase = (phase: RunPhase): boolean => phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts';
+export const isPrPhase = (phase: RunPhase): boolean => phase === 'pr' || phase === 'pr-fix' || phase === 'pr-conflicts' || phase === 'pr-comments' || phase === 'pr-answers';
 
-/** Runs that work on each open PR's own branch (Fix PRs, Resolve conflicts). */
-export const onPrBranches = (phase: RunPhase): boolean => phase === 'pr-fix' || phase === 'pr-conflicts';
+/** Runs that work on each open PR's own branch (Fix PRs, Resolve conflicts, and the review comments' fetch and answers). */
+export const onPrBranches = (phase: RunPhase): boolean => phase === 'pr-fix' || phase === 'pr-conflicts' || phase === 'pr-comments' || phase === 'pr-answers';
