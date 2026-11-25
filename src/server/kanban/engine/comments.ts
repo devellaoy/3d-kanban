@@ -35,6 +35,8 @@ export interface CommentLive extends HeldRun {
 export interface CommentText {
   commentText(project: string, taskId: number, text: string, files: AttachmentRow[]): string;
   answerText(taskId: number, text: string, files: AttachmentRow[]): string;
+  /** The reference to the project's instructions files (the {{instructions}} block), '' without any. */
+  instructionsOf(task: KanbanTask): string;
 }
 
 /** What handling comments borrows from the orchestrator. */
@@ -105,7 +107,9 @@ export class Comments<L extends CommentLive> {
     const workers: Floor['workers'] | undefined = this.d.ctx.floor(live.floorId)?.workers;
     const info = workers?.get(live.workerId);
     if (!workers || !info || info.provider === 'dsh' || (info.status !== 'working' && info.status !== 'done' && info.status !== 'idle')) return false;
-    const text = typeable(`Comment #${c.id} from ${c.authorName} on task #${task.id} while you work:\n${body}\n(Take it into account in your current work. When everything is finished, end your final reply with ${WORK_DONE} as before.)`);
+    // The reference to the project's instructions goes with it: a long turn may have lost the paths its first prompt gave.
+    const block = this.d.compose.instructionsOf(task);
+    const text = typeable(`Comment #${c.id} from ${c.authorName} on task #${task.id} while you work:\n${body}\n${block ? `\n${block}\n\n` : ''}(Take it into account in your current work. When everything is finished, end your final reply with ${WORK_DONE} as before.)`);
     const at = Date.now();
     const err = workers.prompt(live.workerId, text, c.authorName);
     if (err) {

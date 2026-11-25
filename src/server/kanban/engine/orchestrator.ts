@@ -20,7 +20,7 @@ import type { TurnSignal } from '../../../shared/kanban/signals.js';
 import type { DepartureIntent, KanbanComment, KanbanEffort, KanbanPrLink, KanbanPrReviewRequest, KanbanRole, KanbanRun, KanbanTask, KanbanTool, KanbanWorkerSummary, PrRef, ProjectRepo, QueuedRun, RunPhase } from '../../../shared/kanban/types.js';
 import { BRANCH_PREFIX, Worktrees } from '../../worktrees.js';
 import type { AttachmentRow, NewComment, TaskUpdate } from '../db/repository.js';
-import { grantDir, grantFiles } from '../uploads.js';
+import { launchDirs, prReviewDirs, prReviewRepoIds } from './launchdirs.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
 import { projectRepos, repoSources } from '../projects.js';
 import { sameRepo } from '../../../shared/floors.js';
@@ -28,7 +28,7 @@ import { prOwners } from '../integrations/pulls/bundle.js';
 import { claudeAdapter } from './adapters/claude.js';
 import { codexAdapter } from './adapters/codex.js';
 import type { ReadOpts, TaskAgentAdapter, TurnResult } from './adapters/types.js';
-import { Composer, isFolderProject, reportDir, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
+import { Composer, isFolderProject, reposText, skillPhase, taskRepos, workerReposText, type ComposeExtra } from './compose.js';
 import { canFixPrs, isPrPhase, onPrBranches, type PrMode } from '../../../shared/kanban/prs.js';
 import { fixTargetsOf, forkTest, polledPulls } from '../integrations/pulls/prfix.js';
 import { next, prPrompt, queuedOf, runOf, stateOf, type Effect, type LastRun, type MachineEvent, type PromptKind, type RunEffect } from './machine.js';
@@ -839,7 +839,7 @@ export class Orchestrator {
       findings: eff.prompt === 'fix' ? reviewFindings(this.latestSummary(task.id, 'review') ?? '') : undefined,
       fixSummary: eff.prompt === 'rereview' ? this.latestSummary(task.id, 'fix') : undefined,
       refsFile,
-      fixPrs,
+      fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.lastPrReview(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
       held,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
@@ -875,25 +875,15 @@ export class Orchestrator {
     }
 
     // How it launches.
-    const addDirs: string[] = [];
-    if (refsFile) addDirs.push(path.dirname(refsFile));
-    // Always: a file sent later in an answer typed into the live session must be readable without a prompt.
-    // The task's own folder of copies, never the uploads of every task.
-    try {
-      grantFiles(this.ctx.filesDir, task.id, this.ctx.repo.listAttachments(task.id));
-      addDirs.push(grantDir(this.ctx.filesDir, task.id));
-    } catch (err) {
-      console.error(`agent-office: couldn't make task #${task.id}'s folder of attached files: ${(err as Error).message}`);
-    }
     const investigate = task.type === 'investigate' && role === 'implementer' && !onPrBranches(eff.phase);
-    if (investigate) addDirs.push(reportDir(this.ctx, task.id));
-    for (const r of taskRepos(def, task)) if (!r.primary && (r.kind === 'folder' || folder)) addDirs.push(r.dir);
+    const { addDirs, readDirs } = launchDirs(this.ctx, def, task, { refsFile, investigate, folder });
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase(eff.phase));
     const launchArgs = adapter.launchArgs(eff.phase, {
       ...this.ctx.settings.launchPermissions(task.project, task.overrides),
       sandbox: review.sandbox,
       investigate,
       addDirs,
+      readDirs,
       model,
       effort,
       extra: extras.args,
@@ -1072,7 +1062,7 @@ export class Orchestrator {
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
     const review = this.reviewSettings(task), tool: KanbanTool = req.tool ?? review.tool, same = !req.tool || req.tool === review.tool;
     const model = req.model ?? (same ? review.model : undefined), effort = req.effort ?? (same ? review.effort : undefined);
-    const adapter = this.adapters[tool], involved = projectRepos(def).filter((r) => !r.primary && r.kind === 'git' && r.remote && req.prs.some((p) => sameRepo(r.remote!, p.repo))).map((r) => r.id);
+    const adapter = this.adapters[tool], involved = prReviewRepoIds(def, req.prs);
 
     // Whoever reviewed for the task before goes home: this review starts in a worktree of its own.
     const prev = task.reviewerWorkerId ? floor.workers.get(task.reviewerWorkerId) : undefined;
@@ -1086,12 +1076,12 @@ export class Orchestrator {
       phase: 'pr-review',
       prs,
       prTask: attached ? `They are kanban task #${task.id}'s: ${task.title}${task.ticket ? ` (${task.ticket})` : ''}` : '',
-      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir), text: eff.text,
+      prRepos: reposText(def, { repoIds: involved, workspace: undefined }, floor.dir), prRepoIds: involved, text: eff.text,
     };
     const prompt = typeable(this.compose.build('pr.review', def, task, tool, floor.dir, x));
     const extras = this.ctx.workerExtras(task.id, tool, skillPhase('pr-review'));
-    const addDirs = eff.text ? (grantFiles(this.ctx.filesDir, task.id, this.ctx.repo.listAttachments(task.id)), [grantDir(this.ctx.filesDir, task.id)]) : undefined;
-    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args, ...(addDirs ? { addDirs } : {}) });
+    const dirs = prReviewDirs(this.ctx, task, !!eff.text);
+    const launchArgs = adapter.launchArgs('pr-review', { ...this.ctx.settings.launchPermissions(task.project, task.overrides), sandbox: review.sandbox, model, effort, extra: extras.args, ...dirs });
 
     const owner = hireOwner(task, via.who);
     const signIn = owner && tool === 'claude' && this.ctx.runAs && !this.ctx.runAs.claudeReady(owner) ? this.signInMissing(task, owner, via.who) : undefined;

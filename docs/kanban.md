@@ -593,7 +593,7 @@ renamed with it, unless one of the project's other repositories already has the 
 
 Settings → **Projects** (pick the project at the top) → **Project** → **Repositories**: **Add a local
 repository** with its absolute folder, then name, kind (git or folder), GitHub `owner/name`, base
-branch and instructions for work in it, and **Save repositories**. At most 8 besides the primary.
+branch and instructions for work in it (a repository's instructions are written to a file the agents read, see below), and **Save repositories**. At most 8 besides the primary.
 The primary's folder is changed from the elevator in the 3D office, not here. When the floor knows
 its GitHub repository (it was added from GitHub, or its checkout has one), that is the primary's
 `owner/name`, shown read-only: saving another is refused ("The floor's own repository is
@@ -611,8 +611,23 @@ Saving the form keeps the field empty; type an `owner/name` to pin one.
 A task gets a worktree of each git repository it works in, all on the same branch (named by the
 project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`; with a public language set the default prompt also asks for the slug in that language, and a rewrite of the *Branch naming* prompt can use `{{slugNote}}` for that line, which is empty otherwise and then leaves no blank line). A *folder*
 repository has no worktree: the agent works in the folder itself. The same page has the project's
-general and testing instructions (they go into the prompts), *tasks at once*, and the project's own
+general and testing instructions, *tasks at once*, and the project's own
 plan approval, implementation mode and review settings.
+
+The project's general and testing instructions and each repository's instructions are written to files
+under `<data>/kanban/instructions/<project>/` (`general.md`, `testing.md`, `repo-<id>.md`; read-only, and
+only for the parts that have text), and every prompt that starts or continues work names them: the agent
+is told to read the general file first, the testing file before it tests or verifies anything, and a
+repository's file before it works there (a pull request review gets those of the repositories in the
+pull requests). The prompts carry the paths, not the text, so an edit in the settings reaches a task
+that is already under way the next time its agent reads the file. The files are brought up to date when
+the settings are saved and again whenever a prompt is composed. If a file cannot be written, that part
+goes into the prompt as text instead. A comment typed into an agent that is at work carries the same
+reference, after the comment's text. After upgrading, a Claude session started before this change is
+relaunched once at its next prompt (its launch arguments gain the folder), and a comment to an agent at
+work waits for that turn to end the first time. A project or office rewrite of the *general*, *testing*
+or *repository* part of the instructions made before this change now applies only to the text form:
+rewrite the matching *file* part to change the usual wording.
 
 With several repositories, the floor's issues and PR boards show every repository's cards with a
 repository chip. The issues board has a repository filter; the PR board (E at the board) has a tab
@@ -891,7 +906,7 @@ criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs t
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line and its note on reading a Jira ticket, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan, what the task did, and the handoff's summary and comments). Each lists
-its `{{placeholders}}`. The text that hands a finished meeting's output on is editable too, in the office's
+its `{{placeholders}}`. The instructions come as a block (*Project's instructions*) of one part per file: *general*, *testing* and *a repository's*, each with a file form (the one used) and a text form (only when the file could not be written). A rewritten prompt that has no `{{instructions}}` gets the block at its end, as it does with `{{uiTesting}}`. The text that hands a finished meeting's output on is editable too, in the office's
 prompts (group Meetings): *Handing the output on* and its pieces for a review posted on a PR, a stopped meeting and the meeting's branch.
 
 - **Office-wide**: Settings → Workers → **Edit the prompts…**, group **Kanban tasks**
@@ -1101,6 +1116,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
 | `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700); removed with the task. |
 | `<data>/kanban/grants/task-<id>/ui/` | The task's before and after screenshots (`<subject>-before.png`, `<subject>-after.png`, in a `<repo id>/` folder each in a task in several repositories; mode 700), see [UI testing](#ui-testing). |
+| `<data>/kanban/instructions/<project>/` | The project's instructions as files for its agents: `general.md`, `testing.md`, `repo-<repository id>.md` (read-only; rewritten from the settings, removed with the project), see [Projects and repositories](#projects-and-repositories). |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
 | `<data>/kanban/refs/task-<id>/` | The plan phase's referenced tasks. |
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |
@@ -1133,9 +1149,9 @@ each worktree's own `node_modules` folder of links to its repository's packages 
   office's default, and an office that never changed it moves to *auto mode* when it starts (once: the file is then
   written at version 2, and a bypass chosen later stays). A project's own choice, and *in Codex's workspace sandbox*, are kept.
   To have the old behaviour back, choose *without permission prompts* under Kanban → New tasks. The plan phase stays in plan mode, as before.
-- The task's own folders (attached files, referenced tasks, an investigation's reports) are given to Claude through a
+- The task's own folders (attached files, referenced tasks, an investigation's reports) and the project's instructions folder are given to Claude through a
   per-worker settings file (`permissions.additionalDirectories`), not `--add-dir`, which makes Claude ask whether
-  it trusts the folder. A trust dialog for any other folder shows as *Waiting on a setup prompt*.
+  it trusts the folder. A trust dialog for any other folder shows as *Waiting on a setup prompt*. Codex reads the instructions folder without a grant (its workspace sandbox lets it read anywhere), and is not given write access to it.
 - Codex task workers are started with the trusted hashes of the office's own hooks (`-c hooks.state=…`),
   so Codex's "Hooks need review" screen doesn't stop them when they move between projects (the hook
   command names each floor's own path, and Codex remembers one trusted hash per event). The user's and

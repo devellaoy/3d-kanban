@@ -1114,3 +1114,16 @@ test("Fix PRs twice: the PR: lines of the answers don't move the PR's head branc
     if (round === 2) assert.ok(!text.includes('office/scratch`'), "the second run isn't sent to the task's own branch");
   }
 });
+
+test("a Claude task's launch reads the project's instructions folder", async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan text.\n\nPLAN READY', exitPlan: 'The plan' }]);
+  const task = fx.newTask({ planApproval: 'manual', useReview: false });
+  await fx.engine.start(task.id, ADA);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan approval');
+  const dir = path.join(fx.ctx.filesDir, 'instructions', task.project);
+  const inv = fx.invocations().find((i) => i.kind === 'claude' && /You are planning kanban task/.test(promptOf(i)))!;
+  assert.ok(inv.args.some((x, i) => x === '--add-dir' && inv.args[i + 1] === dir), 'the instructions folder is a directory flag');
+  assert.ok(existsSync(dir), 'and the folder exists');
+});

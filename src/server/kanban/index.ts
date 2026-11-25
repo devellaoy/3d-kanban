@@ -26,6 +26,7 @@ import { KanbanRepository } from './db/repository.js';
 import { kanbanDbPath, openKanbanDb } from './db/open.js';
 import { KanbanSecrets } from './secrets.js';
 import { KanbanSettingsStore } from './settings.js';
+import { projectInstructionTexts, pruneInstructionDirs, syncInstructionFiles } from './instructions.js';
 import { primaryRepo, projectRepos, validateProjectRepos } from './projects.js';
 import { attachmentPath } from './uploads.js';
 import { registerOfficeFiles } from './launch.js';
@@ -174,7 +175,14 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     }
   };
 
-  const settings = new KanbanSettingsStore(dataDir);
+  // The instructions files follow the settings and the repositories (instructions.ts).
+  const syncInstructions = (id: string) => syncInstructionFiles(filesDir, id, projectInstructionTexts(ctx, id));
+  const syncAll = (prune: boolean) => {
+    const ids = opts.floors().map((d) => d.id);
+    if (prune) pruneInstructionDirs(filesDir, ids);
+    for (const id of ids) syncInstructions(id);
+  };
+  const settings = new KanbanSettingsStore(dataDir, () => syncAll(false));
   const secrets = new KanbanSecrets(dataDir);
   const project = (id: string) => opts.floors().find((d) => d.id === id);
 
@@ -200,7 +208,9 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       // Just the floor's own checkout, as it is: the floor goes back to having no list of its own.
       const plain = checked.length === 1 && JSON.stringify(checked[0]) === JSON.stringify(primaryRepo(def));
       const saved = opts.saveRepos(id, plain ? undefined : checked);
-      return typeof saved === 'string' ? saved : undefined;
+      if (typeof saved === 'string') return saved;
+      syncInstructions(id);
+      return undefined;
     },
     setName: (id: string, name: string) => {
       if (!project(id)) return 'No such project';
@@ -208,6 +218,7 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       const was = project(id)!.name;
       const r = opts.saveName(id, name);
       if (typeof r === 'string') return r;
+      syncInstructions(id);
       // A saved list's primary still called after the project takes the new name too (one without a list follows the floor anyway).
       const primary = r.repos?.find((x) => x.primary);
       if (r.repos && primary?.name === was && !r.repos.some((x) => !x.primary && x.name.toLowerCase() === r.name.toLowerCase())) {
@@ -345,6 +356,9 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
     }
   }
 
+  syncAll(true);
+  let instructionsSynced = '';
+
   let projectsSent = '';
   let closed = false;
 
@@ -374,7 +388,15 @@ export function installKanban(opts: KanbanInstallOptions): Kanban {
       subscribers.delete(clientId);
     },
     projectsChanged() {
-      if (closed || !subscribers.size) return;
+      if (closed) return;
+      // Only when the projects or their repositories changed: this is called on every change of the floors, so the
+      // signature is read from the floors as saved (projectRepos may ask git for a checkout's remote).
+      const sig = JSON.stringify(opts.floors().map((d) => [d.id, (d.repos ?? []).map((r) => [r.id, r.instructions ?? ''])]));
+      if (sig !== instructionsSynced) {
+        instructionsSynced = sig;
+        syncAll(true);
+      }
+      if (!subscribers.size) return;
       const projects = projectInfos(ctx);
       const json = JSON.stringify(projects);
       if (json === projectsSent) return;

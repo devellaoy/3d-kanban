@@ -141,6 +141,11 @@ test('splitOfficeDirs: the office folders leave the flags, other folders stay', 
     args: ['--add-dir', '/home/o/.agent-office/kanban/uploads', '--add-dir', '/repos/kanban/grants/task-7'],
     dirs: ['/home/o/.agent-office/kanban/grants/task-7'],
   });
+  // The project's instructions folder has the shape too; a deeper path, a bad id or another folder under kanban/ doesn't.
+  assert.deepEqual(splitOfficeDirs(['--add-dir', '/home/o/.agent-office/kanban/instructions/web-2', '--add-dir', '/home/o/.agent-office/kanban/instructions/Web', '--add-dir', '/home/o/.agent-office/kanban/instructions/web/x', '--add-dir', '/home/o/.agent-office/kanban/other/web']), {
+    args: ['--add-dir', '/home/o/.agent-office/kanban/instructions/Web', '--add-dir', '/home/o/.agent-office/kanban/instructions/web/x', '--add-dir', '/home/o/.agent-office/kanban/other/web'],
+    dirs: ['/home/o/.agent-office/kanban/instructions/web-2'],
+  });
 });
 
 test('a Claude task worker with office folders: they are in its own settings file, not on the command line, and the file goes with the worker', async (t) => {

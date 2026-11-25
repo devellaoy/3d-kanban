@@ -114,7 +114,7 @@ Runtime state (`runStatus`, pids, worktree slots, retries, pending resumes) is r
 
 | ai-kanban | 3d-kanban |
 |---|---|
-| A repository's general, branch and debugging & testing instructions | The project's general, branch and testing instructions |
+| A repository's general, branch and debugging & testing instructions (`repo-context/<id>/general-instructions.md`, `debug-testing.md`) | The project's general, branch and testing instructions. The agents read them as files under `<data>/kanban/instructions/<project>/` (`general.md`, `testing.md`): nothing is copied, the office writes them from the migrated settings the first time they are saved or a task runs. |
 | `columnActions['pr-stage']` | The project's override of the `kanban.pr.create` prompt |
 | Other column actions (`done`, …) | Listed in the report: 3d-kanban has no column actions; decide by hand |
 | The default role's `instructions` and `phaseInstructions` (plan, implement, review), where they differ from ai-kanban's built-in texts | Project overrides of `kanban.plan`, `kanban.implement`, `kanban.review`: the default prompt with the role's text added under a heading |

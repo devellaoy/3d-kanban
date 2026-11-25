@@ -51,8 +51,8 @@ export function registerOfficeFiles(filesDir: string) {
   officeRoots.add(path.resolve(filesDir) + path.sep);
 }
 
-/** A task's own folder under an office's data folder: `<…>/.agent-office/kanban/{grants,refs,reports}/task-<id>`. */
-const OFFICE_TASK_DIR = /[\\/]\.agent-office[\\/]kanban[\\/](?:grants|refs|reports)[\\/]task-\d+$/;
+/** A task's own folder, or a project's instructions folder, under an office's data folder: `<…>/.agent-office/kanban/{grants,refs,reports}/task-<id>`, `<…>/.agent-office/kanban/instructions/<project-id>`. */
+const OFFICE_TASK_DIR = /[\\/]\.agent-office[\\/]kanban[\\/](?:(?:grants|refs|reports)[\\/]task-\d+|instructions[\\/][a-z0-9-]{1,40})$/;
 
 const workerSettingsPath = (kanbanPath: string, workerId: string) => kanbanPath.replace(/\.json$/, `-${workerId}.json`);
 
