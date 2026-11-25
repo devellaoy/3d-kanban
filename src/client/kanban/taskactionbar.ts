@@ -13,7 +13,7 @@ import type { TaskCtx } from './taskctx';
 import { openHoldDialog } from './holddialog';
 import { resumeTarget, resumeTitle } from './holdwords';
 import { columnName } from './labels';
-import { findPrsButton, prModeButton } from './prbuttons';
+import { fetchCommentsButton, findPrsButton, prModeButton } from './prbuttons';
 
 /** What an action looks like and does; the PR-mode buttons and Find PRs are built by prbuttons.ts. */
 interface Spec {
@@ -111,7 +111,8 @@ function specOf(id: Exclude<ActionId, 'fix-prs' | 'fetch-pr-comments' | 'resolve
 export function actionButton(id: ActionId, task: KanbanTask, c: TaskCtx, kind: Kind = 'secondary'): HTMLElement | null {
   if (id === 'fix-prs' || id === 'resolve-conflicts') return prModeButton(task, id, (m, b, d) => c.req(m, b, d));
   if (id === 'find-prs') return findPrsButton(task, c.api);
-  if (id === 'send-plan-feedback' || id === 'review-prs' || id === 'fetch-pr-comments') return null; // fetch-pr-comments: the PRs tab's own button (prbuttons.ts)
+  if (id === 'fetch-pr-comments') return fetchCommentsButton(task, (m, b, d) => c.req(m, b, d));
+  if (id === 'send-plan-feedback' || id === 'review-prs') return null;
   const spec = specOf(id, task, c);
   const b = btn(spec.label, { kind, icon: spec.icon, attrs: { title: spec.title, 'data-focus': `act-${id}` } });
   b.addEventListener('click', () => spec.go(b));

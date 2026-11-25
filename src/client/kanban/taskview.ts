@@ -46,6 +46,7 @@ import type { Detail, FileBox, TaskCtx, TaskViewOptions } from './taskctx';
 import { detailsPane } from './taskdetails';
 import { overviewPane } from './taskoverview';
 import { planPane } from './taskplan';
+import { PrComments } from './taskprcomments';
 import { prsPane } from './taskprs';
 import { Reports } from './taskreports';
 import { runsPane, terminalPane } from './taskruns';
@@ -140,6 +141,8 @@ class View implements TaskView {
   private issue: ReturnType<typeof mountIssueTab> | null = null;
   private changes: { host: HTMLElement; view: ChangesViewHandle } | null = null;
   private reports: Reports;
+  /** The Pull requests tab's review comments: read with the task, like the reports. */
+  private prComments: PrComments;
   /** The Images tab: its list is read with the task (for the tab's count), its pictures drawn once and kept. */
   private images: TaskImages;
   private conv: Conversation;
@@ -190,6 +193,7 @@ class View implements TaskView {
       alive: () => !this.destroyed,
     };
     this.reports = new Reports(this.c);
+    this.prComments = new PrComments(this.c);
     this.images = mountTaskImages(this.taskId, () => this.render(), () => this.projectOf(this.task?.project ?? this.card?.project ?? '')?.repos ?? []);
     this.conv = new Conversation(this.c);
     this.offs.push(
@@ -264,6 +268,7 @@ class View implements TaskView {
       this.unwatch ??= this.api.watch(d.task.project);
       const key = `${d.task.status}:${d.task.phase ?? ''}:${d.task.runState}`;
       this.reports.follow(key);
+      this.prComments.follow(key);
       // An agent saves its pictures without a word to the board: read with every fresh copy of the task.
       this.images.refresh();
     } catch (err) {
@@ -502,7 +507,7 @@ class View implements TaskView {
       terminal: () => terminalPane(this.c, d.task),
       changes: () => [this.changesPane(d.task)],
       images: () => [this.images.host],
-      prs: () => prsPane(this.c, d.task),
+      prs: () => prsPane(this.c, d.task, this.prComments),
       issue: () => [this.issuePane(d.task)],
     };
     if (this.current !== 'changes') this.dropChanges();
