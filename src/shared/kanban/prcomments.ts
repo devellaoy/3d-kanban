@@ -256,6 +256,7 @@ export function renderAnswers(items: readonly PrCommentItem[], answers: readonly
       const a = answers.find((x) => x.id === i.id);
       const lines = [
         `${n + 1}. ${i.url}`,
+        `   Id: ${i.id}`,
         `   Pull request: ${i.pr}`,
         ...(i.path ? [`   Place: ${i.path}${i.line ? `:${i.line}` : ''}`] : []),
         `   Author: ${i.author}${i.authorAssociation ? ` (${i.authorAssociation})` : ''}`,
