@@ -6,6 +6,8 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Ledger } from '../src/server/usage.js';
 import { CARRY_ON_PROMPT, WorkerManager, type WorkerEvents } from '../src/server/workers.js';
+import { askedQuestion, heardQuestion } from '../src/server/kanban/engine/signals.js';
+import type { WorkerObservation } from '../src/server/workers/types.js';
 import { Worktrees } from '../src/server/worktrees.js';
 import type { AgentProvider, WorkerInfo } from '../src/shared/protocol.js';
 import type { PromptSource } from '../src/server/prompts.js';
@@ -677,6 +679,32 @@ test('Codex workers preserve native approvals, follow authenticated root hooks, 
   assert.equal(restored.get(worker.id)?.status, 'idle');
 });
 
+
+test('a Codex question hook as the bridge sends it reaches the observers with its bounded input, for the kanban to keep', async (t) => {
+  const f = fixture();
+  isolateProviderEnvironment(f, t);
+  const oldLog = process.env.FAKE_AGENT_LOG;
+  process.env.FAKE_AGENT_LOG = f.log;
+  t.after(() => { if (oldLog === undefined) delete process.env.FAKE_AGENT_LOG; else process.env.FAKE_AGENT_LOG = oldLog; f.close(); });
+  const workers = new WorkerManager(f.root, f.data, f.claude, ['--claude-only'], { url: 'http://127.0.0.1:1', token: '' }, events([]), ledger(f.data));
+  t.after(() => workers.shutdown());
+  const worker = workers.spawn('desk-1', 'test', '- fix the login', false, 'agent', 'codex');
+  assert.notEqual(typeof worker, 'string'); if (typeof worker === 'string') return;
+  const calls = await waitFor(f.read, x => x.some(r => r.kind === 'codex'));
+  const token = calls.find(r => r.kind === 'codex')!.env.hookToken!;
+  const heard: WorkerObservation[] = [];
+  workers.addObserver((o) => { if (o.event === 'hook') heard.push(o); });
+  const hook = (event: string, extra = {}) => workers.handleCodexHook(worker.id, token, event, { session_id: 'codex-root', ...extra });
+  assert.equal(hook('SessionStart', { source: 'startup' }), true);
+  assert.equal(hook('UserPromptSubmit', { prompt: 'Implement' }), true);
+  assert.equal(hook('PreToolUse', { tool_name: 'request_user_input', tool_use_id: 'ask-1', tool_input: { questions: [{ question: 'Which colour?', options: [{ label: 'red', description: 'warm' }, { label: 'blue' }] }] } }), true);
+  const o = heard.find((h) => h.hookEvent === 'PreToolUse')!;
+  assert.ok(o);
+  const live = {};
+  assert.equal(heardQuestion(live, o), true);
+  assert.equal(askedQuestion(live), 'Which colour?\n- red: warm\n- blue');
+  assert.equal(worker.status, 'needs_input');
+});
 
 test('Grok workers isolate GROK_HOME, follow authenticated hooks, and resume their session', async (t) => {
   const f = fixture();

@@ -116,6 +116,41 @@ const MAX_ID = 160;
 const MAX_TEXT = 20000;
 const allowed = (value, max) => typeof value === 'string' && value.trim() && value.trim().length <= max ? value.trim() : undefined;
 const hasText = (value) => typeof value === 'string' && value.trim().length > 0;
+// The bridge is deliberately minimal: of a tool's input only a question tool's question (and its options) is forwarded, as bounded strings.
+const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|request_user_input)$/;
+const MAX_QUESTION = 2000;
+const MAX_QUESTIONS = 8;
+const MAX_OPTIONS = 12;
+const clip = (value) => typeof value === 'string' && value.trim() ? value.trim().slice(0, MAX_QUESTION) : undefined;
+const questionInput = (raw) => {
+  let input = raw;
+  if (typeof input === 'string') { try { input = JSON.parse(input); } catch { return undefined; } }
+  if (!input || typeof input !== 'object' || Array.isArray(input)) return undefined;
+  const out = {};
+  for (const key of ['question', 'prompt', 'message']) { const text = clip(input[key]); if (text) out[key] = text; }
+  if (Array.isArray(input.questions)) {
+    const questions = [];
+    for (const q of input.questions.slice(0, MAX_QUESTIONS)) {
+      if (!q || typeof q !== 'object') continue;
+      const item = {};
+      for (const key of ['question', 'header']) { const text = clip(q[key]); if (text) item[key] = text; }
+      if (Array.isArray(q.options)) {
+        const options = [];
+        for (const o of q.options.slice(0, MAX_OPTIONS)) {
+          if (typeof o === 'string') { const label = clip(o); if (label) options.push(label); continue; }
+          if (!o || typeof o !== 'object') continue;
+          const option = {};
+          for (const key of ['label', 'description']) { const text = clip(o[key]); if (text) option[key] = text; }
+          if (option.label) options.push(option);
+        }
+        if (options.length) item.options = options;
+      }
+      if (item.question) questions.push(item);
+    }
+    if (questions.length) out.questions = questions;
+  }
+  return Object.keys(out).length ? out : undefined;
+};
 const finish = (ok) => { if (ok) process.stdout.write('{}'); };
 const event = process.argv[2];
 let size = 0;
@@ -147,6 +182,8 @@ process.stdin.on('end', async () => {
   if (prompt) body.prompt = prompt;
   if (tool) body.tool_name = tool;
   if (toolUseId) body.tool_use_id = toolUseId;
+  const asked = event === 'PreToolUse' && tool && QUESTION_TOOL.test(tool) ? questionInput(input.tool_input) : undefined;
+  if (asked) body.tool_input = asked;
   if (turn) body.turn_id = turn;
   if (transcript) body.transcript_path = transcript;
   const base = process.env.AGENT_OFFICE_HOOK_URL;

@@ -111,3 +111,69 @@ test('helper forwards only the bounded root event fields to the authenticated br
     rmSync(dir, { recursive: true, force: true });
   }
 });
+
+/** Runs the real helper on a hook's stdin against a local server standing in for the office; the body it POSTed. */
+async function bridged(event: string, stdin: unknown): Promise<Record<string, unknown>> {
+  const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-codex-'));
+  let body: Record<string, unknown> = {};
+  const server = createServer((req, res) => {
+    const chunks: Buffer[] = [];
+    req.on('data', (chunk: Buffer) => chunks.push(chunk));
+    req.on('end', () => {
+      body = JSON.parse(Buffer.concat(chunks).toString('utf8'));
+      res.writeHead(200).end();
+    });
+  });
+  try {
+    const file = writeCodexHook(dir);
+    await new Promise<void>((resolve) => server.listen(0, '127.0.0.1', resolve));
+    const address = server.address();
+    assert.ok(address && typeof address === 'object');
+    const child = spawn(process.execPath, [file, event], {
+      env: { PATH: process.env.PATH, AGENT_OFFICE_HOOK_URL: `http://127.0.0.1:${address.port}`, AGENT_OFFICE_HOOK_TOKEN: 't', AGENT_OFFICE_WORKER_ID: 'w' },
+      stdio: ['pipe', 'pipe', 'ignore'],
+    });
+    await new Promise<void>((resolve, reject) => {
+      child.on('error', reject);
+      child.on('close', () => resolve());
+      child.stdin.end(JSON.stringify(stdin));
+    });
+    return body;
+  } finally {
+    await new Promise<void>((resolve) => server.close(() => resolve()));
+    rmSync(dir, { recursive: true, force: true });
+  }
+}
+
+test('helper forwards a question tool\'s question, bounded and only its fields, on PreToolUse; no other tool\'s input', async () => {
+  const input = {
+    questions: [
+      { id: 'q1', question: '  Which one?  ', header: 'Pick', secret: 'x', options: [{ label: 'A', description: 'first', extra: 1 }, 'plain', { description: 'no label' }, 7] },
+      { question: 'z'.repeat(5000) },
+      { header: 'no question' },
+      ...Array.from({ length: 20 }, (_, i) => ({ question: `q${i}` })),
+    ],
+    command: 'private', env: { A: 'b' },
+  };
+  const got = await bridged('PreToolUse', { session_id: 's', tool_name: 'request_user_input', tool_use_id: 'u1', tool_input: input, model: 'private' });
+  const asked = got.tool_input as { questions: { question: string; header?: string; options?: unknown[] }[]; command?: unknown; env?: unknown };
+  assert.equal(asked.command, undefined);
+  assert.equal(asked.env, undefined);
+  assert.equal(asked.questions.length, 7, 'the cap counts what was sent; one of the first eight had no question');
+  assert.deepEqual(asked.questions[0], { question: 'Which one?', header: 'Pick', options: [{ label: 'A', description: 'first' }, 'plain'] });
+  assert.equal(asked.questions[1].question.length, 2000);
+  assert.deepEqual(Object.keys(got).sort(), ['hook_event_name', 'session_id', 'tool_input', 'tool_name', 'tool_use_id']);
+  // The input as a JSON string, and plain fields.
+  const text = await bridged('PreToolUse', { session_id: 's', tool_name: 'mcp.AskUserQuestion', tool_input: JSON.stringify({ question: 'Plain?', other: 1 }) });
+  assert.deepEqual(text.tool_input, { question: 'Plain?' });
+  // Not a question tool, not a PreToolUse, or nothing to forward: no tool_input.
+  assert.equal('tool_input' in (await bridged('PreToolUse', { session_id: 's', tool_name: 'Bash', tool_input: { command: 'private', question: 'sneaky' } })), false);
+  assert.equal('tool_input' in (await bridged('PermissionRequest', { session_id: 's', tool_name: 'request_user_input', tool_input: input })), false);
+  assert.equal('tool_input' in (await bridged('PreToolUse', { session_id: 's', tool_name: 'request_user_input', tool_input: { x: 1 } })), false);
+});
+
+test("the hook helper knows the same question tools as the kanban's QUESTION_TOOL", async () => {
+  const { QUESTION_TOOL } = await import('../src/server/kanban/engine/signals.js');
+  const { CODEX_HOOK_SOURCE } = await import('../src/server/codex.js');
+  assert.ok(CODEX_HOOK_SOURCE.includes(`/${QUESTION_TOOL.source}/`), 'the helper carries its own copy of the pattern: keep the two the same');
+});
