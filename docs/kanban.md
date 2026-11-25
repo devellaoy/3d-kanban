@@ -205,7 +205,9 @@ is long) and a line saying which meeting it came from.
    home by a person is left out of the round, with a line in the conversation, and the combining names it as
    not finished. The main reviewer waits for the others for 15 minutes after its own review; one still
    working then is left out too. When none of them has a result, the main reviewer's own review is the
-   result and nothing is combined. The additional reviewers go home as the round's result is ready (the
+   result and nothing is combined. If the combining cannot start, nothing is published: the task waits and
+   *Retry* combines the reviews that were finished. The reviewers of a round are the ones it started with:
+   changing the list in the settings takes effect from the next round. The additional reviewers go home as the round's result is ready (the
    worktree stays) and come back for the next round of the same review on their own sessions (a new review starts them afresh). The task counts as running
    from the first review to the result, including the moments between the main reviewer's review and the
    combining. Stopping the task, putting it on hold or moving it to Done ends the whole round; **Retry**

@@ -81,11 +81,14 @@ export class ReviewPanel {
 
   /** What a launch of the main reviewer's review is in a round with several reviewers (none when the task has no additional reviewers, or it is another run). */
   plan(task: KanbanTask, eff: RunEffect): { part: ReviewPanelPart; eff: RunEffect; more?: Partial<ComposeExtra> } | undefined {
-    if (eff.role !== 'reviewer' || eff.phase !== 'review' || !this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra?.length) return undefined;
+    if (eff.role !== 'reviewer' || eff.phase !== 'review') return undefined;
+    // The settings decide when a round opens; one the office relaunched after a restart goes on with the seats it was opened with.
+    const last = this.d.ctx.repo.listRuns(task.id).filter((r) => !r.seat && r.phase !== 'compact').at(-1);
+    const goingOn = eff.prompt === 'restarted' && !!last?.panel && !!task.coReviewers?.length;
+    if (!goingOn && !this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra?.length) return undefined;
     if (eff.prompt === 'restarted' || eff.prompt === 'continue') {
       // A combine run that did not end (a usage limit, a crash, an office restart: failed or interrupted, not stopped by a person) goes again as a combine
       // from the round's results, not as a round of its own. A Stop followed by Retry runs the whole round again.
-      const last = this.d.ctx.repo.listRuns(task.id).filter((r) => !r.seat && r.phase !== 'compact').at(-1);
       const round = last?.panel === 'combine' && (last.status === 'failed' || last.status === 'interrupted') ? this.view(task.id) : undefined;
       if (round && [...round.co.values()].some((r) => r.status === 'succeeded' && r.summary)) return { part: 'combine', eff: { ...eff, prompt: 'rereview' }, more: { panel: 'combine', reviews: this.reviews(task, round) } };
       return eff.prompt === 'continue' || eff.prompt === 'restarted' ? { part: 'solo', eff } : undefined;
@@ -129,15 +132,18 @@ export class ReviewPanel {
 
   /** The main reviewer's solo run has started: every additional reviewer starts its own. A seat that can't start is noted and left out. */
   async open(task: KanbanTask, eff: RunEffect, via: Via) {
-    const extra = this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra ?? [];
     this.clear(task.id);
-    // A solo run the office relaunched after a restart keeps the seats the round already has (running here, or with their result in).
-    const kept = eff.prompt === 'restarted' ? this.view(task.id)?.co : undefined;
-    for (let i = 0; i < extra.length; i++) {
-      const seat = i + 1;
+    // The settings are read when a round opens: the seats are then kept on the task. A solo run the office relaunched after a restart is the same round:
+    // it goes on with those seats, keeping the ones that are running here or have their result in.
+    const stored = task.coReviewers ?? [];
+    const goingOn = eff.prompt === 'restarted' && stored.length > 0;
+    const seats = goingOn ? stored : (this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra ?? []).map((spec, i) => ({ ...stored.find((c) => c.seat === i + 1), seat: i + 1, ...spec }));
+    if (!goingOn) this.d.update(task.id, { coReviewers: seats.length ? seats : null });
+    const kept = goingOn ? this.view(task.id)?.co : undefined;
+    for (const { seat, tool, model } of seats) {
       const had = kept?.get(seat);
       if (had && (had.status === 'succeeded' || (had.status === 'running' && this.d.livesOf(task.id).some((l) => l.runId === had.id)))) continue;
-      const label = this.label(seat, extra[i].tool, extra[i].model);
+      const label = this.label(seat, tool, model);
       const paused = this.d.ctx.hiringPaused?.();
       const err = paused ? `hiring is paused: ${paused}` : await this.d.launch(this.d.ctx.repo.getTask(task.id) ?? task, { type: 'run', phase: 'review', role: 'reviewer', prompt: (eff.round ?? 1) > 1 ? 'rereview' : 'review', ...(eff.round !== undefined ? { round: eff.round } : {}) }, { ...(via.who ? { who: via.who } : {}) }, seat, 'co');
       if (err) this.d.note(task, `${label} could not start: ${clip(typeof err === 'string' ? err : err.queued, 300)}`);
@@ -225,8 +231,16 @@ export class ReviewPanel {
     const eff: RunEffect = { type: 'run', phase: 'review', role: 'reviewer', prompt: 'rereview', ...(fresh.solo.round !== undefined ? { round: fresh.solo.round } : {}) };
     const err = await this.d.launch(current, eff, { who: OFFICE }, 0, 'combine', { panel: 'combine', reviews: this.reviews(current, fresh) });
     if (err) {
-      this.d.note(task, `The reviews could not be combined (${clip(typeof err === 'string' ? err : err.queued, 300)}): the main reviewer's own review is the round's result.`);
-      await this.publish(current, fresh.solo);
+      // The round's results stay in the run rows: the combine waits for a Retry, as one that failed after it started does. Publishing the main reviewer's own result would drop the findings.
+      const why = clip(typeof err === 'string' ? err : err.queued, 300);
+      const latest = this.d.ctx.repo.listRuns(taskId).filter((r) => !r.seat).at(-1);
+      if (!(latest?.panel === 'combine' && latest.id > fresh.solo.id)) {
+        const row = this.d.ctx.repo.createRun({ taskId, phase: 'review', ...(fresh.solo.round !== undefined ? { round: fresh.solo.round } : {}), role: 'reviewer', tool: fresh.solo.tool, model: fresh.solo.model, effort: fresh.solo.effort, panel: 'combine', status: 'failed' });
+        this.d.finishRun(row.id, task.project, { status: 'failed', error: why });
+      }
+      await this.close(current);
+      await this.d.apply(taskId, { type: 'failed', error: `The reviews could not be combined: ${why}. Retry to combine them.` }, { who: OFFICE });
+      this.d.drain(task.project);
     }
   }
 
@@ -266,13 +280,17 @@ export class ReviewPanel {
 
   /** What the combine prompt shows of the round: each reviewer's verdict and findings, the seats that did not finish named as such. */
   reviews(task: KanbanTask, round: Round): string {
-    const extra = this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra ?? [];
     const one = (name: string, r: KanbanRun | undefined, gone: string) => {
       if (!r || r.status !== 'succeeded') return `${name}: ${r ? gone : 'did not start'}. Nothing of it to check.`;
       return `${name}: ${r.verdict === 'approved' ? 'APPROVED' : 'CHANGES_REQUESTED'}\n${clip(reviewFindings(r.summary ?? '') || '(no findings listed)', FINDINGS_MAX)}`;
     };
     const out = [one(`${this.label(0, round.solo.tool, round.solo.model)}, you`, round.solo, 'did not finish')];
-    extra.forEach((s, i) => out.push(one(this.label(i + 1, s.tool, s.model), round.co.get(i + 1), 'did not finish')));
+    // The round's own reviewers: the seats it was opened with and the runs they made, whatever the settings say now.
+    const seats = [...new Set([...(task.coReviewers ?? []).map((c) => c.seat), ...round.co.keys()])].sort((a, b) => a - b);
+    for (const seat of seats) {
+      const row = round.co.get(seat), entry = task.coReviewers?.find((c) => c.seat === seat);
+      out.push(one(this.label(seat, row?.tool ?? entry?.tool ?? 'claude', row ? row.model : entry?.model), row, 'did not finish'));
+    }
     return out.join('\n\n');
   }
 
@@ -311,7 +329,7 @@ export class ReviewPanel {
   }
 
   private spec(task: KanbanTask, seat: number): { tool: KanbanTool; model?: string } {
-    const c = task.coReviewers?.find((x) => x.seat === seat) ?? this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra?.[seat - 1];
+    const c = task.coReviewers?.find((x) => x.seat === seat);
     return { tool: c?.tool ?? 'claude', ...(c?.model ? { model: c.model } : {}) };
   }
 
@@ -320,5 +338,16 @@ export class ReviewPanel {
   /** After the runs are re-attached: a round that was between its solo run and its combine goes on (waiting for the seats still running, or combining). */
   recover() {
     for (const t of this.d.ctx.repo.tasksWhere({ status: ['in_progress'] })) if (this.gap(t.id)) void this.d.serial(t.id, () => this.settle(t.id));
+  }
+
+  /** After the runs are re-attached: a task with additional reviewers about but no main run going and no gap to settle is a round that does not go on (its main run was cut off and waits, or was interrupted): they end and go home. */
+  stale() {
+    const ids = new Set<number>(); // a restored worker carries only its task and role, so the seats come from the tasks
+    for (const t of this.d.ctx.repo.tasksWhere({ status: ['in_progress', 'waiting', 'review'] })) if (t.coReviewers?.some((c) => c.workerId)) ids.add(t.id);
+    for (const def of this.d.ctx.projects()) for (const w of this.d.ctx.floor(def.id)?.workers.list() ?? []) if (w.kanban && (w.kanban.seat ?? 0) >= 1) ids.add(w.kanban.taskId);
+    for (const id of ids) {
+      const task = this.d.ctx.repo.getTask(id);
+      if (task && !this.d.livesOf(id).some((l) => !l.seat) && !this.gap(id)) void this.d.serial(id, () => this.close(task, 'The review round did not go on after the office restarted'));
+    }
   }
 }

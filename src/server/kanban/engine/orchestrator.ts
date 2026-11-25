@@ -409,7 +409,7 @@ export class Orchestrator {
         if (task && task.runState !== 'idle' && task.runState !== 'queued') await this.apply(t.id, { type: 'interrupted', text: 'The office restarted while it ran: Retry to carry on' });
       });
     }
-    this.panel.recover();
+    this.panel.recover(); this.panel.stale();
     for (const def of this.ctx.projects()) void this.drain(def.id);
     // Task workers kept from the last office carry only their task and role: their cards come back.
     for (const def of this.ctx.projects()) {
@@ -803,7 +803,7 @@ export class Orchestrator {
     if (eff.phase === 'pr-review' && !last) return this.prReviews.launch(task, def, floor, via, restarted, eff);
     const role = eff.role;
     const review = this.reviewSettings(task);
-    const spec = co ? review.extra?.[seat - 1] : undefined;
+    const spec = co ? (task.coReviewers?.find((c) => c.seat === seat) ?? review.extra?.[seat - 1]) : undefined; // the seat as the round was opened with
     if (co && !spec) return `There is no additional reviewer ${seat} in the review settings`;
     const defaults = this.ctx.settings.get().defaults;
     const tool: KanbanTool = spec?.tool ?? last?.tool ?? (role === 'reviewer' ? review.tool : task.tool);
@@ -1199,13 +1199,13 @@ export class Orchestrator {
       if (task && live.resumed && !live.started) this.update(task.id, slotPatch('reviewer', { sessionId: null }, live.seat, task));
       return this.panel.coGone(live, lost ? "its worktree is gone, so its agent couldn't start" : 'its agent exited before its turn was done');
     }
+    if (live.panel && task) await this.panel.close(task, 'its main reviewer exited'); // a fresh session starts the round again
     // Its agent exited before it was heard from, resuming a stored session: the session is gone (a month on hold, a cleaned-up home). The run
     // starts once more in a fresh session, with the handoff; its messages are still the task's (nothing was acknowledged).
     const session = task ? slot(task, live.role).sessionId : undefined;
     if (live.resumed && !live.started && !lost && live.eff && task && session && sessionLogged(this.ctx, task, live.tool, session, this.ctx.floor(live.floorId)?.workers.transcripts(live.workerId)) === false) return this.holds.freshSession(live, task, session);
     if (task && live.ack) this.comments.requeue(task, live.eff, live.via?.commentId, live.via?.taken);
     const why = lost ? "Its worktree is gone, so its agent couldn't start" : 'The agent exited before its turn was done';
-    if (live.panel && task) await this.panel.close(task, 'its main reviewer exited');
     this.finishRun(live.runId, live.floorId, { status: 'interrupted', error: why });
     if (task) await this.apply(task.id, { type: 'interrupted', text: `${why}: Retry to carry on${lost ? ` in a fresh worktree${task.branch ? ` on branch ${task.branch}` : ''}` : ''}` });
     void this.drain(live.floorId);
