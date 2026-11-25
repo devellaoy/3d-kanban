@@ -34,7 +34,7 @@ export interface SignalRun extends HeldRun {
   stopping?: unknown;
 }
 
-const PR_PHASES = ['pr', 'pr-fix', 'pr-conflicts'];
+const PR_PHASES = ['pr', 'pr-fix', 'pr-conflicts', 'pr-answers'];
 
 /** What a phase's announcement may be, as the commands the agent runs. */
 const takes = (phase: string) => (phase === 'plan' ? '"office-tasks plan-ready" or "office-tasks ask"' : phase === 'review' || phase === 'pr-review' ? '"office-tasks review approved|changes"' : `"office-tasks done" or "office-tasks ask"${PR_PHASES.includes(phase) ? ' and "office-tasks pr <url>"' : ''}`);

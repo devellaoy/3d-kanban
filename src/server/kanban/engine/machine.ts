@@ -8,7 +8,7 @@
 // unless it changed nothing since the task last came to Review.
 
 import type { KanbanRole, KanbanTask, PlanApproval, QueuedRun, RunPhase, RunState, TaskStatus, TaskType, WaitingReason } from '../../../shared/kanban/types.js';
-import { prStatusOk, type PrMode } from '../../../shared/kanban/prs.js';
+import { prStatusOk, type PrRunMode } from '../../../shared/kanban/prs.js';
 import { KANBAN_PROMPT_DEFS } from '../../../shared/kanban/prompt-defs.js';
 
 /** The part of a task the machine decides about. */
@@ -44,7 +44,7 @@ export interface MachineConfig {
  * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
  * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
  */
-export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'restarted' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review';
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'restarted' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review' | 'pr.comments' | 'pr.answers';
 
 export type Effect =
   /**
@@ -66,7 +66,9 @@ export type Effect =
   /** A line from the office in the task's conversation. */
   | { type: 'note'; text: string }
   /** The automation finished: it's in the review column now. */
-  | { type: 'finished' };
+  | { type: 'finished' }
+  /** A fetch of review comments starts: where the task was, for the office to keep until it ends (prcomments.ts). */
+  | { type: 'commentsOrigin'; back: CommentsBack };
 
 export type MachineEvent =
   /** Start from To do, or a queued start whose slot came free. `slot`: there's room under maxConcurrent. */
@@ -85,8 +87,10 @@ export type MachineEvent =
   | { type: 'fixed'; round?: number; changes: boolean; pending?: boolean }
   /** A resume turn (a comment worked on) ended. `since` 'handoff': `changes` counts from when the task last came to Review rather than from the base branch. */
   | { type: 'resumed'; changes: boolean; since?: 'handoff'; pending?: boolean }
-  /** A pr, pr-fix or pr-conflicts turn ended. */
+  /** A pr, pr-fix, pr-conflicts or pr-answers turn ended. */
   | { type: 'prDone'; pending?: boolean }
+  /** A pr-comments turn ended: the task goes back to `back` (the office adds it, see Orchestrator.apply), or works on the comments typed meanwhile. */
+  | { type: 'prCommentsDone'; back?: CommentsBack; pending?: boolean }
   /** A review of several pull requests together (KanbanEngineApi.reviewPrs). */
   | { type: 'prReview' }
   /** That review's turn ended. */
@@ -95,18 +99,18 @@ export type MachineEvent =
   | { type: 'asking'; text?: string; ended?: true }
   /** The agent is working again after asking (someone answered in the terminal). */
   | { type: 'working' }
-  | { type: 'stop' }
+  | { type: 'stop'; back?: CommentsBack }
   /** The run stopped: by Stop (`by`), or its worker was sent home mid-run (`text` says so). `pending`: comments came in while it stopped; they are worked on now. */
-  | { type: 'stopped'; by?: string; text?: string; pending?: boolean }
+  | { type: 'stopped'; by?: string; text?: string; pending?: boolean; back?: CommentsBack }
   /** The reviewer was sent home mid-round: the round is dropped. `pending`: comments came in meanwhile. */
   | { type: 'reviewAbandoned'; pending?: boolean }
-  | { type: 'failed'; error: string }
+  | { type: 'failed'; error: string; back?: CommentsBack }
   /** A usage limit or lost connection: try again at `retryAt` (attempt number `attempts`). */
   | { type: 'limited'; retryAt: number; attempts: number; text?: string }
   /** A usage limit that can't be waited out (too many attempts, or too long a wait). */
-  | { type: 'gaveUp'; text: string }
+  | { type: 'gaveUp'; text: string; back?: CommentsBack }
   /** Its worker went away mid-run (an office restart, sent home). */
-  | { type: 'interrupted'; text?: string }
+  | { type: 'interrupted'; text?: string; back?: CommentsBack }
   /** Run the last phase again. `last`: the task's latest run, if it has one. */
   | { type: 'retry'; last?: LastRun }
   /** Carry on from Waiting, with the user's answer when there is one. */
@@ -119,7 +123,7 @@ export type MachineEvent =
   | { type: 'comment'; text: string; busy: boolean; last?: LastRun; back?: HoldBack }
   /** One review round by hand. */
   | { type: 'review' }
-  | { type: 'pr'; mode: PrMode };
+  | { type: 'pr'; mode: PrRunMode };
 
 /** What a task on hold was held from (TaskHold's from, reason, text and phase): what it goes back to. */
 export interface HoldBack {
@@ -127,6 +131,24 @@ export interface HoldBack {
   reason?: WaitingReason;
   text?: string;
   phase?: RunPhase;
+}
+
+/**
+ * What a task was before a fetch of review comments: a fetch changes nothing about the task's column, so whatever ends it (it finishes, fails or is
+ * stopped) puts the task back there: Done, Review, or Waiting for what it waited for (HoldBack).
+ */
+export type CommentsBack = Omit<HoldBack, 'from'> & { from: HoldBack['from'] | 'done' };
+
+/** The state a fetch of review comments came from, to keep while it runs. */
+export function commentsBack(s: MachineState): CommentsBack {
+  const waits = s.status === 'waiting';
+  return { from: s.status === 'done' ? 'done' : s.status === 'review' ? 'review' : 'waiting', ...(waits && s.waitingReason ? { reason: s.waitingReason, ...(s.waitingText ? { text: s.waitingText } : {}) } : {}), ...(s.phase ? { phase: s.phase } : {}) };
+}
+
+/** The task as it was before the fetch (see CommentsBack): its column, waiting reason and phase; nothing else changed, and nothing is announced. */
+function returned(s: MachineState, back: CommentsBack): MachineState {
+  const out = back.from === 'waiting' ? restored(s, { ...back, from: 'waiting' }) : moved(s, { status: back.from, runState: 'idle', retryAttempts: 0 });
+  return { ...out, phase: back.phase };
 }
 
 /**
@@ -188,10 +210,12 @@ function firstRun(s: MachineState, t: MachineTask): { state: MachineState; effec
 }
 
 /** The phase and prompt of each PR action. */
-const PR_RUNS: Record<PrMode, { phase: RunPhase; prompt: PromptKind; verb: string }> = {
+const PR_RUNS: Record<PrRunMode, { phase: RunPhase; prompt: PromptKind; verb: string }> = {
   create: { phase: 'pr', prompt: 'pr.create', verb: 'opened' },
   fix: { phase: 'pr-fix', prompt: 'pr.fix', verb: 'fixed' },
   conflicts: { phase: 'pr-conflicts', prompt: 'pr.conflicts', verb: 'updated' },
+  comments: { phase: 'pr-comments', prompt: 'pr.comments', verb: 'read' },
+  answers: { phase: 'pr-answers', prompt: 'pr.answers', verb: 'answered' },
 };
 
 /** The prompt of a PR phase's run; undefined for any other phase. */
@@ -228,7 +252,7 @@ function afterWork(s: MachineState, t: MachineTask, changes: boolean, since?: 'h
 }
 
 /** Phases whose agent's question is answered in the same phase (their turn-end handling is their own). */
-const ASKED_IN_PLACE: readonly RunPhase[] = ['review', 'pr-review', 'fix', 'pr', 'pr-fix', 'pr-conflicts'];
+const ASKED_IN_PLACE: readonly RunPhase[] = ['review', 'pr-review', 'fix', 'pr', 'pr-fix', 'pr-conflicts', 'pr-comments', 'pr-answers'];
 
 /** The phase a comment or an answer resumes with, from where the task waits. */
 function resumeWith(s: MachineState, text: string, pending = false, last?: LastRun): { state: MachineState; effects: Effect[] } {
@@ -311,6 +335,11 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
   const automated = s.status === 'in_progress' || s.status === 'waiting';
   // A task on hold is parked: only unhold moves it, and a comment is just stored.
   if (s.status === 'on_hold') return onHold(s, e);
+  // A fetch of review comments that ends, however it ends, leaves the task where it was (a stop or a comment typed meanwhile that has work to do goes the usual way).
+  if (s.phase === 'pr-comments' && automated && 'back' in e && e.back && !('pending' in e && e.pending) && (e.type !== 'stop' || s.runState === 'queued')) {
+    const note = e.type === 'failed' ? e.error : e.type === 'gaveUp' || e.type === 'interrupted' ? e.text : e.type === 'stopped' ? e.text ?? (e.by ? `Stopped by ${e.by}` : 'Stopped') : e.type === 'stop' ? 'Stopped before it started' : undefined;
+    return ok(returned(s, e.back), ...(note ? [{ type: 'note' as const, text: `The review comments weren't fetched: ${note}` }] : []));
+  }
   switch (e.type) {
     case 'start':
       if (s.status !== 'todo' && !(s.status === 'in_progress' && s.runState === 'queued') && !(s.status === 'waiting' && !s.phase)) return no('Only a task in To do can be started');
@@ -370,6 +399,11 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       if (!automated) return ok({ ...s, runState: 'idle' });
       if (e.pending) return deliverPending(s, false);
       return toReview(s);
+
+    case 'prCommentsDone':
+      if (!automated) return ok({ ...s, runState: 'idle' });
+      if (e.pending) return deliverPending(s, false);
+      return ok(e.back ? returned(s, e.back) : moved(s, { status: 'review', runState: 'idle', retryAttempts: 0 }));
 
     case 'prReview':
       if (busy(s)) return no('Stop it first: it is running');
@@ -468,7 +502,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       if (busy(s)) return no('Stop it first: it is running');
       if (t.type === 'investigate' && e.mode === 'create') return no('An investigation has no changes to open pull requests for');
       if (!prStatusOk(s.status)) return no(`Pull requests are ${PR_RUNS[e.mode].verb} from Waiting, Review or Done`);
-      return ok(running(s, PR_RUNS[e.mode].phase), { type: 'run', phase: PR_RUNS[e.mode].phase, role: 'implementer', prompt: PR_RUNS[e.mode].prompt });
+      return ok(running(s, PR_RUNS[e.mode].phase), ...(e.mode === 'comments' ? [{ type: 'commentsOrigin' as const, back: commentsBack(s) }] : []), { type: 'run', phase: PR_RUNS[e.mode].phase, role: 'implementer', prompt: PR_RUNS[e.mode].prompt });
   }
 }
 

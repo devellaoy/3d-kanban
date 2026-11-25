@@ -12,7 +12,7 @@ import type { KanbanClientMsg, KanbanClientType, KanbanServerMsg } from '../../s
 import type { LanguageSettings } from '../../shared/language.js';
 import type { PromptId } from '../../shared/prompts.js';
 import type { KanbanPrReviewRequest, KanbanTask, KanbanTaskCard, PrRef, ProjectRepo } from '../../shared/kanban/types.js';
-import type { PrMode } from '../../shared/kanban/prs.js';
+import type { PrMode, PrRunMode } from '../../shared/kanban/prs.js';
 import type { TurnSignal } from '../../shared/kanban/signals.js';
 
 /** Who sent a WS message or an HTTP request from a browser. */
@@ -68,6 +68,8 @@ export interface KanbanEngineApi {
   approvePlan(taskId: number, who: KanbanCaller): Promise<string | void>;
   requestPlanChanges(taskId: number, who: KanbanCaller, text: string, attachmentIds?: string[]): Promise<string | void>;
   pr(taskId: number, who: KanbanCaller, mode: PrMode): Promise<string | void>;
+  /** The same, and the two runs of the Pull requests tab's review comments (fetching them, answering them) that `pr` and its public message never start: they have their own plugin (integrations/prcomments). */
+  prRun(taskId: number, who: KanbanCaller, mode: PrRunMode): Promise<string | void>;
   /**
    * The task is moved back to To do or deleted: its workers at rest go home, worktree kept (reason
    * `released`); a run live only because the agent asks in its terminal is stopped. Resolves to why

@@ -21,6 +21,8 @@ import { isPrPhase, openPrs } from '../../../shared/kanban/prs.js';
 import type { KanbanPrLink, KanbanTask, KanbanTool, ProjectRepo, RunPhase, SkillPhase, TaskWorkspace } from '../../../shared/kanban/types.js';
 import type { WorkerInfo } from '../../../shared/protocol.js';
 import type { PromptKind } from './machine.js';
+import { prCommentsGrantFile } from './prcomments.js';
+import { renderAnswers, type PrCommentAnswer, type PrCommentItem } from '../../../shared/kanban/prcomments.js';
 import { resolveLanguages, type LanguageSettings } from '../../../shared/language.js';
 import { placeholders, type PromptId } from '../../../shared/prompts.js';
 import { languageRules } from '../../language.js';
@@ -37,6 +39,7 @@ type Vars = Record<string, string | number>;
 export function skillPhase(phase: RunPhase): SkillPhase {
   if (phase === 'plan' || phase === 'review') return phase;
   if (phase === 'pr-review') return 'review';
+  if (phase === 'pr-comments') return 'review'; // reads and analyses, changes nothing: no pr skills
   if (isPrPhase(phase)) return 'pr';
   return 'implement';
 }
@@ -154,6 +157,8 @@ export interface ComposeExtra {
   prRepos?: string;
   /** A pull-request review: the repositories involved, whose instructions it gets (besides the primary's). */
   prRepoIds?: string[];
+  /** The answers run: the comments and the user's decisions as they were sent. */
+  prAnswers?: { items: PrCommentItem[]; answers: PrCommentAnswer[] };
 }
 
 export class Composer {
@@ -378,6 +383,7 @@ export class Composer {
   contract(task: KanbanTask, phase: RunPhase): KanbanContractId | undefined {
     if (phase === 'plan') return 'plan';
     if (phase === 'review') return 'review';
+    if (phase === 'pr-comments') return 'prComments';
     if (isPrPhase(phase)) return 'pr';
     if (phase === 'pr-review') return 'prReview';
     return task.type === 'investigate' ? 'investigateSafety' : 'implementSafety';
@@ -443,6 +449,17 @@ export class Composer {
         // Elsewhere review comments carry no author_association: office-pr marks the ones to act on.
         const elsewhere = kind === 'pr.fix' && (x.fixPrs ?? openPrs(task)).some((pr) => (hostOfUrl(pr.url) ?? hostOf(pr.repo)) !== 'github');
         return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.fixHosted', p)}` : text);
+      }
+      case 'pr.comments': {
+        const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
+        const text = ins('kanban.pr.comments', this.text('kanban.pr.comments', p, { taskId: task.id, title: task.title, prs: prs.join('\n'), repos: v.repos, file: prCommentsGrantFile(this.ctx.filesDir, task.id), instructions: v.instructions, language: v.language }));
+        const elsewhere = (x.fixPrs ?? openPrs(task)).some((pr) => (hostOfUrl(pr.url) ?? hostOf(pr.repo)) !== 'github');
+        return seal(elsewhere ? `${text.trimEnd()}\n\n${this.text('kanban.pr.commentsHosted', p)}` : text);
+      }
+      case 'pr.answers': {
+        const prs = (x.fixPrs ?? openPrs(task)).map((pr) => `- ${pr.repo ?? pr.repoId}: ${pr.url}`);
+        const items = x.prAnswers ? renderAnswers(x.prAnswers.items, x.prAnswers.answers) : '(the decisions are gone: ask the user to send them again, and change nothing)';
+        return seal(ins('kanban.pr.answers', this.withUi('kanban.pr.answers', def, task, 'comment', { taskId: task.id, prs: prs.join('\n'), repos: v.repos, items, instructions: v.instructions, language: v.language })));
       }
       case 'pr.review':
         // What the user said to a reviewer that asked (a fresh reviewer starts the review again with the answer).
