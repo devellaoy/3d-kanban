@@ -598,6 +598,36 @@ test('claude transcript: ExitPlanMode is the plan, until it is answered', (t) =>
   assert.equal(readClaudeTurn(limit)?.apiError, "You've hit your limit · resets 3pm");
 });
 
+test('claude transcript: a tool call in the message of an ExitPlanMode (report_turn) is no going on, a later message is', (t) => {
+  const write = scratch(t);
+  const exit = { type: 'tool_use', id: 'p1', name: 'ExitPlanMode', input: { plan: 'The plan' } };
+  const report = { type: 'tool_use', id: 'r1', name: 'mcp__agent-office__report_turn', input: { kind: 'plan-ready' } };
+  const alone = readClaudeTurn(write('alone.jsonl', [cUser('Plan'), cAssistant([exit], {}, 'm1')]));
+  assert.deepEqual(alone, { text: '', plan: 'The plan', exitPlan: true, complete: true });
+  for (const [name, blocks] of [['after', [exit, report]], ['before', [report, exit]]] as const) {
+    const r = readClaudeTurn(write(`${name}.jsonl`, [cUser('Plan'), ...blocks.map((b) => cAssistant([b], {}, 'm1'))]));
+    assert.equal(r?.exitPlan, true, name);
+    assert.equal(r?.plan, 'The plan', name);
+    assert.equal(r?.complete, alone?.complete, name);
+    // Both blocks in one line, too.
+    const one = readClaudeTurn(write(`${name}-one.jsonl`, [cUser('Plan'), cAssistant([...blocks], {}, 'm1')]));
+    assert.deepEqual([one?.exitPlan, one?.complete], [true, true], name);
+  }
+  // A tool of a LATER message is Claude going on; ExitPlanMode's own result ends the plan.
+  const later = readClaudeTurn(write('later.jsonl', [cUser('Plan'), cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm2')]));
+  assert.equal(later?.exitPlan, undefined);
+  const earlier = readClaudeTurn(write('earlier.jsonl', [cUser('Plan'), cAssistant([{ type: 'tool_use', id: 'g', name: 'Grep', input: {} }], {}, 'm0'), cAssistant([exit], {}, 'm1')]));
+  assert.equal(earlier?.exitPlan, true);
+  const answered = readClaudeTurn(write('answered2.jsonl', [cUser('Plan'), cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm1'), cUser([{ type: 'tool_result', tool_use_id: 'p1', content: 'No' }])]));
+  assert.equal(answered?.exitPlan, undefined);
+  // In a typed turn (a prompt typed over the office's) the same holds.
+  const typed = readClaudeTurn(write('typed.jsonl', [cUser('Plan'), cAssistant([text('PLAN READY')], {}, 'm0'), cUser('typed by the user'), cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm1')]));
+  assert.equal(typed?.exitPlan, true);
+  assert.equal(typed?.plan, 'The plan');
+  const typedLater = readClaudeTurn(write('typed2.jsonl', [cUser('Plan'), cAssistant([text('PLAN READY')], {}, 'm0'), cUser('typed by the user'), cAssistant([exit], {}, 'm1'), cAssistant([report], {}, 'm2')]));
+  assert.equal(typedLater?.exitPlan, undefined);
+});
+
 test('codex rollout: the last task_complete of the last turn, else the last assistant message', (t) => {
   const write = scratch(t);
   const meta = { type: 'session_meta', payload: { id: 's1', cwd: '/w' } };
