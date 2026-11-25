@@ -4,7 +4,7 @@
 //
 // Browser-safe: no node imports, the hire dialog reads this too.
 
-export const AGENT_PROVIDERS = ['claude', 'opencode', 'codex', 'grok', 'muse', 'dsh', 'custom'] as const;
+export const AGENT_PROVIDERS = ['claude', 'opencode', 'codex', 'grok', 'muse', 'dsh', 'antigravity', 'custom'] as const;
 
 export type AgentProvider = (typeof AGENT_PROVIDERS)[number];
 
@@ -18,6 +18,9 @@ export const CLAUDE_MODELS: readonly ClaudeModel[] = ['fable', 'opus', 'sonnet',
 export function isClaudeModel(value: unknown): value is ClaudeModel {
   return value === 'fable' || value === 'opus' || value === 'sonnet' || value === 'haiku';
 }
+
+/** Antigravity model slugs to suggest (`agy models` lists what an account really has; any slug it takes goes through). */
+export const ANTIGRAVITY_MODELS = ['gemini-4-hydrogen', 'gemini-3.8-flash', 'claude-sonnet-4-6', 'claude-opus-4-6-thinking'] as const;
 
 /** Claude Code's `--effort` levels, from fastest/cheapest to most thorough. */
 export type AgentEffort = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
@@ -149,6 +152,12 @@ export const PROVIDER_META: Record<AgentProvider, ProviderMeta> = {
     invalidModel: 'Invalid DeepSeek Harness model (expected a catalog model id of up to 256 characters)',
     takesEffort: true,
     usage: { reports: true, waiting: 'waiting for first report', note: 'DeepSeek Harness reports context usage over ACP after its first turn; cost may be unavailable.' },
+  },
+  antigravity: {
+    label: 'Antigravity',
+    name: 'Antigravity',
+    bin: 'agy',
+    usage: { note: 'Antigravity reports no usage; token totals stay in the worker terminal.' },
   },
   custom: {
     label: 'Custom',
