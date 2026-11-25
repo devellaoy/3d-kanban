@@ -502,7 +502,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       if (busy(s)) return no('Stop it first: it is running');
       if (t.type === 'investigate' && e.mode === 'create') return no('An investigation has no changes to open pull requests for');
       if (!prStatusOk(s.status)) return no(`Pull requests are ${PR_RUNS[e.mode].verb} from Waiting, Review or Done`);
-      return ok(running(s, PR_RUNS[e.mode].phase), ...(e.mode === 'comments' ? [{ type: 'commentsOrigin' as const, back: commentsBack(s) }] : []), { type: 'run', phase: PR_RUNS[e.mode].phase, role: 'implementer', prompt: PR_RUNS[e.mode].prompt });
+      return ok(running(s, PR_RUNS[e.mode].phase), ...(e.mode === 'comments' && s.phase !== 'pr-comments' ? [{ type: 'commentsOrigin' as const, back: commentsBack(s) }] : []), { type: 'run', phase: PR_RUNS[e.mode].phase, role: 'implementer', prompt: PR_RUNS[e.mode].prompt });
   }
 }
 

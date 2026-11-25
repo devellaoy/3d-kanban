@@ -593,6 +593,7 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
     ...(opts.capacity ? { capacity: () => opts.capacity!.full() } : {}),
     ...(opts.runAs ? { runAs: opts.runAs } : {}),
     ...(opts.notify ? { notify: opts.notify } : {}),
+    taskChanged: () => undefined,
     engine: undefined as unknown as KanbanContext['engine'],
     pulls: { bundle: async () => 'no', review: async () => 'no' },
     refs: { referencedTasksFile: () => undefined },

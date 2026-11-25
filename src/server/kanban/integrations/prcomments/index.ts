@@ -13,8 +13,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
 import { answersComplete } from '../../../../shared/kanban/prcomments.js';
-import { isRunning } from '../../../../shared/kanban/moves.js';
-import { prCommentsState, readPrComments, removePrComments, writePrComments, type PrCommentsStore } from '../../engine/prcomments.js';
+import { FAILED_START, pendingLive, prCommentsState, readPrComments, updatePrComments, type PrCommentsStore } from '../../engine/prcomments.js';
 import { fail, ok, sendJson } from '../util.js';
 
 const ROUTE_RE = /^\/api\/kanban\/tasks\/(\d{1,12})\/pr-comments$/;
@@ -29,8 +28,14 @@ export function createPrCommentsPlugin(ctx: KanbanContext, now: () => number = D
     return sendJson(res, 200, prCommentsState(ctx.filesDir, task)), true;
   };
 
-  /** The store as it was, put back (or gone, when there was none) after the engine refused. */
-  const restore = (taskId: number, old: PrCommentsStore | undefined) => (old ? writePrComments(ctx.filesDir, taskId, old) : removePrComments(ctx.filesDir, taskId));
+  /**
+   * The store as it was, put back after the engine refused: only when it holds nothing but what a failed start of that fetch left (a fetch that
+   * is going, or one that has finished, keeps its own store), and in one step with the check, so a refused request never touches another's.
+   */
+  const restore = (taskId: number, old: PrCommentsStore | undefined) =>
+    updatePrComments(ctx.filesDir, taskId, (cur) => (!cur ? old : !cur.origin && cur.error?.startsWith(FAILED_START) ? old : cur));
+  /** Sends under way: a second one of the same task, while the first waits for the engine, is refused. */
+  const sending = new Set<number>();
 
   return {
     name: 'prcomments',
@@ -40,11 +45,11 @@ export function createPrCommentsPlugin(ctx: KanbanContext, now: () => number = D
       'kanban.pr.comments.fetch': async (c, m) => {
         const task = ctx.repo.getTask(m.taskId);
         if (!task) return fail(c, m.rid, `There's no task #${m.taskId}`);
-        const old = isRunning(task) ? undefined : readPrComments(ctx.filesDir, task.id);
+        const old = readPrComments(ctx.filesDir, task.id);
         const err = await ctx.engine.prRun(task.id, c, 'comments');
         ctx.taskChanged(task.id);
         if (typeof err === 'string' && err) {
-          if (!isRunning(task)) restore(task.id, old);
+          restore(task.id, old);
           return fail(c, m.rid, err);
         }
         ok(c, m.rid, { taskId: task.id });
@@ -54,21 +59,28 @@ export function createPrCommentsPlugin(ctx: KanbanContext, now: () => number = D
         if (!task) return fail(c, m.rid, `There's no task #${m.taskId}`);
         const store = readPrComments(ctx.filesDir, task.id);
         if (!store || store.error || store.fetchedAt === undefined || store.fetchedAt !== m.fetchedAt) return fail(c, m.rid, 'The list of comments has changed since you saw it: fetch them again');
-        if (store.sent || store.pending) return fail(c, m.rid, 'These decisions were sent already: fetch the comments again for a new list');
+        // A pending that no run carries (the office died before the engine answered) is nothing: the list is still to be sent.
+        if (store.sent || (store.pending && (pendingLive(task) || sending.has(task.id)))) return fail(c, m.rid, 'These decisions were sent already: fetch the comments again for a new list');
         const known = new Set(store.items.map((i) => i.id));
         const unknown = m.answers.find((a) => !known.has(a.id));
         if (unknown) return fail(c, m.rid, `The list has no comment ${unknown.id.slice(0, 100)}: fetch the comments again`);
         if (!answersComplete(store.items, m.answers)) return fail(c, m.rid, 'Decide every comment first (a custom answer needs its text)');
         const at = now();
-        writePrComments(ctx.filesDir, task.id, { ...store, pending: { items: store.items, answers: m.answers, at } });
-        const err = await ctx.engine.prRun(task.id, c, 'answers');
+        sending.add(task.id);
+        updatePrComments(ctx.filesDir, task.id, (cur) => cur && { ...cur, pending: { items: store.items, answers: m.answers, at } });
+        let err: string | void;
+        try {
+          err = await ctx.engine.prRun(task.id, c, 'answers');
+        } finally {
+          sending.delete(task.id);
+        }
         ctx.taskChanged(task.id);
-        const now2 = readPrComments(ctx.filesDir, task.id) ?? store;
+        // Only pending and sent change: whatever else the store holds now (a fetch's origin, say) is not this request's to write.
         if (typeof err === 'string' && err) {
-          writePrComments(ctx.filesDir, task.id, { ...now2, pending: undefined });
+          updatePrComments(ctx.filesDir, task.id, (cur) => cur && { ...cur, pending: undefined });
           return fail(c, m.rid, err);
         }
-        writePrComments(ctx.filesDir, task.id, { ...now2, pending: undefined, sent: { items: store.items, answers: m.answers, at } });
+        updatePrComments(ctx.filesDir, task.id, (cur) => cur && { ...cur, pending: undefined, sent: { items: store.items, answers: m.answers, at } });
         ok(c, m.rid, { taskId: task.id });
       },
     },

@@ -12,6 +12,9 @@ import { grantDir } from '../uploads.js';
 import type { KanbanContext } from '../registry.js';
 import type { CommentsBack, MachineEvent } from './machine.js';
 
+/** What a fetch that ended without a list says first in its stored error. */
+export const FAILED_START = "The fetch didn't finish: ";
+
 /** What the office keeps of a task's review comments. */
 export interface PrCommentsStore {
   /** When the list was fetched (ms); undefined while a fetch is still under way. */
@@ -20,7 +23,9 @@ export interface PrCommentsStore {
   dropped: number;
   /** Why the fetch failed: no list then. */
   error?: string;
-  /** The column the task was in when the fetch started, until the fetch ends. */
+  /** What the agent changed in the checkouts during the fetch, though it is read-only. */
+  warning?: string;
+  /** The column the task was in when the fetch started, until the fetch ends (kept while it is parked and resumed). */
   origin?: CommentsBack;
   /** The decisions the user sent, as they were then (the items go with them), until the run that carries them has started. */
   pending?: { items: PrCommentItem[]; answers: PrCommentAnswer[]; at: number };
@@ -57,6 +62,16 @@ export function dropAgentFile(filesDir: string, taskId: number) {
   }
 }
 
+/** Reads the store, lets `fn` change it and writes it back, with no wait between (one step for the single-threaded server): nothing a request holds from earlier is written over what another has done since. */
+export function updatePrComments(filesDir: string, taskId: number, fn: (s: PrCommentsStore | undefined) => PrCommentsStore | undefined) {
+  const next = fn(readPrComments(filesDir, taskId));
+  if (next) writePrComments(filesDir, taskId, next);
+  else removePrComments(filesDir, taskId);
+}
+
+/** A `pending` that is carried by a pr-answers run that is queued or going: any other never got its run (the office died between), and counts for nothing. */
+export const pendingLive = (task: Pick<KanbanTask, 'phase' | 'runState'>) => task.phase === 'pr-answers' && task.runState !== 'idle';
+
 /** Removes the store and the agent's file (a new fetch starts clean, or the task was deleted). */
 export function removePrComments(filesDir: string, taskId: number) {
   rmSync(prCommentsFile(filesDir, taskId), { force: true });
@@ -79,17 +94,20 @@ export function readAgentFile(filesDir: string, taskId: number): { raw: unknown 
 }
 
 /** What the Pull requests tab shows: `running` while a fetch is under way, else what the store holds. */
-export function prCommentsState(filesDir: string, task: Pick<KanbanTask, 'id' | 'phase' | 'runState'>): PrCommentsState {
+export function prCommentsState(filesDir: string, task: Pick<KanbanTask, 'id' | 'phase' | 'runState'> & Partial<Pick<KanbanTask, 'status' | 'waitingText' | 'waitingReason'>>): PrCommentsState {
   if (task.phase === 'pr-comments' && task.runState !== 'idle') return { status: 'running', items: [], dropped: 0 };
+  // Parked (a usage limit, a question of the agent's, a stop that Retry carries on): the fetch is not over, and the task says why it waits.
+  if (task.phase === 'pr-comments' && task.status === 'waiting') return { status: 'running', items: [], dropped: 0, waiting: task.waitingText || task.waitingReason || 'waiting' };
   const s = readPrComments(filesDir, task.id);
   if (!s || (s.fetchedAt === undefined && !s.error)) return { status: 'none', items: [], dropped: 0 };
-  const sent = s.sent ?? s.pending;
+  const sent = s.sent ?? (pendingLive(task) ? s.pending : undefined);
   return {
     status: s.error ? 'failed' : 'ready',
     ...(s.fetchedAt !== undefined ? { fetchedAt: s.fetchedAt } : {}),
     items: s.items,
     dropped: s.dropped,
     ...(s.error ? { error: s.error } : {}),
+    ...(s.warning ? { warning: s.warning } : {}),
     ...(sent ? { sent: { answers: sent.answers, at: sent.at } } : {}),
   };
 }
@@ -120,11 +138,11 @@ export class PrCommentsRuns {
    * The end of a pr-comments turn: reads the agent's file into the store (a failed read is a stored failure with its reason) and deletes it.
    * Says what came of it, for the task's conversation.
    */
-  collect(task: Pick<KanbanTask, 'id' | 'prs'>): string {
+  collect(task: Pick<KanbanTask, 'id' | 'prs'>, warning?: string): string {
     const got = readAgentFile(this.ctx.filesDir, task.id);
     const parsed = 'error' in got ? { items: [], dropped: 0, error: got.error } : parsePrComments(got.raw, task.prs.map((p) => p.url));
     const origin = readPrComments(this.ctx.filesDir, task.id)?.origin;
-    writePrComments(this.ctx.filesDir, task.id, { fetchedAt: this.now(), items: parsed.items, dropped: parsed.dropped, ...(parsed.error ? { error: parsed.error } : {}), ...(origin ? { origin } : {}) });
+    writePrComments(this.ctx.filesDir, task.id, { fetchedAt: this.now(), items: parsed.items, dropped: parsed.dropped, ...(parsed.error ? { error: parsed.error } : {}), ...(origin ? { origin } : {}), ...(warning ? { warning } : {}) });
     dropAgentFile(this.ctx.filesDir, task.id);
     if (parsed.error) return `The review comments couldn't be read: ${parsed.error}`;
     return `Fetched ${parsed.items.length} unresolved review comment${parsed.items.length === 1 ? '' : 's'}${parsed.dropped ? ` (${parsed.dropped} left out as unusable)` : ''}: they are on the Pull requests tab.`;
@@ -138,7 +156,7 @@ export class PrCommentsRuns {
     const abnormal = WHY[e.type];
     if (task.phase !== 'pr-comments' || (e.type !== 'prCommentsDone' && !abnormal) || (e.type === 'stop' && task.runState !== 'queued')) return e;
     const s = readPrComments(this.ctx.filesDir, task.id);
-    if (abnormal) writePrComments(this.ctx.filesDir, task.id, { fetchedAt: this.now(), items: [], dropped: 0, error: `The fetch didn't finish: ${abnormal(e as never)}` });
+    if (abnormal) writePrComments(this.ctx.filesDir, task.id, { fetchedAt: this.now(), items: [], dropped: 0, error: `${FAILED_START}${abnormal(e as never)}` });
     else if (s?.origin) writePrComments(this.ctx.filesDir, task.id, { ...s, origin: undefined });
     return s?.origin ? ({ ...e, back: s.origin } as MachineEvent) : e;
   }

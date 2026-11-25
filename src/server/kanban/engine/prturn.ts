@@ -7,7 +7,8 @@ import { sameRepo } from '../../../shared/floors.js';
 import { prOwners } from '../integrations/pulls/bundle.js';
 import type { KanbanContext } from '../registry.js';
 import type { TaskUpdate } from '../db/repository.js';
-import { taskRepos } from './compose.js';
+import { isFolderProject, taskRepos } from './compose.js';
+import { uncommitted } from './workspace.js';
 import type { MachineEvent } from './machine.js';
 import { notUpdatedLines, prLines } from './markers.js';
 import type { PrCommentsRuns } from './prcomments.js';
@@ -30,9 +31,9 @@ export class PrTurn {
    * A PR turn's final `text` is in: records what it reported and answers with the machine's event. `say` puts the agent's reply in the task's
    * conversation (a fetch of review comments says nothing there: it leaves its list for the Pull requests tab).
    */
-  ended(task: KanbanTask, live: { phase: RunPhase; runId: number }, text: string, pending: boolean, say: (text: string) => void): MachineEvent {
+  async ended(task: KanbanTask, live: { phase: RunPhase; runId: number }, text: string, pending: boolean, say: (text: string) => void): Promise<MachineEvent> {
     if (live.phase === 'pr-comments') {
-      this.d.note(task, this.comments.collect(task), live.runId);
+      this.d.note(task, this.comments.collect(task, await this.changed(task)), live.runId);
       return { type: 'prCommentsDone', pending };
     }
     say(text);
@@ -42,6 +43,18 @@ export class PrTurn {
     if (missed) this.d.note(task, `${missed} pull request${missed === 1 ? ' was' : 's were'} not updated: read the result for why`, live.runId);
     if (live.phase === 'pr') this.d.update(task.id, { flags: { ...(this.ctx.repo.getTask(task.id)?.flags ?? task.flags), prRequested: true } });
     return { type: 'prDone', pending };
+  }
+
+  /**
+   * A fetch is read-only by its prompt only: what it left uncommitted in the task's checkouts, as a warning for the tab. (The checkouts of a task
+   * that waits in Review or Done are clean, which the Stop gate keeps; a fetch's own HEAD moving is not looked at: that needs a baseline taken at launch.)
+   */
+  private async changed(task: KanbanTask): Promise<string | undefined> {
+    const def = this.ctx.project(task.project);
+    const floor = this.ctx.floor(task.project);
+    if (!def || !floor || !task.workspace || isFolderProject(def)) return undefined;
+    const dirty = await uncommitted(floor.dir, task.workspace).catch(() => []);
+    return dirty.length ? `The agent changed files during the fetch, which only reads: uncommitted changes in ${dirty.join(', ')}` : undefined;
   }
 
   /**

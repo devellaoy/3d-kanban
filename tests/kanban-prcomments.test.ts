@@ -66,6 +66,12 @@ test('parsePrComments: a bad item is dropped and counted, never the whole file',
   assert.equal(r.dropped, 12);
 });
 
+test('parsePrComments: a comment’s address is on its pull request’s host, else the item is left out', () => {
+  const r = parsePrComments({ items: [raw(), raw({ id: 'thread:2', url: 'https://evil.example/acme/web/pull/7#r' }), raw({ id: 'thread:3', url: 'https://GitHub.com/acme/web/pull/7#r3' })] }, [PR]);
+  assert.deepEqual(r.items.map((i) => i.id), ['thread:11', 'thread:3']);
+  assert.equal(r.dropped, 1);
+});
+
 test('parsePrComments: strings are capped, a bad line is left out, at most 200 items, no list is an error', () => {
   const long = 'x'.repeat(9000);
   const [item] = parsePrComments({ items: [raw({ body: long, meaning: long, validWhy: long, line: -3, path: long })] }, [PR]).items;

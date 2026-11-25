@@ -55,6 +55,10 @@ export interface PrCommentsState {
   /** How many items of the agent's file were left out for being malformed, over the cap, duplicates or of a pull request the task doesn't have. */
   dropped: number;
   error?: string;
+  /** Why a `running` fetch is parked (a usage limit, a question of the agent's...): the task's own waiting text. */
+  waiting?: string;
+  /** A fetch is read-only; this says what it changed in the checkouts anyway (files changed during the fetch). */
+  warning?: string;
   /** The answers sent to the implementer for this list, and when. */
   sent?: { answers: PrCommentAnswer[]; at: number };
 }
@@ -173,7 +177,8 @@ function itemOf(raw: unknown, prs: Map<string, string>): PrCommentItem | undefin
   let url: string | undefined;
   try {
     const u = new URL(String(raw.url).trim());
-    if (u.protocol === 'https:' && !u.username && !u.password) url = u.href.length <= PR_COMMENT_TEXT_MAX ? u.href : undefined;
+    // A comment's address is on its pull request's own host: any other link is not shown (the whole item is left out).
+    if (u.protocol === 'https:' && !u.username && !u.password && u.host.toLowerCase() === new URL(pr).host.toLowerCase()) url = u.href.length <= PR_COMMENT_TEXT_MAX ? u.href : undefined;
   } catch {
     // not an address
   }

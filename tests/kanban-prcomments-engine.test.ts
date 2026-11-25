@@ -8,7 +8,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { next, type Effect, type MachineEvent, type MachineState, type MachineTask } from '../src/server/kanban/engine/machine.js';
-import { PrCommentsRuns, prCommentsFile, prCommentsGrantFile, prCommentsState, readPrComments, removePrComments, writePrComments } from '../src/server/kanban/engine/prcomments.js';
+import { FAILED_START, PrCommentsRuns, prCommentsFile, prCommentsGrantFile, prCommentsState, readPrComments, removePrComments, writePrComments } from '../src/server/kanban/engine/prcomments.js';
 import { createPrCommentsPlugin } from '../src/server/kanban/integrations/prcomments/index.js';
 import { KANBAN_CONTRACTS, PROMPT_CONTRACT } from '../src/shared/kanban/prompts.js';
 import { PR_COMMENTS_FILE_MAX, type PrCommentAnswer, type PrCommentItem } from '../src/shared/kanban/prcomments.js';
@@ -67,6 +67,23 @@ test('a fetch that is stopped while it waits for a desk returns too; one with co
   assert.deepEqual(pending.effects, [{ type: 'run', phase: 'resume', role: 'implementer', prompt: 'resume', pending: true }]);
   // Without where it was (an old store), a finished fetch goes to Review.
   assert.equal(step({ ...started.state, runState: 'running' }, { type: 'prCommentsDone' }).state.status, 'review');
+});
+
+test('a fetch parked on a usage limit keeps its origin when it is fetched again, and still ends where it began', () => {
+  const from = at({ status: 'done', phase: 'review' });
+  const started = step(from, { type: 'pr', mode: 'comments' });
+  const back = origin(started.effects)!.back;
+  const parked = step({ ...started.state, runState: 'running' }, { type: 'limited', retryAt: 9, attempts: 1 });
+  assert.equal(parked.state.status, 'waiting');
+  assert.equal(parked.state.phase, 'pr-comments');
+  const again = step(parked.state, { type: 'pr', mode: 'comments' });
+  assert.equal(origin(again.effects), undefined, 'a parked fetch never records where it was again');
+  assert.deepEqual(again.effects.map((e) => e.type), ['run']);
+  const ended = step({ ...again.state, runState: 'running' }, { type: 'prCommentsDone', back });
+  assert.equal(ended.state.status, 'done');
+  assert.equal(ended.state.phase, 'review');
+  assert.equal(prCommentsState('/nowhere', { id: 1, phase: 'pr-comments', runState: 'idle', status: 'waiting', waitingText: 'Usage limit' }).waiting, 'Usage limit');
+  assert.equal(prCommentsState('/nowhere', { id: 1, phase: 'pr-comments', runState: 'idle', status: 'waiting', waitingText: 'Usage limit' }).status, 'running');
 });
 
 test('a fetch is refused as the other PR runs are: busy, or a column the PR actions are not offered from', () => {
@@ -258,7 +275,7 @@ test('send: when the engine refuses, the pending answers are rolled back and its
 test('fetch: asks the engine for a fetch; when it refuses, the old list is back', async () => {
   const p = plug((mode) => {
     // The engine clears the old list when a fetch starts, then fails to launch.
-    writePrComments(p.ctx.filesDir, p.task.id, { items: [], dropped: 0, error: 'The fetch didn’t finish: no desk' });
+    writePrComments(p.ctx.filesDir, p.task.id, { items: [], dropped: 0, error: `${FAILED_START}no desk` });
     return mode === 'comments' ? 'There is no free desk' : undefined;
   });
   const before = p.store();
@@ -277,6 +294,15 @@ test('fetch: refused on a task that is running, the store (with where the fetch 
   writePrComments(p.ctx.filesDir, p.task.id, { items: [], dropped: 0, origin: { from: 'done' } });
   assert.match((await p.fetch()).message ?? '', /Stop it first/);
   assert.deepEqual(p.store().origin, { from: 'done' });
+});
+
+test('a pending that no pr-answers run carries is not a sent list: it is dropped on read, and the list can be sent again', async () => {
+  const p = plug(() => undefined);
+  writePrComments(p.ctx.filesDir, p.task.id, { ...p.store(), pending: { items: p.items, answers: p.answers, at: 1 } });
+  assert.equal(prCommentsState(p.ctx.filesDir, { id: p.task.id, phase: 'pr-fix', runState: 'idle' }).sent, undefined);
+  assert.equal(prCommentsState(p.ctx.filesDir, { id: p.task.id, phase: 'pr-answers', runState: 'running' }).sent?.at, 1);
+  assert.equal((await p.send()).t, 'kanban.ok');
+  assert.equal(p.store().sent?.at, 5000);
 });
 
 test('GET: the state of the task’s comments, for a visitor too; other routes and methods are left alone', async () => {

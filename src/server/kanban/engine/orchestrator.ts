@@ -1541,7 +1541,7 @@ export class Orchestrator {
       case 'pr-conflicts':
       case 'pr-answers':
       case 'pr-comments':
-        event = this.prTurn.ended(task, live, text, pending, (t) => say('result', t));
+        event = await this.prTurn.ended(task, live, text, pending, (t) => say('result', t));
         break;
       case 'pr-review':
         verdict = reviewVerdict(text);

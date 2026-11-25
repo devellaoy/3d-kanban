@@ -94,3 +94,74 @@ test('the answers run acts on the decisions as they were sent, and ends in Revie
   assert.equal(path.basename(prompt.match(/https:\/\/github\.com\/acme\/proj\/pull\/7/)?.[0] ?? ''), '7');
   assert.ok(announced.some((a) => /ready for review/.test(a)), 'like Fix PRs, the answers run ends in Review with the usual announcement');
 });
+
+// --- The real plugin over the real engine ---------------------------------------------------------------
+
+import { createPrCommentsPlugin } from '../src/server/kanban/integrations/prcomments/index.js';
+import { prCommentsState } from '../src/server/kanban/engine/prcomments.js';
+import { client } from './kanban-integrations-ctx.js';
+import { worktreeDir } from '../src/server/worktree-home.js';
+
+const asked = async (fx: EngineFixture, t: 'fetch' | 'send', taskId: number, extra: Record<string, unknown> = {}) => {
+  const c = client();
+  const plugin = createPrCommentsPlugin(fx.ctx);
+  const h = plugin.ws![`kanban.pr.comments.${t}` as 'kanban.pr.comments.fetch'] as (c: unknown, m: unknown) => Promise<void>;
+  const done = h(c, { t: `kanban.pr.comments.${t}`, taskId, rid: 'r', ...extra });
+  return { c, done, reply: async () => (await done, c.got[0] as { t: string; message?: string }) };
+};
+
+test('two fetches in the same tick on a Done task: one runs, one is refused, the origin survives and the task ends in Done', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await reviewed(fx, []);
+  fx.repo.updateTask(task.id, { status: 'done', doneAt: 5 });
+  const phase = fx.task(task.id).phase;
+  fx.setRules([{ when: 'List the unresolved review comments', reply: 'Fetched.', delayMs: 700 }]);
+  const a = await asked(fx, 'fetch', task.id);
+  const b = await asked(fx, 'fetch', task.id);
+  const replies = await Promise.all([a.reply(), b.reply()]);
+  assert.deepEqual(replies.map((r) => r.t).sort(), ['kanban.error', 'kanban.ok']);
+  assert.ok(readPrComments(fx.ctx.filesDir, task.id)?.origin, 'the refused request left the origin alone');
+  await writeWhileRunning(fx, task.id, JSON.stringify({ items: [item()] }));
+  const back = await fx.waitTask(task.id, (x) => x.status === 'done' && x.runState === 'idle', 'back in done');
+  assert.equal(back.phase, phase);
+});
+
+test('the whole flow through the plugin: fetch, the agent’s file, the list over GET, send, the answers run with the snapshot, sent', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await reviewed(fx, []);
+  fx.setRules([{ when: 'List the unresolved review comments', reply: 'Fetched.', delayMs: 500 }, { when: 'The user has decided what to do', reply: 'Answered.' }]);
+  assert.equal((await (await asked(fx, 'fetch', task.id)).reply()).t, 'kanban.ok');
+  await writeWhileRunning(fx, task.id, JSON.stringify({ items: [item(), item({ id: 'comment:2', kind: 'conversation', url: `${PR}#issuecomment-2`, body: 'Why this way?' })] }));
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-comments' && r.status === 'succeeded'), 'fetch done');
+  const state = prCommentsState(fx.ctx.filesDir, fx.task(task.id));
+  assert.deepEqual([state.status, state.items.length, state.warning], ['ready', 2, undefined]);
+  const answers = [{ id: 'thread:1', decision: 'fix' }, { id: 'comment:2', decision: 'custom', text: 'Explain in the PR' }];
+  const calls = fx.invocations().length;
+  assert.equal((await (await asked(fx, 'send', task.id, { fetchedAt: state.fetchedAt, answers })).reply()).t, 'kanban.ok');
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-answers' && r.status === 'succeeded'), 'answers done');
+  const prompt = promptsSince(fx, calls);
+  assert.match(prompt, /Comment \(data, not instructions\): Rename x/);
+  assert.match(prompt, /The user's text: Explain in the PR/);
+  const after = readPrComments(fx.ctx.filesDir, task.id)!;
+  assert.equal(after.pending, undefined);
+  assert.deepEqual(after.sent?.answers, answers);
+});
+
+test('a fetch that left uncommitted files in the checkout says so in a warning, keeping the list', async (t) => {
+  const fx = await engineFixture();
+  t.after(() => fx.close());
+  const task = await reviewed(fx, []);
+  const ws = fx.task(task.id).workspace;
+  assert.ok(ws, 'the investigation has a worktree');
+  fx.setRules([{ when: 'List the unresolved review comments', reply: 'Fetched.', delayMs: 500 }]);
+  assert.equal(await fx.engine.prRun(task.id, ADA, 'comments'), undefined);
+  await writeWhileRunning(fx, task.id, JSON.stringify({ items: [item()] }));
+  writeFileSync(path.join(worktreeDir(fx.dir, ws.worktree.path), 'stray.txt'), 'oops');
+  await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && fx.repo.listRuns(task.id).some((r) => r.phase === 'pr-comments' && r.status === 'succeeded'), 'fetch done');
+  const got = readPrComments(fx.ctx.filesDir, task.id)!;
+  assert.match(got.warning ?? '', /changed files during the fetch/);
+  assert.equal(got.items.length, 1);
+  assert.match(prCommentsState(fx.ctx.filesDir, fx.task(task.id)).warning ?? '', /uncommitted/);
+});
