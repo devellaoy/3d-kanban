@@ -17,6 +17,66 @@ const STOP_TEXT_MAX = 100_000;
 /** A tool that asks the user a question in the terminal: Claude's AskUserQuestion, Codex's request_user_input. */
 export const QUESTION_TOOL = /(?:^|[._])(?:AskUserQuestion|ask_user_question|request_user_input)$/;
 
+// --- A question asked in the terminal -----------------------------------------------------------------
+
+/** The question each run's agent asked last (from its PreToolUse hook), in memory only. */
+const asked = new WeakMap<object, string>();
+
+/** The text of a question tool's input: each question as a paragraph with its options as `- label: description` lines; undefined when the shape is unknown. */
+/** A count the bridge sends of what it left out: a positive integer, else nothing. */
+const count = (v: unknown): number => (typeof v === 'number' && Number.isInteger(v) && v > 0 ? v : 0);
+
+function questionText(payload: unknown): string | undefined {
+  const input = (payload as { tool_input?: unknown } | undefined)?.tool_input;
+  if (!input || typeof input !== 'object') return undefined;
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '');
+  const list = (input as { questions?: unknown }).questions;
+  const paras: string[] = [];
+  for (const q of Array.isArray(list) ? list : []) {
+    const text = str((q as { question?: unknown } | null)?.question);
+    if (!text) continue;
+    const header = str((q as { header?: unknown }).header);
+    const lines = [header && !text.includes(header) ? `${header}: ${text}` : text];
+    const options = (q as { options?: unknown }).options;
+    for (const o of Array.isArray(options) ? options : []) {
+      const label = str(typeof o === 'string' ? o : (o as { label?: unknown } | null)?.label);
+      const desc = str((o as { description?: unknown } | null)?.description);
+      if (label) lines.push(`- ${label}${desc ? `: ${desc}` : ''}`);
+    }
+    const more = count((q as { moreOptions?: unknown }).moreOptions);
+    if (more) lines.push(`(${more} more ${more === 1 ? 'option was' : 'options were'} left out)`);
+    paras.push(lines.join('\n'));
+  }
+  const moreQuestions = count((input as { moreQuestions?: unknown }).moreQuestions);
+  if (paras.length) {
+    if (moreQuestions) paras.push(`(${moreQuestions} more ${moreQuestions === 1 ? 'question was' : 'questions were'} left out)`);
+    return paras.join('\n\n');
+  }
+  for (const k of ['question', 'prompt', 'message']) {
+    const t = str((input as Record<string, unknown>)[k]);
+    if (t) return t;
+  }
+  return undefined;
+}
+
+/** Whether the hook is about a question tool (QUESTION_TOOL); a question tool's PreToolUse also keeps what it asks for `live`. */
+export function heardQuestion(live: object, o: { tool?: string; hookEvent?: string; payload?: unknown }): boolean {
+  const question = !!o.tool && QUESTION_TOOL.test(o.tool);
+  if (question && o.hookEvent === 'PreToolUse') {
+    const text = questionText(o.payload);
+    if (text) asked.set(live, text);
+    else asked.delete(live);
+  }
+  return question;
+}
+
+/** What the run's agent last asked in its terminal, if the hook said; taken, so one question is recorded once however often its worker waits for input. */
+export function askedQuestion(live: object): string | undefined {
+  const text = asked.get(live);
+  asked.delete(live);
+  return text;
+}
+
 /** A hook payload from a subagent or a teammate: Claude Code adds `agent_id` only to those. */
 export const agentHook = (payload: unknown): boolean => typeof (payload as { agent_id?: unknown } | undefined)?.agent_id === 'string';
 

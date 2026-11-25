@@ -129,6 +129,8 @@ export interface Rule {
    * and the turn goes on by the rule matching the last answer.
    */
   ask?: boolean | 'question';
+  /** The options of the AskUserQuestion's question. */
+  options?: { label: string; description?: string }[];
   /**
    * Claude only, with `delayMs`: the turn works that long and an Esc doesn't end it as far as the office can tell: no Stop is
    * posted and the worker stays `working`, as real Claude Code does (it fires no Stop hook on Esc). The turn stops quietly.
@@ -365,8 +367,8 @@ async function turn(prompt, answered) {
     }
     append(final);
     if (rule.ask === 'question') {
-      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'tool_use', id: 'ask-1', name: 'AskUserQuestion', input: { questions: [{ question: rule.reply }] } }] } });
-      await post('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: rule.reply }] } });
+      append({ type: 'assistant', message: { id: msgId, role: 'assistant', content: [{ type: 'tool_use', id: 'ask-1', name: 'AskUserQuestion', input: { questions: [{ question: rule.reply.replace(/\s*WORK DONE$/, ''), ...(rule.options ? { options: rule.options } : {}) }] } }] } });
+      await post('PreToolUse', { tool_name: 'AskUserQuestion', tool_input: { questions: [{ question: rule.reply.replace(/\s*WORK DONE$/, ''), ...(rule.options ? { options: rule.options } : {}) }] } });
       questions = rule.questions || 1;
       answerDelay = rule.answerDelayMs || 0;
       return;

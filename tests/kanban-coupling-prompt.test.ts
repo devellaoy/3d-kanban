@@ -232,7 +232,7 @@ test("the engine's default answer and the prompts' headings are editable kanban 
   };
   assert.equal(run({ rounds: 1, reReviewLastFix: false }), PROMPTS['kanban.defaultAnswer'].text);
   assert.equal(run({ rounds: 1, reReviewLastFix: false, defaultAnswer: 'Assume the login page.' }), 'Assume the login page.');
-  for (const id of ['kanban.defaultAnswer', 'kanban.sinceSaid', 'kanban.ticket', 'kanban.attachments', 'kanban.instructions', 'kanban.instructions.general', 'kanban.instructions.testing', 'kanban.instructions.repo', 'kanban.instructions.general.file', 'kanban.instructions.testing.file', 'kanban.instructions.repo.file', 'kanban.refsFile', 'kanban.acceptedPlan', 'kanban.prSummary', 'kanban.handoff.summary', 'kanban.handoff.comments'] as const) {
+  for (const id of ['kanban.defaultAnswer', 'kanban.sinceSaid', 'kanban.ticket', 'kanban.attachments', 'kanban.instructions', 'kanban.instructions.general', 'kanban.instructions.testing', 'kanban.instructions.repo', 'kanban.instructions.general.file', 'kanban.instructions.testing.file', 'kanban.instructions.repo.file', 'kanban.refsFile', 'kanban.acceptedPlan', 'kanban.acceptedPlan.file', 'kanban.review.history', 'kanban.review.history.text', 'kanban.review.summary', 'kanban.prSummary', 'kanban.handoff.summary', 'kanban.handoff.comments'] as const) {
     assert.equal(PROMPTS[id].group, 'kanban', `${id} is in the office prompt editor`);
   }
   assert.equal(resolveKanbanPrompt('kanban.sinceSaid', {}, { text: 'Use the new API.' }), 'The user has since said:\nUse the new API.');
