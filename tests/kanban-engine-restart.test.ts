@@ -19,7 +19,9 @@ async function midTurn(fx: EngineFixture, taskId: number) {
   const end = Date.now() + 15_000;
   while (!prompts(fx, /Implement kanban task/).length && Date.now() < end) await sleep(30);
   const run = fx.repo.activeRun(taskId)!;
-  while (fx.workers.get(run.workerId!)?.status !== 'working' && Date.now() < end) await sleep(30);
+  // The prompt was submitted once the worker leaves its boot: working, or already asking or done (a question or a hold never shows `working` for 15 s).
+  const booting = () => ['starting', 'idle', undefined].includes(fx.workers.get(run.workerId!)?.status);
+  while (booting() && Date.now() < end) await sleep(30);
   return run;
 }
 
@@ -81,7 +83,7 @@ test('a run held for background work carries on after a full restart', async (t)
 test('tasks waiting for the user stay waiting: nobody is nudged', async (t) => {
   const fx = await fixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Plan kanban task', reply: 'Plan ready.', exitPlan: 'The plan.' }]);
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan ready.\n\nPLAN READY', exitPlan: 'The plan.' }]);
   const task = fx.newTask({ usePlan: true, planApproval: 'manual', useReview: false });
   await fx.engine.start(task.id, ADA);
   await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'plan_approval', 'the plan waiting for approval');
@@ -563,7 +565,7 @@ test('a first-turn question whose session is gone: the task keeps waiting with t
 test('an office stopped while the plan → implement relaunch waits for the old process carries the implement phase on, with its own prompt', async (t) => {
   const fx = await fixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Plan kanban task', reply: 'Plan ready.', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply: 'Implemented after the restart.', commit: 'Work' }]);
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan ready.\n\nPLAN READY', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply: 'Implemented after the restart.', commit: 'Work' }]);
   const task = fx.newTask({ usePlan: true, planApproval: 'auto', useReview: false });
   await fx.engine.start(task.id, ADA);
   // The plan's agent is slow to leave once told to (the relaunch for the implement phase's flags waits for it).
@@ -595,7 +597,7 @@ test('an office stopped while the plan → implement relaunch waits for the old 
 test('the implement prompt survives a second stop before it was delivered: the third start still sends it, not a continue', async (t) => {
   const fx = await fixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Plan kanban task', reply: 'Plan ready.', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply: 'Implemented after two stops.', commit: 'Work' }]);
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan ready.\n\nPLAN READY', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply: 'Implemented after two stops.', commit: 'Work' }]);
   const task = fx.newTask({ usePlan: true, planApproval: 'auto', useReview: false });
   await fx.engine.start(task.id, ADA);
   const end = Date.now() + 15_000;

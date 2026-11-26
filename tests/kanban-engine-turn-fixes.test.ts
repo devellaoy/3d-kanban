@@ -52,6 +52,8 @@ test('an older turn\'s WORK DONE on the Stop hook\'s answer does not end the run
 test('a queued run that took several comments puts them all back when it is stopped before its agent has the prompt; Retry carries them', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
+  // The agent submits the comments' prompt only once the Retry was made (until then it has not got it, as the Stop must find).
+  const release = path.join(fx.root, 'release-comment');
   const task = await working(
     fx,
     [
@@ -62,7 +64,7 @@ test('a queued run that took several comments puts them all back when it is stop
   );
   await fx.waitTask(task.id, (x) => x.phase === 'review' && x.runState === 'running', 'the review round');
   await sleep(400);
-  fx.setRules([{ when: 'commented on task', reply: 'Handled.', commit: 'Comment', submitDelayMs: 6000 }]);
+  fx.setRules([{ when: 'commented on task', reply: 'Handled.', commit: 'Comment', submitReleaseFile: release }]);
   const a = say(fx, task.id, 'First note.');
   await a.done;
   const b = say(fx, task.id, 'Second note.');
@@ -82,6 +84,7 @@ test('a queued run that took several comments puts them all back when it is stop
     { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
   ]);
   assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  writeFileSync(release, '');
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after Retry', 30_000);
   assert.ok(prompts(fx, /First note\./).length && prompts(fx, /Second note\./).length, 'Retry carried both');
   assert.equal(fx.task(task.id).pendingMessages.length, 0);
@@ -279,9 +282,11 @@ test('a prompt hook hears only the comment it carries, or the oldest one waiting
 test('a Stop before the agent took a comment typed into it gives the comment back; Retry carries it', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
+  const release = path.join(fx.root, 'release-comment');
   const task = await working(fx, [
     { when: 'Implement kanban task', reply: 'Never.', delayMs: 30_000, escSilent: true, escStopMs: 900 },
-    { when: 'from Grace on task', reply: 'Took it.', submitDelayMs: 30_000 },
+    // Held until the Stop has given the comment back (and the Retry was made): the agent's input queue is one chain, so the retry prompt waits behind it.
+    { when: 'from Grace on task', reply: 'Took it.', submitReleaseFile: release },
   ]);
   const { c, done } = say(fx, task.id, 'Rename foo to bar.');
   await done;
@@ -293,6 +298,7 @@ test('a Stop before the agent took a comment typed into it gives the comment bac
   assert.equal(fx.repo.getComment(c.id)?.pending, true);
   fx.setRules([{ when: 'was cut short', reply: 'Renamed.\n\nWORK DONE', commit: 'Rename' }]);
   assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  writeFileSync(release, '');
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after Retry', 30_000);
   assert.ok(prompts(fx, /Rename foo to bar\./).length >= 2, 'the retry prompt carries it');
   assert.equal(fx.task(task.id).pendingMessages.length, 0);
@@ -357,6 +363,8 @@ test('a comment a read found in the log is remembered on the run: Live.officePro
 test('a run put back in the queue by a restart keeps the comments it took: stopped before its agent has the prompt, they go back, and Retry carries them', async (t) => {
   const fx = await engineFixture({ engine: { restartStaggerMs: 50 } });
   t.after(() => fx.close());
+  // The agent submits the comments' prompt only once the Retry was made (until then it has not got it, as the Stop must find).
+  const release = path.join(fx.root, 'release-comment');
   const task = await working(
     fx,
     [
@@ -367,7 +375,7 @@ test('a run put back in the queue by a restart keeps the comments it took: stopp
   );
   await fx.waitTask(task.id, (x) => x.phase === 'review' && x.runState === 'running', 'the review round');
   await sleep(400);
-  fx.setRules([{ when: 'commented on task', reply: 'Handled.', commit: 'Comment', submitDelayMs: 60_000 }, { when: 'office was restarted', reply: 'Handled.', commit: 'Comment', submitDelayMs: 60_000 }]);
+  fx.setRules([{ when: 'commented on task', reply: 'Handled.', commit: 'Comment', submitReleaseFile: release }, { when: 'office was restarted', reply: 'Handled.', commit: 'Comment', submitReleaseFile: release }]);
   const a = say(fx, task.id, 'First note.');
   await a.done;
   const b = say(fx, task.id, 'Second note.');
@@ -381,6 +389,7 @@ test('a run put back in the queue by a restart keeps the comments it took: stopp
   assert.deepEqual(stopped.pendingMessages.map((m) => m.commentId).sort(), [a.c.id, b.c.id].sort(), 'both are back in the queue');
   fx.setRules([{ when: 'was cut short', reply: 'Handled both.\n\nWORK DONE', commit: 'Both' }, { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' }]);
   assert.equal(await fx.engine.retry(task.id, ADA), undefined);
+  writeFileSync(release, '');
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column after Retry', 40_000);
   assert.ok(prompts(fx, /First note\./).length && prompts(fx, /Second note\./).length);
 });

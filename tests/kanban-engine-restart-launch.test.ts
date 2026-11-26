@@ -42,7 +42,7 @@ async function stopDuringRelaunch(fx: EngineFixture, taskId: number) {
 /** The implement prompt is not delivered through two stops, and goes in after the third start. */
 async function twoStops(fx: EngineFixture, tool: 'claude' | 'codex', reply: string) {
   fx.settings.setProject('proj', { implementPermission: 'workspace-write', planPermission: 'plan' });
-  fx.setRules([{ when: tool === 'codex' ? 'You are planning kanban task' : 'Plan kanban task', reply: 'Plan ready.\n\nPLAN READY', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply, commit: 'Work' }]);
+  fx.setRules([{ when: 'You are planning kanban task', reply: 'Plan ready.\n\nPLAN READY', exitPlan: 'The plan.' }, { when: 'Implement kanban task', reply, commit: 'Work' }]);
   const task = fx.newTask({ tool, usePlan: true, planApproval: 'auto', useReview: false });
   await stopDuringRelaunch(fx, task.id);
   swallow(fx);
