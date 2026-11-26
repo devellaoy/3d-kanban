@@ -189,7 +189,7 @@ export function claudeBlocked(text: string, early: boolean): string | undefined 
 }
 
 /** A row of the permission dialog's options: the cursor if it is on it, a number unless the dialog hides them, and what it answers. */
-const ASK_OPTION = /^[\s│|]*(❯)?\s*(?:\d\.\s*)?(Yes|No|Deny)\b/;
+const ASK_OPTION = /^[\s│|]*(?:(❯)\s*)?(?:\d\.\s*)?(Yes|No|Deny)\b/;
 /** How many rows apart the options of one dialog may be. */
 const ASK_SPAN = 7;
 

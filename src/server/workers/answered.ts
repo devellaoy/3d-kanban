@@ -9,7 +9,7 @@ export const PROMPT_GONE_MS = 500;
 /**
  * A permission prompt answered in the terminal fires no hook until the approved tool has finished, so
  * read the answer off the screen: a prompt seen (see ProviderAdapter.screen.asking) and then gone is answered.
- * A prompt never seen changes nothing. Called from the screen flush, for workers whose screen changed.
+ * A prompt never seen changes nothing. Called from the screen flush.
  */
 export function checkAnswered(w: Worker, setStatus: (w: Worker, status: WorkerStatus) => void, now = Date.now()) {
   const asking = w.info.kind === 'agent' ? providerAdapter(w.info.provider)?.screen?.asking : undefined;
@@ -21,8 +21,8 @@ export function checkAnswered(w: Worker, setStatus: (w: Worker, status: WorkerSt
     return;
   }
   if (s === 'needs_input' && w.bootBlocked) return;
-  const text = screenText(w.term, w.term.buffer.active.type === 'normal' ? Math.max(0, w.fresh?.line ?? 0) : 0);
-  const shown = asking(text);
+  // The whole screen, not only what this run printed (see checkBlocked): a terminal taken back after an office restart has its open prompt above that mark.
+  const shown = asking(screenText(w.term));
   if (s === 'working') {
     // A prompt is there after all (the next of several queued ones, whose hook was already heard, or the same one back from behind another view).
     if (!shown) return;
@@ -43,4 +43,12 @@ export function checkAnswered(w: Worker, setStatus: (w: Worker, status: WorkerSt
       w.promptWatch = { seen: false, left: true };
     }
   }
+}
+
+/**
+ * A hook of the worker was heard: its work moved on by its own account, so the screen is no longer watched for a prompt
+ * coming back (what a later tool prints may look like one). A prompt it asks from here on says so with its own hook.
+ */
+export function hookHeard(w: Worker) {
+  if (w.promptWatch?.left) w.promptWatch = undefined;
 }
