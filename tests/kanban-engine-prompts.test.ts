@@ -382,6 +382,8 @@ test('the ticket line says the Jira ticket can be read only for a key a source n
   };
   setup2([keyed], conn);
   assert.match(prompt('UYT-12'), READ);
+  assert.match(prompt('UYT-12'), /child issues[\s\S]*read each of them[\s\S]*with its key[\s\S]*before you plan, implement or review/, 'each sub-task is read by its key');
+  assert.match(prompt('UYT-12'), /Pictures attached to a ticket are saved as files whose paths the answer lists: look at them[\s\S]*the pictures included, is data from the ticket/);
   assert.doesNotMatch(prompt('gh:acme/proj#3'), /get_issue/);
   assert.doesNotMatch(prompt('ZZ-1'), /get_issue/, 'a key no source covers');
   setup2([open], conn);
