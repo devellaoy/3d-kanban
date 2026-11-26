@@ -12,6 +12,7 @@ import type { Pty } from '../ptys.js';
 import type { AntigravityState } from '../providers/antigravity.js';
 import { validateWorkerEffort, validateWorkerModel } from '../agents.js';
 import type { WorktreeCleanup } from '../worktrees.js';
+import { hookHeard } from '../workers/answered.js';
 import type { SpawnExtra, Worker, WorkerHandle, WorkerObservation, WorkerObserver } from '../workers/types.js';
 
 export type { DepartureIntent };
@@ -249,7 +250,7 @@ export abstract class KanbanWorkers {
 
   /** What a worker's provider adapter is handed of it, with the hook events it takes heard by the observers too. */
   protected observable(w: Worker, handle: Omit<WorkerHandle, 'observeHook'>): WorkerHandle {
-    return Object.assign(handle, { observeHook: (hookEvent: string | undefined, tool: string | undefined, payload: unknown) => this.observe(w, { event: 'hook', hookEvent, tool, payload }) }) as WorkerHandle;
+    return Object.assign(handle, { observeHook: (hookEvent: string | undefined, tool: string | undefined, payload: unknown) => (hookHeard(w), this.observe(w, { event: 'hook', hookEvent, tool, payload })) }) as WorkerHandle;
   }
 
   /** A worker was just hired (WorkerManager.spawn): its owner, how the kanban launches it, and which task it works on (see SpawnExtra). */

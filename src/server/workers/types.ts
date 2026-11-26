@@ -145,6 +145,8 @@ export interface Worker {
   hookToken: string;
   /** Claude never reported SessionStart: it's stuck on a trust/login/onboarding screen. */
   bootBlocked?: boolean;
+  /** In memory: the permission prompt watched on its screen while it needs input (see answered.ts). */
+  promptWatch?: { since?: number; seen: boolean; goneAt?: number; left?: boolean };
   /** Its provider's own state on it (see ProviderAdapter.createState). */
   state: unknown;
   /** What its provider's adapter is handed of it (see WorkerHandle), once asked for. */

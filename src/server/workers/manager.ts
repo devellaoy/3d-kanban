@@ -25,6 +25,7 @@ import { WorkerPrs } from './pr.js';
 import { WIN, binScript, defaultShell, resolveCommand, shellRun, shq, writeOfficeCommands } from './process.js';
 import { CarryOn, reached, restoredNote, setCarryOn } from './carryon.js';
 import { CARRY_ON_PROMPT, WorkerTasks, firstPrompt, languageTail } from './tasks.js';
+import { checkAnswered } from './answered.js';
 import { flushScreens, fullScreens, newTerm, offlineBanner, screenText, type HeadlessTerminal } from './terminal.js';
 import type { HookEnv, OpenedPr, RepoSource, RunAs, SpawnExtra, Worker, WorkerContext, WorkerEvents, WorkerHandle } from './types.js';
 import { clamp, safeEq, truncate } from './util.js';
@@ -129,7 +130,7 @@ export class WorkerManager extends KanbanWorkers {
     this.drops.prune(new Set(this.workers.keys()));
     // A session may have ended (and written its final tally) while the office was down.
     for (const w of this.workers.values()) this.scanUsage(w);
-    this.screenTimer = setInterval(() => flushScreens(this.workers.values(), this.events, (w) => this.checkBlocked(w)), SCREEN_INTERVAL_MS);
+    this.screenTimer = setInterval(() => flushScreens(this.workers.values(), this.events, (w) => { this.checkBlocked(w); checkAnswered(w, (x, s) => this.setStatus(x, s)); }), SCREEN_INTERVAL_MS);
     this.usageTimer = setInterval(() => {
       for (const w of this.workers.values()) {
         this.scanUsage(w);
