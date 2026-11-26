@@ -68,7 +68,7 @@ export interface EngineOptions {
   maxNudges?: number;
   /** How long a review round waits for its additional reviewers once the main reviewer's own review is in (15 min). */
   panelWaitMs?: number;
-  prGit?: GitRunner; // runs git to fetch a pull-request review's heads (the real git; tests inject their own: see prheads.ts)
+  prGit?: GitRunner; prHeadsMs?: number; // prGit runs git to fetch a pull-request review's heads (the real git; tests inject their own: see prheads.ts)
   /** How many Stops of a run the Stop hook gate may block at most (2; 0 turns it off, as AGENT_OFFICE_KANBAN_STOP_GATE=off does). */
   maxGateBlocks?: number;
   /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
@@ -139,7 +139,7 @@ export class Orchestrator {
   private seats: Seating;
   private panel: ReviewPanel;
   private limits: UsageLimits<Live>;
-  private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs' | 'prGit'>>;
+  private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs' | 'prGit' | 'prHeadsMs'>>;
   private disposed = false;
 
   constructor(
@@ -265,7 +265,7 @@ export class Orchestrator {
       pushTask: (task) => this.pushTask(task),
       follow: (live, prompt) => { this.live.set(live.workerId, live); this.prompted(live, prompt); this.ctx.floor(live.floorId)?.workers.follows(live.workerId, true); },
       exitedAtHire: (live) => this.exitedAtHire(live),
-      now: () => this.opts.now(), git: options.prGit,
+      now: () => this.opts.now(), git: options.prGit, headsMs: options.prHeadsMs,
     });
     this.panel = new ReviewPanel({
       ctx,

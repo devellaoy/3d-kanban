@@ -4,6 +4,7 @@
 // pull request. When its turn ends the tester goes home with its worktree, and the review starts by itself (machine event
 // `prUiTested`). Split out of prreview-launch.ts; PrReviews hands it the request and the engine's deps.
 
+import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
 import { nextFreeSeat } from '../../../shared/layout.js';
@@ -12,7 +13,7 @@ import { repoSources } from '../projects.js';
 import { reposText, skillPhase, type ComposeExtra } from './compose.js';
 import type { Live, Via } from './live.js';
 import { queuedOf, type RunEffect } from './machine.js';
-import { fetchPrHeads, prKey, prLine, type HeadPr } from './prheads.js';
+import { fetchPrHeads, prKey, prLine, repoOf, trusted, type HeadPr } from './prheads.js';
 import type { PrReviewDeps } from './prreview-launch.js';
 import { slot, slotPatch } from './slot.js';
 import { typeable } from './turnhold.js';
@@ -46,6 +47,11 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
   d.ctx.broadcast({ t: 'kanban.run', run, project: task.project }, task.project);
   const fail = (err: string) => (d.finishRun(run.id, task.project, { status: 'failed', error: err }), err);
   if (signIn) return fail(signIn);
+  // A fork's pull request, or one not confirmed not to be, is never checked out or run: it is left out of the test, and the prompt says why.
+  const all = req.prs as HeadPr[], testable = all.filter(trusted);
+  if (!testable.length) return fail('No pull request is confirmed not to be from a fork, and the office never checks out or runs code that might be: there is no UI to test');
+  // Every head and each repository's first target, fetched while the configured bases are, all bounded.
+  const headsP = fetchPrHeads(def, testable, d.git, true, d.headsMs);
   await d.freshBase(floor, def, involved);
   const desk = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.())?.id;
   if (!desk) {
@@ -53,17 +59,21 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
     return { queued: d.noRoom(floor, undefined, undefined, 'implementer') ?? "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees." };
   }
 
-  // Every head, fetched: the tester checks each pull request out itself, in a worktree of its own (the ref its line names).
-  // A fork's pull request is never checked out or run: it is left out of the test, and the prompt says so.
-  const all = req.prs as HeadPr[], testable = all.filter((p) => !p.fork);
-  if (!testable.length) return fail('Every pull request is from a fork, which the office never checks out or runs: there is no UI to test');
-  const heads = await fetchPrHeads(def, testable, d.git, true);
+  const heads = await headsP;
+  const note = (p: HeadPr) => {
+    const got = heads.fetched.get(prKey(p));
+    const repo = repoOf(def, p);
+    const start = repo ? heads.uiBases[path.resolve(repo.dir)] : undefined;
+    const head = got ? `its head is fetched as origin/${got.ref}` : `its head is not fetched: git fetch origin pull/${p.number}/head, then FETCH_HEAD is its head`;
+    const target = !p.base ? 'its target branch is not known, so your workspace is on the configured base branch'
+      : p.base === start ? `it targets ${p.base}, which your workspace starts from (origin/${p.base})`
+      : start ? `it targets ${p.base}, not ${start} that your workspace starts from: compare against origin/${p.base} yourself (git fetch origin ${p.base} if it is missing)`
+      : `it targets ${p.base}, which could not be fetched, so your workspace is on the configured base branch: compare against origin/${p.base} yourself (git fetch origin ${p.base})`;
+    return `${prLine(p)} — ${head}; ${target}`;
+  };
   const prs = [
-    ...testable.map((p) => {
-      const got = heads.fetched.get(prKey(p));
-      return `${prLine(p)} — ${got ? `its head is fetched as origin/${got.ref}` : `its head is not fetched: git fetch origin pull/${p.number}/head, then FETCH_HEAD is its head`}`;
-    }),
-    ...all.filter((p) => p.fork).map((p) => `${prLine(p)} — from a fork: not checked out, not run and not tested`),
+    ...testable.map(note),
+    ...all.filter((p) => !trusted(p)).map((p) => `${prLine(p)} — ${p.fork === true ? 'from a fork' : 'the office could not confirm it is not from a fork'}: not checked out, not run and not tested`),
   ];
   const x: ComposeExtra = {
     phase: 'implement', // the tester ends its turn like an implementer: the work-done line
@@ -85,7 +95,7 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
   const by = `${via.who?.name ?? 'Kanban'} (kanban #${task.id})`;
   const hired = floor.workers.spawn(desk, by, prompt, true, 'agent', tool, adapter.spawnModel(model), adapter.spawnEffort(effort), undefined, owner, repoSources(def, involved), undefined, {
     launchArgs,
-    bases: d.baseBranches(def, involved),
+    bases: { ...d.baseBranches(def, involved), ...heads.uiBases }, // each repository's tester worktree starts from the target of the first pull request tested there
     kanban: { taskId: task.id, role: 'implementer' },
     env: extras.env,
     settingsFile: 'kanban',

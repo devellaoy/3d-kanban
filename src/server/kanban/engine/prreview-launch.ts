@@ -19,7 +19,7 @@ import { slot, slotPatch } from './slot.js';
 import { typeable } from './turnhold.js';
 import { homeCleanup } from './workspace.js';
 import { prReviewDirs, prReviewRepoIds } from './launchdirs.js';
-import { fetchPrHeads, prLine, readingNote, type GitRunner, type HeadPr } from './prheads.js';
+import { fetchPrHeads, prLine, readingNote, trusted, type GitRunner, type HeadPr } from './prheads.js';
 import { reviewVerdict } from './markers.js';
 import { launchUi, uiEnded } from './prreview-ui.js';
 
@@ -55,6 +55,8 @@ export interface PrReviewDeps {
   now(): number;
   /** Runs git in a repository's checkout, to fetch the pull requests' heads (the real git when absent; tests inject their own). */
   git?: GitRunner;
+  /** The deadline of all the heads' fetches together (prheads.ts HEADS_DEADLINE_MS when absent). */
+  headsMs?: number;
 }
 
 /** How the engine sends its own workers home (the orchestrator's ENGINE). */
@@ -62,9 +64,13 @@ const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}…` : s);
 /** How much of a run's text its row keeps (the orchestrator's SUMMARY_MAX): a longer one is cut there, verdict line and all. */
 const SUMMARY_MAX = 20_000;
+/** How long an identical review request is answered with the task already made for it. */
+const ASKED_MS = 60_000;
 
 export class PrReviews {
   /** The pull requests' lines of each task's latest review, as the main reviewer's prompt had them (an additional reviewer's prompt takes the same). */
+  /** Reviews asked for lately, by what they ask: the answer given (or still to come) for an identical request. */
+  private asked = new Map<string, { answer: Promise<{ taskId: number; workerId?: string } | string>; at?: number }>();
   private lines = new Map<number, string>();
   /** A main reviewer's solo run's whole text, by task: its run row keeps only the first SUMMARY_MAX characters, and the round's fallback posts the review whole. Cleared when the round is published. */
   private solo = new Map<number, string>();
@@ -76,7 +82,22 @@ export class PrReviews {
    * request names, or on a new investigate task for it. The request comes checked (KanbanPullsApi.review);
    * this checks only what the engine itself needs.
    */
-  async review(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> {
+  review(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> {
+    // An identical request (a second click, a retry of a request the browser gave up on) while this one starts, or within a minute of it, is answered with
+    // the same task: no second review is made. Another set of pull requests, or other choices, is another review; a refusal is forgotten at once.
+    const key = JSON.stringify([req.project, req.prs.map((p) => `${p.repo.toLowerCase()}#${p.number}`).sort(), req.taskId ?? null, !!req.post, !!req.uiTest, req.tool ?? null, req.model ?? null, req.effort ?? null, who.accountId ?? who.name]);
+    const now = this.d.now();
+    for (const [k, v] of this.asked) if (v.at !== undefined && now - v.at > ASKED_MS) this.asked.delete(k);
+    const known = this.asked.get(key);
+    if (known) return known.answer;
+    const answer = this.begin(req, who);
+    const entry: { answer: typeof answer; at?: number } = { answer };
+    this.asked.set(key, entry);
+    void answer.then((r) => (typeof r === 'string' ? this.asked.delete(key) : (entry.at = this.d.now())), () => this.asked.delete(key));
+    return answer;
+  }
+
+  private async begin(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> {
     const def = this.d.ctx.project(req.project);
     if (!def) return `There's no project ${req.project}`;
     if (!this.d.watch(req.project)) return "The project's floor isn't open, so there's nowhere to seat a reviewer";
@@ -88,12 +109,12 @@ export class PrReviews {
     const { taskId, named, created } = target;
     const request: KanbanPrReviewRequest = { project: req.project, prs: req.prs, ...(named !== undefined ? { taskId: named } : {}), ...(req.tool ? { tool: req.tool } : {}), ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}), ...(req.post ? { post: true } : {}), ...(req.uiTest ? { uiTest: true } : {}) };
     // A fork's pull request is never checked out or run: with every one a fork's there is nothing to test, and the review starts directly.
-    const ui = !!request.uiTest && (req.prs as ReviewedPr[]).some((p) => !p.fork);
+    const ui = !!request.uiTest && (req.prs as ReviewedPr[]).some(trusted);
     const err = await this.d.op(taskId, async (task) => {
       if (this.d.running(task.id)) return 'Stop it first: it is running';
       // Who asked is kept beside the request: the review is posted as them, and a Retry keeps it.
       this.d.ctx.repo.appendEvent(task.id, 'pr.review', { by: who.name, prs: labels, request, ...(who.accountId ? { account: who.accountId } : {}) });
-      if (request.uiTest && !ui) this.d.note(task, 'Every pull request of this review is from a fork, which the office never checks out or runs, so there is no UI to test: the review starts without it.');
+      if (request.uiTest && !ui) this.d.note(task, 'No pull request of this review is confirmed not to be from a fork, and the office never checks out or runs code that might be a fork\'s, so there is no UI to test: the review starts without it.');
       return this.d.apply(task.id, { type: 'prReview', ...(ui ? { ui: true as const } : {}) }, { who, prReview: request });
     });
     const task = this.d.ctx.repo.getTask(taskId);
@@ -112,7 +133,7 @@ export class PrReviews {
       }
       return err || 'The reviewer could not be hired';
     }
-    this.d.note(task, `${who.name} asked ${info.name} to ${req.uiTest ? 'test the UI of, and then review,' : 'review'} ${labels.join(', ')}`);
+    this.d.note(task, `${who.name} asked ${info.name} to ${ui ? 'test the UI of, and then review,' : 'review'} ${labels.join(', ')}`);
     return { taskId, workerId };
   }
 
@@ -257,6 +278,8 @@ export class PrReviews {
       return err;
     };
     if (signIn) return fail(signIn);
+    // The heads are fetched while the bases are (both bounded: the answer to the browser waits for them).
+    const headsP = fetchPrHeads(def, req.prs as ReviewedPr[], this.d.git, false, this.d.headsMs);
     await this.d.freshBase(floor, def, involved);
     const desk = nextFreeSeat((id) => floor.workers.deskOccupied(id), floor.workers.wing?.() ?? 0, floor.workers.removed?.())?.id;
     if (!desk) {
@@ -265,7 +288,7 @@ export class PrReviews {
       return { queued: this.d.noRoom(floor, undefined, countsWith) ?? "Queued: there's no free desk on the floor for its worker. It starts by itself when one frees." };
     }
     // The pull requests' heads, fetched: the reviewer's worktree is cut from the first one of each repository.
-    const heads = await fetchPrHeads(def, req.prs as ReviewedPr[], this.d.git);
+    const heads = await headsP;
     const x: ComposeExtra = { ...this.described(floor, def, task, req, involved, heads, eff.text), focus: review.focus };
     this.lines.set(task.id, x.prs ?? '');
     const prompt = typeable(this.d.compose.build('pr.review', def, task, tool, floor.dir, x));
@@ -368,7 +391,7 @@ export class PrReviews {
   /** An additional reviewer's prompt takes the pull requests' lines the main reviewer's got (kept when it was hired), else works them out again (an office restart in between). */
   private async coExtra(floor: Floor, def: FloorDef, task: KanbanTask, req: KanbanPrReviewRequest, involved: string[]): Promise<ComposeExtra> {
     const kept = this.lines.get(task.id);
-    const heads = kept ? { bases: {}, fetched: new Map(), checkedOut: new Set<string>() } : await fetchPrHeads(def, req.prs as ReviewedPr[], this.d.git);
+    const heads = kept ? { bases: {}, uiBases: {}, fetched: new Map(), checkedOut: new Set<string>() } : await fetchPrHeads(def, req.prs as ReviewedPr[], this.d.git, false, this.d.headsMs);
     const x = this.described(floor, def, task, req, involved, heads);
     return kept ? { ...x, prs: kept } : x;
   }

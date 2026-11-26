@@ -25,9 +25,10 @@ import { postReview } from './postreview.js';
 import { checkScreenshots, type ScreenshotMark } from './screenshots.js';
 import { branchOwners, branchPrs, findBundle, findTaskPrs, sharedBranch, prOwners, prState, type BundleBy, type FoundList, type FoundPr, type RepoPulls } from './bundle.js';
 
-const FIELDS = 'number,title,url,state,isDraft,headRefName';
+/** What every list and lookup asks for; the base branch and the fork flag come with it, so a review needs no second question for them. */
+const FIELDS = 'number,title,url,state,isDraft,headRefName,baseRefName,isCrossRepository';
 /** What Find PRs lists: the fork flag and the date too. */
-const FIND_FIELDS = `${FIELDS},createdAt,isCrossRepository`;
+const FIND_FIELDS = `${FIELDS},createdAt`;
 /**
  * The browser gives up on a request at 30 s, so Find waits at most FIND_TIMEOUT_MS for the lists and
  * then ASK_TIMEOUT_MS for the follow-up questions (fork, default branch): 18 s in all. A kanban.pr.link
@@ -35,6 +36,8 @@ const FIND_FIELDS = `${FIELDS},createdAt,isCrossRepository`;
  */
 const FIND_TIMEOUT_MS = 10_000;
 const ASK_TIMEOUT_MS = 8_000;
+/** The whole check of a review request (every PR looked up): the browser gives up on the answer after 30 s, and the review's start comes after the check. */
+const CHECK_MS = 8_000;
 /** How many of a task's newest events are read for its unlinks (TASK_EVENTS_CAP keeps 2000 at most). */
 const UNLINK_EVENTS = 500;
 
@@ -57,6 +60,8 @@ export interface PullsOptions {
   gh?: GhRunner;
   /** One pull request on Azure DevOps or Bitbucket, from its provider (tests stub it). */
   viewHosted?: typeof hostedView;
+  /** How long checking a review request may take in all (CHECK_MS): past it nothing was started, and the request is refused so that it can be sent again. */
+  checkMs?: number;
   /** The clock, for the back-off after a failed gh question. */
   now?: () => number;
 }
@@ -85,7 +90,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     // A repository on Azure DevOps or Bitbucket with no board list yet: none listed (a listing there is
     // a request per pull request), so the task's linked PRs stand (findBundle) and a picked one is read alone (checkReview).
     if (hostedRepoOf(r.remote)) return { repo: r.remote, repoId: r.id, pulls: [] };
-    const out = await runGh(['pr', 'list', '-R', r.remote, '--state', 'all', '--limit', '100', '--json', FIELDS], ctx.dataDir);
+    const out = await runGh(['pr', 'list', '-R', r.remote, '--state', 'all', '--limit', '100', '--json', FIELDS], ctx.dataDir, FIND_TIMEOUT_MS);
     const raw = JSON.parse(out || '[]') as GhPull[];
     return { repo: r.remote, repoId: r.id, pulls: Array.isArray(raw) ? raw.filter((p) => Number.isSafeInteger(p?.number)) : [] };
   };
@@ -147,14 +152,15 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       }
       if (!found) {
         try {
-          found = JSON.parse(await runGh(['pr', 'view', String(pr.number), '-R', r.remote, '--json', FIELDS], ctx.dataDir)) as GhPull;
+          found = JSON.parse(await runGh(['pr', 'view', String(pr.number), '-R', r.remote, '--json', FIELDS], ctx.dataDir, FIND_TIMEOUT_MS)) as GhPull;
         } catch {
           return `${r.remote} has no pull request #${pr.number}`;
         }
       }
       // The board's list may not name the base branch or the fork: asked for on its own, as the head's fetch needs them (a failed question leaves them out).
-      if (found && (!found.baseRefName || typeof found.isCrossRepository !== 'boolean') && !hostedRepoOf(r.remote)) {
-        const more = await runGh(['pr', 'view', String(pr.number), '-R', r.remote, '--json', 'baseRefName,isCrossRepository'], ctx.dataDir, ASK_TIMEOUT_MS).then((o) => JSON.parse(o) as Partial<GhPull>, () => undefined);
+      if (found && (!found.baseRefName || typeof found.isCrossRepository !== 'boolean')) {
+        const host = hostedRepoOf(r.remote);
+        const more = await (host ? within(viewHosted(host, pr.number), ASK_TIMEOUT_MS) : runGh(['pr', 'view', String(pr.number), '-R', r.remote, '--json', 'baseRefName,isCrossRepository'], ctx.dataDir, ASK_TIMEOUT_MS).then((o) => JSON.parse(o) as Partial<GhPull>)).then((v) => v as Partial<GhPull>, () => undefined);
         if (more) found = { ...found, ...(more.baseRefName ? { baseRefName: more.baseRefName } : {}), ...(typeof more.isCrossRepository === 'boolean' ? { isCrossRepository: more.isCrossRepository } : {}) };
       }
       out.push({ repo: r.remote, number: pr.number, ...(found?.title ? { title: found.title } : {}), ...(found?.url ? { url: found.url } : {}), ...(found?.headRefName ? { branch: found.headRefName } : {}), ...(found?.baseRefName ? { base: found.baseRefName } : {}), ...(typeof found?.isCrossRepository === 'boolean' ? { fork: found.isCrossRepository } : {}) });
@@ -174,7 +180,8 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   };
 
   const review = async (req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> => {
-    const checked = await checkReview(req);
+    // Nothing is created before the check is over, so a request that outlasts it is simply refused (and can be sent again).
+    const checked = await within(checkReview(req), opts.checkMs ?? CHECK_MS).catch(() => 'The pull requests could not be looked up in time, so nothing was started: try again in a moment');
     if (typeof checked === 'string') return checked;
     // The PRs as checked (titles, URLs and branches along), for the engine's prompt.
     return ctx.engine.reviewPrs({ ...req, prs: checked.prs }, who);

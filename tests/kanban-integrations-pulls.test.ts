@@ -90,6 +90,13 @@ test('a review of several PRs: each must be one of the projectâ€™s repositoriesâ
   assert.deepEqual(ok.prs.map((p) => `${p.repo}#${p.number}:${p.title}`), ['o/web#10:UYT-1415: login', 'o/api#77:PR 77'], 'the repository as the project names it; one not in the list asked of gh');
 });
 
+test('a review request that cannot be looked up in time is refused with nothing started, so it can be sent again', async () => {
+  const { ctx } = project();
+  ctx.engine = { ...ctx.engine, reviewPrs: async () => assert.fail('nothing may be started') } as typeof ctx.engine;
+  const parts = createPullsParts(ctx, { checkMs: 50, gh: () => new Promise(() => undefined) });
+  assert.match(String(await parts.api.review({ project: 'web', prs: [{ repo: 'o/web', number: 10 }] }, WHO)), /could not be looked up in time, so nothing was started: try again/);
+});
+
 test('kanban.pr.review hands post and uiTest on to the engine, and leaves them out when they are not asked for', async () => {
   const { ctx } = project();
   const asked: Record<string, unknown>[] = [];

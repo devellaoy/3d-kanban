@@ -27,7 +27,7 @@ const COMBINE = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Com
 const MAIN = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Review these pull requests', kind: 'claude', reply, ...more });
 const CO_FINDING = 'The cache of pull request 4 is never cleared.\nREVIEW: CHANGES_REQUESTED';
 const COMBINED = 'One confirmed finding: the cache is never cleared.\nREVIEW: CHANGES_REQUESTED';
-const pr = (n: number) => ({ repo: 'acme/proj', number: n, title: `PR ${n}`, base: 'main' }) as never;
+const pr = (n: number) => ({ repo: 'acme/proj', number: n, title: `PR ${n}`, base: 'main', fork: false }) as never;
 
 async function setup(t: { after(fn: () => unknown): void }, extra: { tool: 'claude' | 'codex'; focus?: string }[] = [{ tool: 'codex' }], engine: object = {}) {
   const fx = await engineFixture({ engine: { panelWaitMs: 20_000, prGit: noFetch, ...engine } });

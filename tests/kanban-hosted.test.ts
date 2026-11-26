@@ -243,7 +243,7 @@ test("a review of a pull request elsewhere the list left out asks its provider f
   const ok = await parts.checkReview({ project: 'web', prs: [{ repo: AZ, number: 5 }, { repo: AZ, number: 77 }] });
   assert.ok(typeof ok === 'object', String(ok));
   assert.deepEqual(ok.prs.map((p) => `${p.number}:${p.title}:${p.branch}`), ['5:Listed:a', '77:Old one:feat/old']);
-  assert.deepEqual(viewed, [77], 'only the one the list left out');
+  assert.deepEqual(viewed, [5, 77], 'the one the list left out, and the listed one whose list entry has no fork flag or base branch (a review never checks out what it cannot confirm)');
   assert.match(String(await parts.checkReview({ project: 'web', prs: [{ repo: AZ, number: 404 }] })), /has no pull request #404/);
 });
 

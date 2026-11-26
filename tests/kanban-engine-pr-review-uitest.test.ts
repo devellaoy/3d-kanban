@@ -23,7 +23,7 @@ const noFetch: GitRunner = async () => {
 const TESTER = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Test the UI of these pull requests', reply, ...more });
 const MAIN = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Review these pull requests', reply, ...more });
 const APPROVED = 'The UI looks right.\nREVIEW: APPROVED';
-const pr = (n: number) => ({ repo: 'acme/proj', number: n, title: `PR ${n}`, base: 'main' }) as never;
+const pr = (n: number) => ({ repo: 'acme/proj', number: n, title: `PR ${n}`, base: 'main', fork: false }) as never;
 const inReview = (x: KanbanTask) => x.status === 'review' && x.runState === 'idle';
 const prRuns = (fx: EngineFixture, id: number) => fx.repo.listRuns(id).filter((r) => r.phase === 'pr-review');
 const notes = (fx: EngineFixture, id: number) => fx.repo.listComments(id).comments.filter((c) => c.kind === 'status').map((c) => c.text);
@@ -238,4 +238,50 @@ test('uiTest: a fork’s pull request is left out of the test and named as such;
   assert.deepEqual(prRuns(fx, only.taskId).map((r) => `${r.role}/${r.status}`), ['reviewer/succeeded']);
   assert.equal(prompts(fx, /Test the UI of these pull requests/).length, before, 'no tester prompt');
   assert.ok(notes(fx, only.taskId).some((n) => /from a fork.*no UI to test: the review starts without it/.test(n)), notes(fx, only.taskId).join(' | '));
+});
+
+test('uiTest: the tester’s worktree is cut from the target of the first pull request tested in the repository, and the prompt says which is which', async (t) => {
+  // Its fetch of a pull request's own ref fails (nothing to fetch it from); a branch's fetch works: the worktree starts from the target, which is a local branch here.
+  const fx = await setup(t, { prGit: async (_d: string, args: string[]) => {
+      if (args.some((a) => /refs\/pull\//.test(a))) throw new Error('no such ref');
+    } });
+  const mainTip = git(fx.dir, 'rev-parse', 'HEAD');
+  git(fx.dir, 'checkout', '-q', '-b', 'release');
+  writeFileSync(path.join(fx.dir, 'release.txt'), 'release only\n');
+  git(fx.dir, 'add', '.');
+  git(fx.dir, 'commit', '-q', '-m', 'release');
+  const releaseTip = git(fx.dir, 'rev-parse', 'HEAD');
+  git(fx.dir, 'checkout', '-q', 'main');
+  assert.notEqual(releaseTip, mainTip);
+  fx.setRules([TESTER('No UI change.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ ...(pr(3) as object), base: 'release' }, pr(4)] as never, tool: 'claude', uiTest: true }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  if (typeof got === 'string') return;
+  const wt = path.join(fx.dir, fx.workers.get(got.workerId!)!.worktree!.path);
+  assert.equal(git(wt, 'rev-parse', 'HEAD'), releaseTip, 'the first pull request’s target is where the worktree starts');
+  assert.ok(existsSync(path.join(wt, 'release.txt')));
+  const start = await (async () => {
+    for (let i = 0; i < 200; i++) {
+      const f = prompts(fx, /Test the UI of these pull requests/)[0];
+      if (f) return f;
+      await sleep(25);
+    }
+    throw new Error('the tester never started');
+  })();
+  assert.match(start.prompt!, /#3 .* it targets release, which your workspace starts from \(origin\/release\)/);
+  assert.match(start.prompt!, /#4 .* it targets main, not release that your workspace starts from: compare against origin\/main yourself/);
+  await fx.waitTask(got.taskId, inReview, 'the review column', 40_000);
+});
+
+test('uiTest: a pull request not confirmed not to be from a fork is not tested, and with none confirmed no tester is hired', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([MAIN(APPROVED)]);
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 3, base: 'main' }] as never, tool: 'claude', uiTest: true }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  if (typeof got === 'string') return;
+  await fx.waitTask(got.taskId, inReview, 'the review column', 40_000);
+  assert.deepEqual(prRuns(fx, got.taskId).map((r) => `${r.role}/${r.status}`), ['reviewer/succeeded']);
+  assert.ok(notes(fx, got.taskId).some((n) => /confirmed not to be from a fork.*no UI to test/.test(n)), notes(fx, got.taskId).join(' | '));
+  assert.ok(!notes(fx, got.taskId).some((n) => /to test the UI of, and then review/.test(n)), 'a skipped UI test is not announced as started');
+  assert.ok(notes(fx, got.taskId).some((n) => /asked \w+ to review acme\/proj#3/.test(n)));
 });
