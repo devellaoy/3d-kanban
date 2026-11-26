@@ -90,6 +90,41 @@ test('a review of several PRs: each must be one of the project’s repositories�
   assert.deepEqual(ok.prs.map((p) => `${p.repo}#${p.number}:${p.title}`), ['o/web#10:UYT-1415: login', 'o/api#77:PR 77'], 'the repository as the project names it; one not in the list asked of gh');
 });
 
+test('kanban.pr.review hands post and uiTest on to the engine, and leaves them out when they are not asked for', async () => {
+  const { ctx } = project();
+  const asked: Record<string, unknown>[] = [];
+  ctx.engine = { ...ctx.engine, reviewPrs: async (req: Record<string, unknown>) => (asked.push(req), { taskId: 5 }) } as typeof ctx.engine;
+  ctx.floors.set('web', { githubFor: () => ({ pulls: { items: LISTS[0].pulls, fetchedAt: 1, loading: false } }) } as unknown as Floor);
+  const parts = createPullsParts(ctx, { gh: async () => Promise.reject(new Error('gh not needed')) });
+  const c = client();
+  await parts.plugin.ws!['kanban.pr.review']!(c, { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'o/web', number: 10 }], post: true, uiTest: true, rid: 'a' });
+  await parts.plugin.ws!['kanban.pr.review']!(c, { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'o/web', number: 10 }], rid: 'b' });
+  assert.equal(asked[0].post, true);
+  assert.equal(asked[0].uiTest, true);
+  assert.ok(!('post' in asked[1]) && !('uiTest' in asked[1]));
+});
+
+test('a checked review carries each PR’s base branch and whether it is a fork’s: from the list when it has them, else asked of gh, else left out', async () => {
+  const { ctx } = project();
+  const views: string[][] = [];
+  const parts = createPullsParts(ctx, {
+    gh: async (args) => {
+      if (args[1] === 'list') return JSON.stringify(args[3] === 'o/web' ? [{ ...pr(10, 'feat/a'), baseRefName: 'develop', isCrossRepository: false }, pr(11, 'feat/b')] : [pr(5, 'feat/c')]);
+      if (args[1] === 'view') {
+        views.push(args);
+        if (args[2] === '11') return JSON.stringify({ baseRefName: 'main', isCrossRepository: true });
+        throw new Error('gh failed');
+      }
+      throw new Error('GraphQL: nothing');
+    },
+  });
+  const ok = await parts.checkReview({ project: 'web', prs: [{ repo: 'o/web', number: 10 }, { repo: 'o/web', number: 11 }, { repo: 'o/api', number: 5 }] });
+  assert.ok(typeof ok === 'object');
+  assert.deepEqual(ok.prs.map((p) => [p.number, p.base, p.fork]), [[10, 'develop', false], [11, 'main', true], [5, undefined, undefined]]);
+  assert.deepEqual(views.map((v) => v[2]), ['11', '5'], 'the list that has them is not asked again; a failed question leaves them out and fails nothing');
+  assert.ok(views[0].includes('baseRefName,isCrossRepository'));
+});
+
 test('a review of several PRs is checked here and run by the engine; the answer names its task and reviewer', async () => {
   const { ctx } = project();
   const asked: { req: unknown; who: string }[] = [];

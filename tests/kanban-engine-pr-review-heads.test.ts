@@ -4,7 +4,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
 import { fetchPrHeads, readingNote, type GitRunner } from '../src/server/kanban/engine/prheads.js';
@@ -117,4 +118,38 @@ test('without a base branch on the pull request, the line points to gh pr diff f
   const def = { id: 'p', name: 'P', dir: '/tmp/q', palette: 0, addedBy: 'x', addedAt: 0, repo: 'acme/q', repos: [{ id: 'q', name: 'Q', dir: '/tmp/q', primary: true, kind: 'git', remote: 'acme/q' }] } as unknown as FloorDef;
   const heads = await fetchPrHeads(def, [{ repo: 'acme/q', number: 5 }], fake().run);
   assert.equal(readingNote({ repo: 'acme/q', number: 5 }, heads, def), 'Checked out in your worktree of Q: read its change there with `gh pr diff 5 -R acme/q`.');
+});
+
+test('the real git fetches the pull request’s ref and its base branch into the checkout, which is what a worktree is then cut from', async (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'kanban-heads-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const origin = path.join(root, 'origin.git');
+  const seed = path.join(root, 'seed');
+  const checkout = path.join(root, 'checkout');
+  mkdirSync(origin);
+  git(origin, 'init', '-q', '--bare', '-b', 'main');
+  mkdirSync(seed);
+  git(seed, 'init', '-q', '-b', 'main');
+  writeFileSync(path.join(seed, 'a.txt'), 'base\n');
+  git(seed, 'add', '.');
+  git(seed, 'commit', '-q', '-m', 'base');
+  git(seed, 'remote', 'add', 'origin', origin);
+  git(seed, 'push', '-q', 'origin', 'main');
+  git(seed, 'checkout', '-q', '-b', 'topic');
+  writeFileSync(path.join(seed, 'pr.txt'), 'the pull request\n');
+  git(seed, 'add', '.');
+  git(seed, 'commit', '-q', '-m', 'the pull request');
+  const head = git(seed, 'rev-parse', 'HEAD');
+  git(seed, 'push', '-q', 'origin', 'HEAD:refs/pull/3/head'); // a fork's pull request has only this ref
+  execFileSync('git', ['clone', '-q', origin, checkout], { stdio: 'pipe' });
+  const def = { id: 'p', name: 'P', dir: checkout, palette: 0, addedBy: 'x', addedAt: 0, repo: 'acme/proj', repos: [{ id: 'p', name: 'P', dir: checkout, primary: true, kind: 'git', remote: 'acme/proj' }] } as unknown as FloorDef;
+  const heads = await fetchPrHeads(def, [{ repo: 'acme/proj', number: 3, base: 'main' }]);
+  assert.deepEqual([...heads.checkedOut], ['acme/proj#3']);
+  assert.equal(git(checkout, 'rev-parse', 'refs/remotes/origin/office-pr/3'), head, 'the pull request’s head');
+  assert.equal(git(checkout, 'rev-parse', 'refs/remotes/origin/main'), git(seed, 'rev-parse', 'main'), 'and its base branch, which the diff is against');
+  assert.equal(git(checkout, 'diff', '--name-only', 'origin/main...refs/remotes/origin/office-pr/3'), 'pr.txt');
+  // A pull request that is not there: no head, no throw, nothing to cut the worktree from.
+  const missing = await fetchPrHeads(def, [{ repo: 'acme/proj', number: 99, base: 'main' }]);
+  assert.equal(missing.checkedOut.size, 0);
+  assert.deepEqual(missing.bases, {});
 });
