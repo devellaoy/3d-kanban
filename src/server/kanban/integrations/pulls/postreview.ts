@@ -23,25 +23,26 @@ export interface PostedReview {
  * The review as it is posted: "Review by Agent Office: approved" (or "changes requested"), for several pull requests the list of the ones
  * it covers, then the text without its verdict and WORK DONE lines. Cut off, with a line saying so, when it is too long for GitHub.
  */
-export function reviewBody(prs: (PrRef & { title?: string })[], text: string): string {
-  const verdict = reviewVerdict(text) === 'approved' ? 'approved' : 'changes requested';
+export function reviewBody(prs: (PrRef & { title?: string })[], text: string, opts: { verdict?: 'approved' | 'changes_requested'; cut?: boolean } = {}): string {
+  // The run's own verdict when it is given: the text may be cut, and a cut one has no verdict line to read.
+  const verdict = (opts.verdict ?? reviewVerdict(text)) === 'approved' ? 'approved' : 'changes requested';
   const head = [`**Review by Agent Office: ${verdict}**`];
   if (prs.length > 1) head.push('', 'This review covers:', ...prs.map((p) => `- ${p.repo}#${p.number}${p.title ? ` ${p.title}` : ''}`));
   const top = head.join('\n');
   const cut = '\n\n(The review is cut off here: it is too long to post.)';
-  const body = stripWorkDone(reviewFindings(text)) || '(The reviewer gave no findings.)';
+  const body = (stripWorkDone(reviewFindings(text)) || '(The reviewer gave no findings.)') + (opts.cut ? '\n\n(The text of the review was cut here: the office kept only its first part.)' : '');
   const room = POST_MAX - top.length - 2;
   return `${top}\n\n${body.length > room ? `${body.slice(0, room - cut.length).trimEnd()}${cut}` : body}`;
 }
 
 /** Posts `text` on each of `prs`; one result per pull request, a URL or why not. */
-export async function postReview(ctx: KanbanContext, project: string, prs: (PrRef & { title?: string })[], text: string, account?: string): Promise<PostedReview[]> {
+export async function postReview(ctx: KanbanContext, project: string, prs: (PrRef & { title?: string })[], text: string, account?: string, opts: { verdict?: 'approved' | 'changes_requested'; cut?: boolean } = {}): Promise<PostedReview[]> {
   const out: PostedReview[] = [];
   let dir: string | undefined;
   try {
     dir = await mkdtemp(path.join(tmpdir(), 'office-review-'));
     const file = path.join(dir, 'review.md');
-    await writeFile(file, reviewBody(prs, text), { encoding: 'utf8', mode: 0o600 });
+    await writeFile(file, reviewBody(prs, text, opts), { encoding: 'utf8', mode: 0o600 });
     const floor = ctx.floor(project);
     for (const p of prs) {
       const board = floor?.githubFor(p.repo);

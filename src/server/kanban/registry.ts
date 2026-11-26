@@ -154,7 +154,7 @@ export interface KanbanPullsApi {
    * text without its verdict and work-done lines, clipped under GitHub's limit. Resolves to a URL or an error per PR; never rejects.
    * (Optional only so stand-ins in tests needn't have it.)
    */
-  postReview?(project: string, prs: PrRef[], text: string, account?: string): Promise<{ repo: string; number: number; url?: string; error?: string }[]>;
+  postReview?(project: string, prs: PrRef[], text: string, account?: string, opts?: { verdict?: 'approved' | 'changes_requested'; cut?: boolean }): Promise<{ repo: string; number: number; url?: string; error?: string }[]>;
 }
 
 /** Reading other tasks, for agents (implemented by the task-references plugin). */

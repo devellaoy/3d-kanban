@@ -277,7 +277,7 @@ export class Orchestrator {
       finishRun: (id, project, patch) => this.finishRun(id, project, patch),
       update: (id, patch) => this.update(id, patch),
       note: (task, text, runId) => this.note(task, text, runId),
-      say: (task, run, text) => this.say(task, run, text), posted: (task, text) => this.prReviews.published(task, text),
+      say: (task, run, text) => this.say(task, run, text), posted: (task, text, verdict) => this.prReviews.publishedSolo(task, text, verdict),
       apply: (id, e, via) => this.apply(id, e, via),
       serial: (taskId, fn) => this.serial(taskId, fn),
       drain: (project) => void this.drain(project),

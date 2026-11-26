@@ -6,7 +6,7 @@ import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
 import { nextFreeSeat } from '../../../shared/layout.js';
 import type { KanbanCaller, KanbanContext } from '../registry.js';
-import type { DepartureIntent, KanbanComment, KanbanPrReviewRequest, KanbanRole, KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
+import type { DepartureIntent, KanbanComment, KanbanRun, KanbanPrReviewRequest, KanbanRole, KanbanTask, KanbanTool } from '../../../shared/kanban/types.js';
 import type { ReviewPanelPart } from '../../../shared/kanban/review.js';
 import { sameRepo } from '../../../shared/floors.js';
 import { projectRepos, repoSources } from '../projects.js';
@@ -20,6 +20,7 @@ import { typeable } from './turnhold.js';
 import { homeCleanup } from './workspace.js';
 import { prReviewDirs, prReviewRepoIds } from './launchdirs.js';
 import { fetchPrHeads, prLine, readingNote, type GitRunner, type HeadPr } from './prheads.js';
+import { reviewVerdict } from './markers.js';
 import { launchUi, uiEnded } from './prreview-ui.js';
 
 export type { GitRunner };
@@ -59,10 +60,14 @@ export interface PrReviewDeps {
 /** How the engine sends its own workers home (the orchestrator's ENGINE). */
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 const clip = (s: string, max: number) => (s.length > max ? `${s.slice(0, max)}…` : s);
+/** How much of a run's text its row keeps (the orchestrator's SUMMARY_MAX): a longer one is cut there, verdict line and all. */
+const SUMMARY_MAX = 20_000;
 
 export class PrReviews {
   /** The pull requests' lines of each task's latest review, as the main reviewer's prompt had them (an additional reviewer's prompt takes the same). */
   private lines = new Map<number, string>();
+  /** A main reviewer's solo run's whole text, by task: its run row keeps only the first SUMMARY_MAX characters, and the round's fallback posts the review whole. Cleared when the round is published. */
+  private solo = new Map<number, string>();
 
   constructor(private d: PrReviewDeps) {}
 
@@ -82,10 +87,14 @@ export class PrReviews {
     if (typeof target === 'string') return target;
     const { taskId, named, created } = target;
     const request: KanbanPrReviewRequest = { project: req.project, prs: req.prs, ...(named !== undefined ? { taskId: named } : {}), ...(req.tool ? { tool: req.tool } : {}), ...(req.model ? { model: req.model } : {}), ...(req.effort ? { effort: req.effort } : {}), ...(req.post ? { post: true } : {}), ...(req.uiTest ? { uiTest: true } : {}) };
+    // A fork's pull request is never checked out or run: with every one a fork's there is nothing to test, and the review starts directly.
+    const ui = !!request.uiTest && (req.prs as ReviewedPr[]).some((p) => !p.fork);
     const err = await this.d.op(taskId, async (task) => {
       if (this.d.running(task.id)) return 'Stop it first: it is running';
-      this.d.ctx.repo.appendEvent(task.id, 'pr.review', { by: who.name, prs: labels, request });
-      return this.d.apply(task.id, { type: 'prReview', ...(request.uiTest ? { ui: true as const } : {}) }, { who, prReview: request });
+      // Who asked is kept beside the request: the review is posted as them, and a Retry keeps it.
+      this.d.ctx.repo.appendEvent(task.id, 'pr.review', { by: who.name, prs: labels, request, ...(who.accountId ? { account: who.accountId } : {}) });
+      if (request.uiTest && !ui) this.d.note(task, 'Every pull request of this review is from a fork, which the office never checks out or runs, so there is no UI to test: the review starts without it.');
+      return this.d.apply(task.id, { type: 'prReview', ...(ui ? { ui: true as const } : {}) }, { who, prReview: request });
     });
     const task = this.d.ctx.repo.getTask(taskId);
     if (!err && task?.runState === 'queued' && task.queuedRun?.phase === 'pr-review') {
@@ -93,7 +102,7 @@ export class PrReviews {
       this.d.note(task, `${who.name} asked for a review of ${labels.join(', ')}`);
       return { taskId };
     }
-    const workerId = req.uiTest ? task?.workerId : task?.reviewerWorkerId; // a UI test's tester is the task's implementer
+    const workerId = ui ? task?.workerId : task?.reviewerWorkerId; // a UI test's tester is the task's implementer
     const info = workerId ? this.d.ctx.floor(req.project)?.workers.get(workerId) : undefined;
     if (err || !task || !workerId || !info) {
       // A review task that never got its reviewer is no use to anyone: it goes again.
@@ -109,9 +118,12 @@ export class PrReviews {
 
   /** The request of the task's latest pull-request review (for a Retry), as reviewPrs recorded it. */
   last(taskId: number): KanbanPrReviewRequest | undefined {
-    const e = [...this.d.ctx.repo.listEvents(taskId)].reverse().find((x) => x.kind === 'pr.review');
-    const req = (e?.data as { request?: KanbanPrReviewRequest } | undefined)?.request;
+    const req = this.lastEvent(taskId)?.request;
     return req && Array.isArray(req.prs) ? req : undefined;
+  }
+
+  private lastEvent(taskId: number): { request?: KanbanPrReviewRequest; account?: string } | undefined {
+    return [...this.d.ctx.repo.listEvents(taskId)].reverse().find((x) => x.kind === 'pr.review')?.data as { request?: KanbanPrReviewRequest; account?: string } | undefined;
   }
 
   /**
@@ -215,6 +227,7 @@ export class PrReviews {
     if (kept) via.taken = kept.msgs; // what the user said to a reviewer that asked: the comment that answered it, or (a Retry, whichever prompt it picks) that answer given back; the rest of the queue is the implementer's
     const req = via.prReview ?? this.last(task.id);
     if (!req?.prs.length) return 'There are no pull requests to review: pick them again';
+    this.solo.delete(task.id); // a new round: nothing of an older one's text
     const review = this.d.reviewSettings(task), tool: KanbanTool = req.tool ?? review.tool, same = !req.tool || req.tool === review.tool;
     const model = req.model ?? (same ? review.model : undefined), effort = req.effort ?? (same ? review.effort : undefined);
     const adapter = this.d.adapters[tool], involved = prReviewRepoIds(def, req.prs);
@@ -368,9 +381,11 @@ export class PrReviews {
    * pull requests when the request asked for it. Returns the machine event.
    */
   ended(task: KanbanTask, live: Live, text: string, pending: boolean, say: (kind: KanbanComment['kind'], text: string) => void): MachineEvent {
-    if (live.panel !== 'solo') {
+    if (live.panel === 'solo') this.solo.set(task.id, text);
+    else {
       say('review', text);
-      this.published(task, text);
+      this.solo.delete(task.id);
+      this.published(task, text, reviewVerdict(text));
     }
     return { type: 'prReviewed', pending };
   }
@@ -380,23 +395,33 @@ export class PrReviews {
     return uiEnded(this.d, task, live, text, say);
   }
 
-  /** A round's final review text is out (a run's end, or the panel publishing the solo run): posts it when the request has `post`, once the task's own operation is over. */
-  published(task: Pick<KanbanTask, 'id' | 'project' | 'createdByAccount'>, text: string) {
+  /**
+   * A round's final review text is out: posts it when the request has `post`, once the task's own operation is over. `verdict` is the run's own,
+   * never read again from the text (which may be cut).
+   */
+  published(task: Pick<KanbanTask, 'id' | 'project' | 'createdByAccount'>, text: string, verdict: KanbanRun['verdict'], cut = false) {
     const req = this.last(task.id);
     if (!req?.post) return;
-    void this.d.op(task.id, () => this.post(task, req, text));
+    void this.d.op(task.id, () => this.post(task, req, text, verdict, cut));
+  }
+
+  /** The panel publishes the main reviewer's own result (no additional reviewer gave one): its whole text when the engine still has it, else the run's stored summary, said to be cut where it was. */
+  publishedSolo(task: Pick<KanbanTask, 'id' | 'project' | 'createdByAccount'>, summary: string, verdict: KanbanRun['verdict']) {
+    const whole = this.solo.get(task.id);
+    this.solo.delete(task.id);
+    this.published(task, whole ?? summary, verdict, !whole && summary.length > SUMMARY_MAX);
   }
 
   /**
    * Posts the review on each pull request (KanbanPullsApi.postReview) and says in the task's conversation how each went. A failure to post
    * is never the task's: it keeps its state and column.
    */
-  private async post(task: Pick<KanbanTask, 'id' | 'project' | 'createdByAccount'>, req: KanbanPrReviewRequest, text: string) {
+  private async post(task: Pick<KanbanTask, 'id' | 'project' | 'createdByAccount'>, req: KanbanPrReviewRequest, text: string, verdict: KanbanRun['verdict'], cut: boolean) {
     const prs = req.prs as ReviewedPr[];
     const api = this.d.ctx.pulls.postReview;
     let results: { repo: string; number: number; url?: string; error?: string }[];
     try {
-      results = api ? await api(task.project, prs, text, this.d.hireOwner(task)) : prs.map((p) => ({ repo: p.repo, number: p.number, error: "this office can't post reviews" }));
+      results = api ? await api(task.project, prs, text, this.lastEvent(task.id)?.account ?? this.d.hireOwner(task), { verdict, cut }) : prs.map((p) => ({ repo: p.repo, number: p.number, error: "this office can't post reviews" }));
     } catch (err) {
       results = prs.map((p) => ({ repo: p.repo, number: p.number, error: (err as Error).message }));
     }

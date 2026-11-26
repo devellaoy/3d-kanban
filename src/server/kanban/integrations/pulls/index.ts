@@ -472,7 +472,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     },
     review,
     brief,
-    postReview: (project, prs, text, account) => postReview(ctx, project, prs, text, account),
+    postReview: (project, prs, text, account, opts) => postReview(ctx, project, prs, text, account, opts),
   };
 
   const plugin: KanbanPlugin = {

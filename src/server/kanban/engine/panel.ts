@@ -49,7 +49,7 @@ export interface PanelDeps {
   /** A reviewer's result as a comment of the task (kind review). */
   say(task: KanbanTask, run: KanbanRun, text: string): void;
   /** A pr-review round's final text is published: the review is posted on its pull requests when the request asked for it. */
-  posted(task: KanbanTask, text: string): void;
+  posted(task: KanbanTask, text: string, verdict: KanbanRun['verdict']): void;
   apply(taskId: number, e: MachineEvent, via?: Via): Promise<string | undefined>;
   serial<T>(taskId: number, fn: () => Promise<T>): Promise<T>;
   drain(floorId: string): void;
@@ -294,7 +294,7 @@ export class ReviewPanel {
     const pending = now.pendingMessages.some((m) => !m.parked);
     if (solo.phase === 'pr-review') {
       await this.d.apply(task.id, { type: 'prReviewed', pending }, { who: OFFICE });
-      this.d.posted(now, solo.summary ?? '');
+      this.d.posted(now, solo.summary ?? '', solo.verdict);
     } else await this.d.apply(task.id, { type: 'reviewed', ...(solo.round !== undefined ? { round: solo.round } : {}), approved: solo.verdict === 'approved', pending }, { who: OFFICE });
     this.d.drain(task.project);
   }
