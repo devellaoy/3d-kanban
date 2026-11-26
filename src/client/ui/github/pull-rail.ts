@@ -73,7 +73,7 @@ export function pullRail(s: PullSide): Node[] {
       'Hand it to a worker',
       isOpen ? railButton('Review', 'eye', () => openReviewPicker(net, it, 'review', () => actions.assign(reviewPrompt(it), `Review PR #${it.number}`)), 'A worker reviews it; first you pick which of the project’s pull requests go with it') : null,
       isOpen && s.onGitHub
-        ? railButton('Review panel', 'users', () => openReviewPicker(net, it, 'panel', () => actions.meeting({ pattern: 'review', pr: it.number, title: `Review of PR #${it.number}`, prompt: officePrompt('pull.panel', pullVars(it)) })), 'A few workers review it in the meeting room, each through its own lens, and the office posts one combined review')
+        ? railButton('Review panel', 'users', () => openReviewPicker(net, it, 'panel', () => actions.meeting({ pattern: 'review', pr: it.number, title: `Review of PR #${it.number}`, prompt: officePrompt('pull.panel', pullVars(it)) }), actions.meeting), 'A few workers review it in the meeting room, each through its own lens, and the office posts one combined review')
         : null,
       !s.onGitHub
         ? null

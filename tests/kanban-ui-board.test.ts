@@ -26,6 +26,7 @@ import {
   orderedProjects,
   projectGroups,
 } from '../src/client/kanban/model.js';
+import { briefPreset, briefRequest, goLabel, goTitle, postLabel, POST_KEY, readFlag, reviewRequest, reviewToast, writeFlag } from '../src/client/kanban/prpickmodel.js';
 import { checkMove, moveTargets } from '../src/shared/kanban/moves.js';
 import { BOARD_COLUMNS, RUN_STATES, TASK_STATUSES, type KanbanProjectInfo, type KanbanTaskCard, type NormalizedIssue, type ProjectSettings } from '../src/shared/kanban/types.js';
 
@@ -210,6 +211,80 @@ test('the PR picker lists this PR once, then its bundle, then the others, withou
   const rows = pickerRows(self, bundle, others);
   assert.deepEqual(rows.related.map((r) => `${r.repo}#${r.number}`), ['acme/api#9']);
   assert.deepEqual(rows.rest.map((r) => `${r.repo}#${r.number}`), ['acme/docs#1']);
+});
+
+test("the PR picker's review is always a kanban task request, with the two ticks; a UI test gets a task of its own", () => {
+  const item = (repo: string, number: number, taskId?: number) => ({ repo, number, url: 'u', title: 't', state: 'OPEN' as const, ...(taskId !== undefined ? { taskId } : {}) });
+  const bundle = [item('acme/web', 5, 3), item('Acme/Api', 9, 3)];
+  const all = [...bundle, item('acme/docs', 1)];
+  const off = { post: false, uiTest: false };
+  assert.deepEqual(reviewRequest('p1', ['acme/web#5'], all, bundle, off), { t: 'kanban.pr.review', project: 'p1', prs: [{ repo: 'acme/web', number: 5 }], taskId: 3, post: false, uiTest: false }, 'just this PR is a kanban review too');
+  assert.deepEqual(reviewRequest('p1', ['acme/web#5', 'acme/api#9'], all, bundle, { post: true, uiTest: false }), {
+    t: 'kanban.pr.review',
+    project: 'p1',
+    prs: [
+      { repo: 'acme/web', number: 5 },
+      { repo: 'Acme/Api', number: 9 },
+    ],
+    taskId: 3,
+    post: true,
+    uiTest: false,
+  });
+  const ui = reviewRequest('p1', ['acme/web#5', 'acme/api#9'], all, bundle, { post: false, uiTest: true });
+  assert.equal('taskId' in ui, false, 'a review that tests the UI never goes into the bundle\'s task');
+  assert.equal(ui.uiTest, true);
+  assert.equal('taskId' in reviewRequest('p1', ['acme/web#5', 'acme/docs#1'], all, bundle, off), false, 'a mix of tasks is a new task');
+  assert.deepEqual(reviewRequest('p1', ['acme/web#5', 'acme/gone#2'], all, bundle, off).prs, [{ repo: 'acme/web', number: 5 }], 'a key nothing answers to is left out');
+  assert.deepEqual(briefRequest('p1', ['acme/web#5', 'acme/api#9'], all, bundle), {
+    t: 'kanban.pr.brief',
+    project: 'p1',
+    prs: [
+      { repo: 'acme/web', number: 5 },
+      { repo: 'Acme/Api', number: 9 },
+    ],
+    taskId: 3,
+  });
+  assert.equal('taskId' in briefRequest('p1', ['acme/web#5', 'acme/docs#1'], all, bundle), false);
+  assert.deepEqual(briefPreset({ prompt: 'Review these', title: 'Review of 2 PRs', pr: 5 }), { pattern: 'review', pr: 5, title: 'Review of 2 PRs', prompt: 'Review these' });
+});
+
+test("the PR picker's words: its button, its tick and its toast follow the number of PRs", () => {
+  assert.equal(goLabel('review', 1, true), 'Review this PR');
+  assert.equal(goLabel('review', 1, false), 'Review this PR');
+  assert.equal(goLabel('review', 3, false), 'Review 3 PRs together');
+  assert.equal(goLabel('panel', 1, true), 'Call the panel for this PR');
+  assert.equal(goLabel('panel', 2, false), 'Call the panel for 2 PRs');
+  assert.match(goTitle('review', 2), /kanban task.*review settings/);
+  assert.match(goTitle('panel', 2), /meeting room/);
+  assert.equal(goTitle('review', 0), 'Tick at least one pull request first');
+  assert.equal(postLabel(1), 'Post the review on the pull request when it is done');
+  assert.equal(postLabel(0), 'Post the review on the pull request when it is done');
+  assert.equal(postLabel(2), 'Post the review on the pull requests when it is done');
+  assert.equal(reviewToast(1, { taskId: 7, workerId: 'w1' }), 'The review of the PR is kanban task #7');
+  assert.equal(reviewToast(3, { taskId: 7, workerId: 'w1' }), 'The review of the 3 PRs is kanban task #7');
+  assert.equal(reviewToast(2, { taskId: 7 }), 'The review of the 2 PRs is queued: task #7 starts when the office has room');
+});
+
+test("the PR picker's ticks are off until saved, and a storage that throws or is missing changes nothing", () => {
+  const kept = new Map<string, string>();
+  const store = { getItem: (k: string) => kept.get(k) ?? null, setItem: (k: string, v: string) => void kept.set(k, v) };
+  assert.equal(readFlag(POST_KEY, store), false, 'off by default');
+  writeFlag(POST_KEY, true, store);
+  assert.equal(readFlag(POST_KEY, store), true);
+  writeFlag(POST_KEY, false, store);
+  assert.equal(readFlag(POST_KEY, store), false);
+  const broken = {
+    getItem: (): string => {
+      throw new Error('blocked');
+    },
+    setItem: () => {
+      throw new Error('blocked');
+    },
+  };
+  assert.equal(readFlag(POST_KEY, broken), false);
+  assert.doesNotThrow(() => writeFlag(POST_KEY, true, broken));
+  assert.equal(readFlag(POST_KEY, undefined), false);
+  assert.doesNotThrow(() => writeFlag(POST_KEY, true, undefined));
 });
 
 test("the PR picker's review goes into a task only when every picked PR is that one task's bundle item", () => {

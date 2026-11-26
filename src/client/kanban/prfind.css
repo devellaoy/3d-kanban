@@ -8,6 +8,10 @@
 .kb-prs-h { margin: 4px 0 -4px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
 .kb-prs-error { margin: 0; padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); }
 .kb-prs-list { overflow: hidden; }
+/* What a review also does: the picker's ticks under its lists. Their words may run to a second line, so the box sits by the first. */
+.kb-prs-opts { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--bw-sm) solid var(--rule-soft); }
+.kb-prs-opts > label.check-line { display: flex; align-items: flex-start; }
+.kb-prs-opts > .check-line > input { margin-top: 0.2em; }
 .kb-prs-row { cursor: pointer; }
 .kb-prs-row > input { flex: none; margin: 0; accent-color: var(--accent); }
 .kb-prs-row:has(input:checked) { background: var(--field-hover); }
