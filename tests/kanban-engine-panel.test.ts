@@ -715,7 +715,7 @@ test('no focus: no viewpoint text anywhere and no focus in the seat or the names
 
 test('a seat keeps its focus when the settings change mid-round', async (t) => {
   const fx = await setup(t, { extra: [{ tool: 'codex', focus: 'Security' }] });
-  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 2000 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
+  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 1500 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
   const id = await start(fx);
   await until('the co-reviewer at work', () => !!coWorker(fx));
   assert.equal(fx.task(id).coReviewers?.[0].focus, 'Security');
