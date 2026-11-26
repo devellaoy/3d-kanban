@@ -1,8 +1,10 @@
-// A review round with additional reviewers (docs/kanban-architecture.md §4, "Review panel"). The state machine knows nothing of it: the
-// round is made of ordinary review runs, and the machine still gets exactly one `reviewed` event for it.
+// A review round with additional reviewers (docs/kanban-architecture.md §4, "Review panel"), in the review phase and in the pr-review phase.
+// The state machine knows nothing of it: the round is made of ordinary review runs, and the machine still gets exactly one `reviewed` (or
+// `prReviewed`) event for it.
 //
 //   solo     the main reviewer's own review (seat 0); its end publishes nothing, it hands over to `settle`
-//   co       one run per additional reviewer (seat 1..4), each on a worker of its own in the task's worktree
+//   co       one run per additional reviewer (seat 1..4), each on a worker of its own in the task's worktree (a pr-review round's: the main
+//            reviewer's own worktree, which the main reviewer owns: see PrReviews.launchCo)
 //   combine  the main reviewer once more (seat 0), typed with the other reviewers' findings; its verdict is the round's
 //
 // Everything a co-reviewer's run does stays here: its end, its question, its exit, its departure. Nothing of it is a task comment or a
@@ -46,6 +48,8 @@ export interface PanelDeps {
   note(task: Pick<KanbanTask, 'id' | 'project'>, text: string, runId?: number): void;
   /** A reviewer's result as a comment of the task (kind review). */
   say(task: KanbanTask, run: KanbanRun, text: string): void;
+  /** A pr-review round's final text is published: the review is posted on its pull requests when the request asked for it. */
+  posted(task: KanbanTask, text: string): void;
   apply(taskId: number, e: MachineEvent, via?: Via): Promise<string | undefined>;
   serial<T>(taskId: number, fn: () => Promise<T>): Promise<T>;
   drain(floorId: string): void;
@@ -62,6 +66,8 @@ interface Round {
 }
 
 const toolName = (tool: KanbanTool) => KANBAN_TOOL_NAMES[tool];
+/** The phases a round runs in: a task's review, and a pull-request review. */
+const REVIEWING: readonly string[] = ['review', 'pr-review'];
 
 export class ReviewPanel {
   private timers = new Map<number, NodeJS.Timeout>();
@@ -84,19 +90,21 @@ export class ReviewPanel {
 
   /** What a launch of the main reviewer's review is in a round with several reviewers (none when the task has no additional reviewers, or it is another run). */
   plan(task: KanbanTask, eff: RunEffect): { part: ReviewPanelPart; eff: RunEffect; more?: Partial<ComposeExtra> } | undefined {
-    if (eff.role !== 'reviewer' || eff.phase !== 'review') return undefined;
+    if (eff.role !== 'reviewer' || !REVIEWING.includes(eff.phase)) return undefined;
     // A round that is already open comes from the run rows and the task's stored seats, whatever the settings say now; the settings only decide whether a NEW round has additional reviewers.
     const last = this.d.ctx.repo.listRuns(task.id).filter((r) => !r.seat && r.phase !== 'compact').at(-1);
     if (eff.prompt === 'restarted' || eff.prompt === 'continue') {
       // A combine run that did not end (it never started, a usage limit, a crash, an office restart: failed or interrupted, not stopped by a person) goes again as a combine
       // from the round's results, not as a round of its own. A Stop followed by Retry runs the whole round again.
-      const round = last?.panel === 'combine' && (last.status === 'failed' || last.status === 'interrupted') ? this.view(task.id) : undefined;
+      // A pull-request review's combine goes on in its main reviewer's own session, in the worktree only that reviewer holds: with the main reviewer gone, the whole round runs again.
+      const kept = eff.phase !== 'pr-review' || !!this.d.ctx.floor(task.project)?.workers.get(task.reviewerWorkerId ?? '');
+      const round = kept && last?.panel === 'combine' && (last.status === 'failed' || last.status === 'interrupted') ? this.view(task.id) : undefined;
       if (round && [...round.co.values()].some((r) => r.status === 'succeeded' && r.summary)) return { part: 'combine', eff: { ...eff, prompt: 'rereview' }, more: { panel: 'combine', reviews: this.reviews(task, round) } };
       // A solo run the office relaunched after a restart is the same round, with its stored seats.
       if (eff.prompt === 'restarted' && last?.panel === 'solo' && task.coReviewers?.length) return { part: 'solo', eff };
     }
     if (!this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra?.length) return undefined; // a new round without additional reviewers
-    return ['review', 'rereview', 'continue', 'restarted'].includes(eff.prompt) ? { part: 'solo', eff } : undefined;
+    return ['review', 'pr.review', 'rereview', 'continue', 'restarted'].includes(eff.prompt) ? { part: 'solo', eff } : undefined;
   }
 
   /** The round of the task's latest main-reviewer run that began one (a 'solo' run), from the run rows. */
@@ -126,7 +134,7 @@ export class ReviewPanel {
   /** The task is in review with the main reviewer's own review in and nobody running: between the solo run and the combine (or the published result). */
   gap(taskId: number): boolean {
     const task = this.d.ctx.repo.getTask(taskId);
-    if (!task || task.status !== 'in_progress' || task.phase !== 'review' || task.runState === 'idle' || task.runState === 'queued') return false;
+    if (!task || task.status !== 'in_progress' || !REVIEWING.includes(task.phase ?? '') || task.runState === 'idle' || task.runState === 'queued') return false;
     const r = this.view(taskId);
     return !!r && r.solo.status === 'succeeded' && !r.combine && !this.d.livesOf(taskId).some((l) => !l.seat);
   }
@@ -155,7 +163,7 @@ export class ReviewPanel {
       if (had && (had.status === 'succeeded' || (had.status === 'running' && this.d.livesOf(task.id).some((l) => l.runId === had.id)))) continue;
       const label = this.label(seat, tool, model, focus);
       const paused = this.d.ctx.hiringPaused?.();
-      const err = paused ? `hiring is paused: ${paused}` : await this.d.launch(this.d.ctx.repo.getTask(task.id) ?? task, { type: 'run', phase: 'review', role: 'reviewer', prompt: (eff.round ?? 1) > 1 ? 'rereview' : 'review', ...(eff.round !== undefined ? { round: eff.round } : {}) }, { ...(via.who ? { who: via.who } : {}) }, seat, 'co');
+      const err = paused ? `hiring is paused: ${paused}` : await this.d.launch(this.d.ctx.repo.getTask(task.id) ?? task, { type: 'run', phase: eff.phase, role: 'reviewer', prompt: eff.phase === 'pr-review' ? 'pr.review' : (eff.round ?? 1) > 1 ? 'rereview' : 'review', ...(eff.round !== undefined ? { round: eff.round } : {}) }, { ...(via.who ? { who: via.who } : {}) }, seat, 'co');
       if (err) this.d.note(task, `${label} could not start: ${clip(typeof err === 'string' ? err : err.queued, 300)}`);
     }
   }
@@ -216,7 +224,7 @@ export class ReviewPanel {
     const task = this.d.ctx.repo.getTask(taskId);
     const round = task && this.view(taskId);
     // The task left its review (stopped, moved on) with the round's seats still about: they end, and their workers go home.
-    if (task && round && !round.combine && (task.status !== 'in_progress' || task.phase !== 'review')) return this.close(task, 'The review round is over');
+    if (task && round && !round.combine && (task.status !== 'in_progress' || task.phase !== round.solo.phase)) return this.close(task, 'The review round is over');
     if (!task || !round || round.combine || round.solo.status !== 'succeeded') return this.clear(taskId);
     const live = this.d.livesOf(taskId);
     if (live.some((l) => !l.seat)) return; // the main reviewer's run is still going
@@ -238,18 +246,18 @@ export class ReviewPanel {
       return;
     }
     const current = this.d.ctx.repo.getTask(taskId) ?? task;
-    const eff: RunEffect = { type: 'run', phase: 'review', role: 'reviewer', prompt: 'rereview', ...(fresh.solo.round !== undefined ? { round: fresh.solo.round } : {}) };
+    const eff: RunEffect = { type: 'run', phase: fresh.solo.phase, role: 'reviewer', prompt: 'rereview', ...(fresh.solo.round !== undefined ? { round: fresh.solo.round } : {}) };
     const err = await this.d.launch(current, eff, { who: OFFICE }, 0, 'combine', { panel: 'combine', reviews: this.reviews(current, fresh) });
     if (err) {
       // The round's results stay in the run rows: the combine waits for a Retry, as one that failed after it started does. Publishing the main reviewer's own result would drop the findings.
       const why = clip(typeof err === 'string' ? err : err.queued, 300);
       const latest = this.d.ctx.repo.listRuns(taskId).filter((r) => !r.seat).at(-1);
       if (!(latest?.panel === 'combine' && latest.id > fresh.solo.id)) {
-        const row = this.d.ctx.repo.createRun({ taskId, phase: 'review', ...(fresh.solo.round !== undefined ? { round: fresh.solo.round } : {}), role: 'reviewer', tool: fresh.solo.tool, model: fresh.solo.model, effort: fresh.solo.effort, panel: 'combine', status: 'failed' });
+        const row = this.d.ctx.repo.createRun({ taskId, phase: fresh.solo.phase, ...(fresh.solo.round !== undefined ? { round: fresh.solo.round } : {}), role: 'reviewer', tool: fresh.solo.tool, model: fresh.solo.model, effort: fresh.solo.effort, panel: 'combine', status: 'failed' });
         this.d.finishRun(row.id, task.project, { status: 'failed', error: why });
       }
       await this.close(current);
-      await this.d.apply(taskId, { type: 'failed', error: `The reviews could not be combined: ${why}. Retry to combine them.` }, { who: OFFICE });
+      await this.d.apply(taskId, { type: 'failed', error: `The reviews could not be combined: ${why}.${fresh.solo.phase === 'pr-review' ? '' : ' Retry to combine them.'}` }, { who: OFFICE });
       this.d.drain(task.project);
     }
   }
@@ -284,7 +292,10 @@ export class ReviewPanel {
     const now = this.d.ctx.repo.getTask(task.id) ?? task;
     this.d.say(now, solo, solo.summary ?? '');
     const pending = now.pendingMessages.some((m) => !m.parked);
-    await this.d.apply(task.id, { type: 'reviewed', ...(solo.round !== undefined ? { round: solo.round } : {}), approved: solo.verdict === 'approved', pending }, { who: OFFICE });
+    if (solo.phase === 'pr-review') {
+      await this.d.apply(task.id, { type: 'prReviewed', pending }, { who: OFFICE });
+      this.d.posted(now, solo.summary ?? '');
+    } else await this.d.apply(task.id, { type: 'reviewed', ...(solo.round !== undefined ? { round: solo.round } : {}), approved: solo.verdict === 'approved', pending }, { who: OFFICE });
     this.d.drain(task.project);
   }
 

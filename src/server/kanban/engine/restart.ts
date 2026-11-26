@@ -16,6 +16,7 @@ import { ADAPTERS } from './adapters/index.js';
 import type { TaskAgentAdapter } from './adapters/types.js';
 import type { MachineEvent } from './machine.js';
 import { finalMarker } from './markers.js';
+import { isUiRun } from './live.js';
 import { logOf, sessionLogged } from './sessions.js';
 import { missingFolders } from './workspace.js';
 import { slot } from './slot.js';
@@ -130,16 +131,18 @@ export class Restarts<L extends HeldRun> {
   }
 
   /**
-   * What a launch of `task` means after a restart. `same`: a pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its
-   * own reviewer, in its session and worktree, with the tool, model and effort its last review run had (undefined for any other launch: a review of pull requests starts anew).
-   * `restarted`: the launch is of a run `admit` let through a moment ago (taken once), so the worker it finds `starting` is the one the restart woke, not a reviewer starting for real.
+   * What a launch of `task` means after a restart. `same`: a pull-request review carried on after an office restart (or its reviewer's question answered, or a review round's
+   * combine, `part`) goes on with its own reviewer, in its session and worktree, with the tool, model and effort its last review run had (undefined for any other launch: a review
+   * of pull requests starts anew). `restarted`: the launch is of a run `admit` let through a moment ago (taken once), so the worker it finds `starting` is the one the restart woke,
+   * not a reviewer starting for real. A UI test run (an implementer's, phase pr-review) is never carried on: it starts again.
    */
-  reviewer(task: KanbanTask, eff: { phase: string; prompt: string }, floor: Floor): { same?: { tool: KanbanTool; model?: string; effort?: KanbanEffort }; restarted: boolean } {
+  reviewer(task: KanbanTask, eff: { phase: string; prompt: string; role?: string }, floor: Floor, part?: string): { same?: { tool: KanbanTool; model?: string; effort?: KanbanEffort }; restarted: boolean } {
     const at = this.admitted.get(task.id);
     this.admitted.delete(task.id);
     const restarted = at !== undefined && Date.now() - at < ADMITTED_MS;
-    const goesOn = eff.phase === 'pr-review' && (eff.prompt === 'restarted' || eff.prompt === 'resume') && !!floor.workers.get(task.reviewerWorkerId ?? '');
-    return { same: goesOn ? this.deps.ctx.repo.lastRun(task.id, 'pr-review') : undefined, restarted };
+    const goesOn = eff.phase === 'pr-review' && eff.role !== 'implementer' && (eff.prompt === 'restarted' || eff.prompt === 'resume' || part === 'combine') && !!floor.workers.get(task.reviewerWorkerId ?? '');
+    // The main reviewer's own latest run (an additional reviewer's is not what the combine goes on with).
+    return { same: goesOn ? this.deps.ctx.repo.listRuns(task.id).filter((r) => r.phase === 'pr-review' && r.role === 'reviewer' && !r.seat).at(-1) : undefined, restarted };
   }
 
   /**
@@ -269,7 +272,7 @@ export class Restarts<L extends HeldRun> {
    */
   private finished(run: KanbanRun, floor: Floor, info: WorkerInfo): boolean {
     const result = this.readLog(run, floor, info);
-    if (result && !finalMarker(run.phase, `${result.text}\n${result.plan ?? ''}`, result.exitPlan)) return false;
+    if (result && !finalMarker(isUiRun(run) ? 'implement' : run.phase, `${result.text}\n${result.plan ?? ''}`, result.exitPlan)) return false;
     const out = !!result && (result.background || result.unheard || result.resuming);
     if (this.deps.ctx.repo.runHeldAt(run.id) === undefined) return !out;
     return !!result?.complete && !out;
