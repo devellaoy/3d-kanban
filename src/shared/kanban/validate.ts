@@ -36,7 +36,7 @@ export const KANBAN_LIMITS = {
    * instruction texts and a rewrite of every kanban prompt (PROMPT_MAX each), and JSON can double
    * that with escapes; still under the office's 2 MB WebSocket messages.
    */
-  settingsJson: 1_850_000,
+  settingsJson: 1_950_000,
 } as const;
 
 /** A floor id (see Building.newDef). */

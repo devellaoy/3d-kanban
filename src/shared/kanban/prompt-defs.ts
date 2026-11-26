@@ -346,12 +346,12 @@ Do what the comment asks. Commit any changes locally as before (never push unles
   'kanban.pr.review': {
     group: 'kanban',
     label: 'Review pull requests together',
-    used: "Sent to a reviewer hired for several pull requests at once (picked across the project's repositories, or a task's bundle): they are reviewed as one change set.",
+    used: "Sent to the reviewer of a pull-request review (the PR window's Review button, or a task's pull requests): one or several pull requests, reviewed as one change set. The reviewer's worktree has the first pull request of each repository checked out (the {{prs}} lines say which, and how to read the others); the review settings' additional reviewers take part, and when the review is posted on the pull requests the office adds a block asking for a reply an outside reader can follow. The office appends the pull-request review contract.",
     vars: {
-      prs: 'The pull requests, one per line: owner/repo#number, its URL and its branch',
+      prs: 'The pull requests, one per line: owner/repo#number, its title, its branch and its URL, then whether it is checked out in the reviewer’s worktree (with the diff command to read it) or is to be read with gh pr diff',
       project: TASK_VARS.project,
       task: 'A line naming the kanban task they belong to (its number and title); empty when they are not one task’s',
-      repos: "The reviewer's own worktrees of the repositories, for reading the code around the changes",
+      repos: "The reviewer's own worktrees of the repositories",
       instructions: TASK_VARS.instructions,
       language: TASK_VARS.language,
     },
@@ -361,10 +361,10 @@ Do what the comment asks. Commit any changes locally as before (never push unles
 
 {{task}}
 
-Your workspace, fresh worktrees of the repositories for reading the code around the changes (the pull requests' own code is in gh pr diff, not here):
+Your workspace, fresh worktrees of the repositories (a pull request marked as checked out above is the code in its repository's worktree: read its change there with the diff command given on its line; any other is read with gh pr diff):
 {{repos}}
 
-They belong together: one change spread over several repositories. Read each one (gh pr view <url> --comments, gh pr diff <url>) and check the change as a whole: that the parts fit each other (APIs, data shapes, config and migrations match on both sides, nothing one side needs is missing from the other), that each part is correct (edge cases, errors, security), tested, and fits its repository's conventions, and that they can be merged and deployed in some safe order. Don't check out, change, push or merge anything.
+They belong together: one change, or one change spread over several repositories. Read each one (gh pr view <url> --comments, and its diff) and check the change as a whole: that the parts fit each other (APIs, data shapes, config and migrations match on both sides, nothing one side needs is missing from the other), that each part is correct (edge cases, errors, security), tested, and fits its repository's conventions, and that they can be merged and deployed in some safe order. Don't check out another branch, change, push or merge anything.
 
 {{instructions}}
 
@@ -375,7 +375,7 @@ Reply with your findings, the most serious first, each with its repository, file
   'kanban.pr.panel': {
     group: 'kanban',
     label: 'Review panel of several pull requests',
-    used: "The brief of a 🤝 review panel called on several pull requests at once (the meeting's prompt, which every worker at the table is told). Upstream's panel posts its combined review on one pull request of the floor's own repository ({{posted}}). The 🤝 button on the office's PR board, for one pull request, keeps using its own “review panel” prompt.",
+    used: "The brief the meeting form opens with when a review panel is called on several pull requests at once (the PR window's Review panel button): the form's prompt, which every worker at the table is told. Upstream's panel posts its combined review on one pull request of the floor's own repository ({{posted}}). The 🤝 button on the office's PR board, for one pull request, keeps using its own “review panel” prompt.",
     vars: {
       prs: 'The pull requests, one per line: owner/repo#number, its title, its branch and its URL',
       project: TASK_VARS.project,
