@@ -243,6 +243,12 @@ export const FALLBACK_WAIT_MS = 3 * 60_000;
 /** Per marks map: when a task (project/id) was first seen with an image waiting for the fallback. In memory, like the marks. */
 const waiting = new WeakMap<object, Map<string, number>>();
 
+/** Whether the task's latest pull-request review had its UI tested first (its request's `uiTest`). */
+function uiTested(ctx: KanbanContext, taskId: number): boolean {
+  const e = [...ctx.repo.listEvents(taskId)].reverse().find((x) => x.kind === 'pr.review');
+  return (e?.data as { request?: { uiTest?: boolean } } | undefined)?.request?.uiTest === true;
+}
+
 /** The task's pull requests off its own branches in the project's repositories, in any state. */
 function taskLinks(ctx: KanbanContext, project: string, task: KanbanTask, repos: readonly ProjectRepo[]): (KanbanPrLink & { taskId: number })[] {
   const branches = new Set([task.branch, ...Object.values(ctx.repo.repoBranches(task.id))]);
@@ -263,6 +269,8 @@ export function checkScreenshots(ctx: KanbanContext, project: string, marks: Map
   const repos = ctx.repos(project);
   for (const task of ctx.repo.listTasks(project)) {
     if (!task.flags.prRequested || task.runState !== 'idle') continue;
+    // A review that tested the UI keeps its pictures with the task: they go into no pull request, whatever flags the task gets later.
+    if (uiTested(ctx, task.id)) continue;
     const all = listUiImages(uiImagesDir(ctx.filesDir, task.id), repos.map((r) => r.id));
     const links = taskLinks(ctx, project, task, repos);
     // The fallback only takes pictures whose repository has had no pull request for a while.

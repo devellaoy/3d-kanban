@@ -13,7 +13,7 @@ import { Composer, reposText, slugify } from '../src/server/kanban/engine/compos
 import type { PromptKind } from '../src/server/kanban/engine/machine.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
 import { KanbanSettingsStore, sanitizeKanbanSettings } from '../src/server/kanban/settings.js';
-import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, isKanbanPromptId, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
+import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, PR_POSTED, isKanbanPromptId, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
 import { PROMPTS, placeholders, promptText, type PromptId } from '../src/shared/prompts.js';
 import type { RunPhase } from '../src/shared/kanban/types.js';
 import type { LanguageSettings } from '../src/shared/language.js';
@@ -933,4 +933,93 @@ test('review focus: the reviewer\'s own review and re-review carry it before the
   assert.doesNotMatch(combine, /Your viewpoint/);
   assert.deepEqual(placeholders(KANBAN_PROMPT_DEFS['kanban.review.focus'].text), ['focus']);
   assert.equal(PROMPT_CONTRACT['kanban.review.focus'], undefined, 'a fragment like kanban.review.co: the contract follows the whole prompt');
+});
+
+// --- Pull-request review prompts: heads, combine, posting, UI test ---------------------------------------------------
+
+test('kanban.pr.review: the checkout state and the diff command are in the default text and travel in the {{prs}} lines, the contract keeps its bans', (t) => {
+  const { def, dir, repo, compose, settings } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const prs = '- acme/proj#3 “Fix” https://github.com/acme/proj/pull/3 — Checked out in your worktree of Proj: read its change there with `git diff origin/main...HEAD`.\n- acme/api#5 https://github.com/acme/api/pull/5 — Not checked out (your worktree of its repository is on the base branch): read it with `gh pr diff 5 -R acme/api`.';
+  const text = compose.build('pr.review', def, task, 'claude', dir, { phase: 'pr-review', prs });
+  assert.match(text, /a pull request marked as checked out above is the code in its repository's worktree: read its change there with the diff command given on its line; any other is read with gh pr diff/);
+  assert.ok(text.includes('git diff origin/main...HEAD') && text.includes('gh pr diff 5 -R acme/api'));
+  assert.doesNotMatch(text, /the pull requests' own code is in gh pr diff, not here/);
+  // A project's own rewrite of the prompt gets the lines too: the state is in the variable, not the default text.
+  settings.setProject('proj', { prompts: { 'kanban.pr.review': 'Look at {{prs}}' } });
+  const mine = compose.build('pr.review', def, task, 'claude', dir, { phase: 'pr-review', prs });
+  assert.ok(mine.startsWith(`Look at ${prs}`) && mine.includes('git diff origin/main...HEAD'));
+  // The bans stay, and the contract tells how to read a checked-out pull request.
+  const c = KANBAN_CONTRACTS.prReview;
+  for (const word of ['git checkout', 'git switch', 'git commit', 'git push', 'gh pr review', 'Never modify, create or delete files']) assert.ok(c.includes(word), word);
+  assert.match(c, /A pull request that its line says is checked out is the code in your worktree: read it there \(git diff, git log, the files\), read-only/);
+  assert.doesNotMatch(c, /the worktree you are in is only for reading the code around them/);
+});
+
+test('kanban.pr.review.combine: names the pull requests and the reviews, no task or round language, the review contract after it', (t) => {
+  const def = KANBAN_PROMPT_DEFS['kanban.pr.review.combine'];
+  assert.deepEqual(placeholders(def.text).sort(), ['instructions', 'language', 'prs', 'reviews']);
+  assert.equal(PROMPT_CONTRACT['kanban.pr.review.combine'], 'prReview');
+  assert.equal(PROMPTS['kanban.pr.review.combine'].group, 'kanban');
+  const { def: floorDef, dir, repo, compose } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const text = compose.build('rereview', floorDef, task, 'claude', dir, { phase: 'pr-review', panel: 'combine', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', reviews: 'Reviewer 1 (Claude), you: APPROVED\nFine.' });
+  assert.match(text, /^Other reviewers reviewed these pull requests at the same time as you:\n- acme\/proj#3 /);
+  assert.match(text, /Reviewer 1 \(Claude\), you: APPROVED\nFine\./);
+  assert.doesNotMatch(text, /task #|round \{\{|round \d of/);
+  assert.ok(text.endsWith(KANBAN_CONTRACTS.prReview));
+});
+
+test('post: the block telling the reply is posted goes after the pr.review and the combine prompt of a posting review, before the contract, whatever the prompt says', (t) => {
+  const { def, dir, repo, compose, settings } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const common = { phase: 'pr-review' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', reviews: 'R' };
+  for (const x of [{ ...common }, { ...common, panel: 'combine' as const }, { ...common, panel: 'co' as const }]) {
+    const kind: PromptKind = x.panel === 'combine' ? 'rereview' : 'pr.review';
+    const off = compose.build(kind, def, task, 'claude', dir, x);
+    const on = compose.build(kind, def, task, 'claude', dir, { ...x, post: true });
+    assert.ok(!off.includes(PR_POSTED), 'nothing without post');
+    assert.ok(on.includes(`${PR_POSTED}\n\n${KANBAN_CONTRACTS.prReview}`), `${kind}/${x.panel ?? 'solo'}: the block, then the contract`);
+  }
+  assert.match(PR_POSTED, /in English, for a reader outside this office/);
+  assert.match(PR_POSTED, /Don't mention a kanban task, rounds, other reviewers/);
+  // A rewritten prompt gets it too: it is not a prompt variable.
+  settings.setProject('proj', { prompts: { 'kanban.pr.review': 'Mine', 'kanban.pr.review.combine': 'Mine too {{reviews}}' } });
+  const mine = compose.build('pr.review', def, task, 'claude', dir, { ...common, post: true });
+  assert.ok(mine.startsWith('Mine') && mine.includes(`${PR_POSTED}\n\n${KANBAN_CONTRACTS.prReview}`));
+  assert.ok(compose.build('rereview', def, task, 'claude', dir, { ...common, panel: 'combine', post: true }).includes(PR_POSTED));
+  assert.deepEqual(Object.keys(PROMPTS).filter((id) => PROMPTS[id as PromptId].text.includes(PR_POSTED)), [], 'it is in no editable prompt');
+});
+
+test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images folder and the rules, and ends with the UI test contract; the pictures are listed to the reviewers', (t) => {
+  const def = KANBAN_PROMPT_DEFS['kanban.pr.uiTest'];
+  assert.deepEqual(placeholders(def.text).sort(), ['imagesDir', 'instructions', 'language', 'project', 'prs', 'repos', 'task']);
+  assert.equal(PROMPT_CONTRACT['kanban.pr.uiTest'], 'prUiTest');
+  assert.equal(PROMPTS['kanban.pr.uiTest'].group, 'kanban');
+  assert.ok(placeholders(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.review'].text).every((n) => ['imagesDir', 'imageList'].includes(n)));
+  const { def: floorDef, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const x = { phase: 'implement' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3 — its head is fetched as origin/office-pr/3', prRepos: '- `.`: Proj' };
+  const text = compose.build('pr.uitest', floorDef, task, 'claude', dir, x);
+  assert.doesNotMatch(text, /\{\{/);
+  for (const part of ['its head is fetched as origin/office-pr/3', `Save the pictures in ${images}`, '<subject>-before.png or <subject>-after.png', 'under its Images tab: they are not added to any pull request', 'git worktree add --detach', 'git fetch origin pull/<number>/head', 'Never create, move or delete a branch, never commit', 'is from a fork is not tested', "Don't commit, push or change any file of the repositories", 'stop every process you started', 'say so in your reply and end', 'Use test data and test accounts only']) assert.ok(text.includes(part), part);
+  assert.ok(text.endsWith(KANBAN_CONTRACTS.prUiTest), 'the UI test contract');
+  assert.match(KANBAN_CONTRACTS.prUiTest, /Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them/);
+  assert.match(KANBAN_CONTRACTS.prUiTest, /How to end your work/, 'the work-done ending of an investigation');
+  assert.doesNotMatch(KANBAN_CONTRACTS.prUiTest, /REVIEW: APPROVED/);
+  assert.ok(text.includes('WORK DONE'));
+  // What the user said to a tester that asked goes after it.
+  assert.match(compose.build('pr.uitest', floorDef, task, 'claude', dir, { ...x, text: 'Use the staging login.' }), /Use the staging login\./);
+  // The reviewers list the pictures, when the UI was tested and some were saved.
+  const base = { phase: 'pr-review' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3' };
+  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), /was tested before your review/, 'no pictures, nothing to list');
+  mkdirSync(images, { recursive: true });
+  writeFileSync(path.join(images, 'login-before.png'), 'b');
+  writeFileSync(path.join(images, 'login-after.png'), 'a');
+  const listed = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
+  assert.ok(listed.includes(`- login: before ${path.join(images, 'login-before.png')}, after ${path.join(images, 'login-after.png')}`));
+  assert.match(listed, /A wrong UI in the pictures is a finding\. Pictures that are missing are not/);
+  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, base), /was tested before your review/, 'only a review that had the UI tested');
+  assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true, panel: 'co' }).includes('login-before.png'), 'the additional reviewers too');
 });

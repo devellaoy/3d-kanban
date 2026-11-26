@@ -253,6 +253,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
   const roundsIn = h('input', { type: 'number', 'aria-label': 'Rounds' }) as HTMLInputElement;
   const roundsNote = h('small.muted');
   const budgetIn = h('input', { type: 'number', min: 50, step: 250, 'aria-label': 'Token budget in thousands' }) as HTMLInputElement;
+  const budgetLabel = h('label');
   const budgetNote = h('small.muted');
   const provider = providerPicker(store.project, 'meeting-provider', 'Workers');
   const busy = h('p.meeting-busy');
@@ -271,7 +272,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
     outputNote.classList.toggle('bad', !!problem);
   };
   const syncBudget = () => {
-    budgetIn.placeholder = def().unlimited ? 'No limit' : '';
+    budgetIn.placeholder = def().unlimited ? 'Unlimited' : '';
     if (!budgetTouched) budgetIn.value = def().unlimited ? '' : String((roles.length * TOKENS_PER_SEAT) / 1000);
   };
   const renderRoles = () => {
@@ -299,6 +300,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
     roundsIn.value = String(d.rounds.default);
     roundsIn.disabled = d.rounds.min === d.rounds.max;
     roundsNote.textContent = d.roundsNote;
+    budgetLabel.textContent = d.unlimited ? 'Token budget (thousands, empty: unlimited)' : 'Token budget (thousands)';
     budgetNote.textContent = d.unlimited ? 'For everyone at the table together. Leave it empty for no limit; over a limit, the meeting stops.' : 'For everyone at the table together. Over it, the meeting stops.';
     prRow.classList.toggle('hidden', d.needs !== 'pr');
     partsRow.classList.toggle('hidden', d.needs !== 'parts');
@@ -336,7 +338,7 @@ function meetingForm(net: Net, preset: MeetingPreset | undefined, room: () => st
     partsRow,
     h('div.meeting-field', {}, h('label', {}, 'Output file'), outputIn, outputNote),
     h('div.meeting-field', {}, h('label.meeting-count', {}, 'Workers at the table', minus, count, plus), roleList),
-    h('div.meeting-bounds', {}, h('div.meeting-field', {}, h('label', {}, 'Round limit'), roundsIn, roundsNote), h('div.meeting-field', {}, h('label', {}, 'Token budget (thousands)'), budgetIn, budgetNote)),
+    h('div.meeting-bounds', {}, h('div.meeting-field', {}, h('label', {}, 'Round limit'), roundsIn, roundsNote), h('div.meeting-field', {}, budgetLabel, budgetIn, budgetNote)),
     provider.element,
     busy,
   ) as HTMLFormElement;

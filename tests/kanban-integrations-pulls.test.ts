@@ -90,6 +90,48 @@ test('a review of several PRs: each must be one of the project’s repositories�
   assert.deepEqual(ok.prs.map((p) => `${p.repo}#${p.number}:${p.title}`), ['o/web#10:UYT-1415: login', 'o/api#77:PR 77'], 'the repository as the project names it; one not in the list asked of gh');
 });
 
+test('a review request that cannot be looked up in time is refused with nothing started, so it can be sent again', async () => {
+  const { ctx } = project();
+  ctx.engine = { ...ctx.engine, reviewPrs: async () => assert.fail('nothing may be started') } as typeof ctx.engine;
+  const parts = createPullsParts(ctx, { checkMs: 50, gh: () => new Promise(() => undefined) });
+  assert.match(String(await parts.api.review({ project: 'web', prs: [{ repo: 'o/web', number: 10 }] }, WHO)), /could not be looked up in time, so nothing was started: try again/);
+});
+
+test('kanban.pr.review hands post and uiTest on to the engine, and leaves them out when they are not asked for', async () => {
+  const { ctx } = project();
+  const asked: Record<string, unknown>[] = [];
+  ctx.engine = { ...ctx.engine, reviewPrs: async (req: Record<string, unknown>) => (asked.push(req), { taskId: 5 }) } as typeof ctx.engine;
+  ctx.floors.set('web', { githubFor: () => ({ pulls: { items: LISTS[0].pulls, fetchedAt: 1, loading: false } }) } as unknown as Floor);
+  const parts = createPullsParts(ctx, { gh: async () => Promise.reject(new Error('gh not needed')) });
+  const c = client();
+  await parts.plugin.ws!['kanban.pr.review']!(c, { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'o/web', number: 10 }], post: true, uiTest: true, rid: 'a' });
+  await parts.plugin.ws!['kanban.pr.review']!(c, { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'o/web', number: 10 }], rid: 'b' });
+  assert.equal(asked[0].post, true);
+  assert.equal(asked[0].uiTest, true);
+  assert.ok(!('post' in asked[1]) && !('uiTest' in asked[1]));
+});
+
+test('a checked review carries each PR’s base branch and whether it is a fork’s: from the list when it has them, else asked of gh, else left out', async () => {
+  const { ctx } = project();
+  const views: string[][] = [];
+  const parts = createPullsParts(ctx, {
+    gh: async (args) => {
+      if (args[1] === 'list') return JSON.stringify(args[3] === 'o/web' ? [{ ...pr(10, 'feat/a'), baseRefName: 'develop', isCrossRepository: false }, pr(11, 'feat/b')] : [pr(5, 'feat/c')]);
+      if (args[1] === 'view') {
+        views.push(args);
+        if (args[2] === '11') return JSON.stringify({ baseRefName: 'main', isCrossRepository: true });
+        throw new Error('gh failed');
+      }
+      throw new Error('GraphQL: nothing');
+    },
+  });
+  const ok = await parts.checkReview({ project: 'web', prs: [{ repo: 'o/web', number: 10 }, { repo: 'o/web', number: 11 }, { repo: 'o/api', number: 5 }] });
+  assert.ok(typeof ok === 'object');
+  assert.deepEqual(ok.prs.map((p) => [p.number, p.base, p.fork]), [[10, 'develop', false], [11, 'main', true], [5, undefined, undefined]]);
+  assert.deepEqual(views.map((v) => v[2]), ['11', '5'], 'the list that has them is not asked again; a failed question leaves them out and fails nothing');
+  assert.ok(views[0].includes('baseRefName,isCrossRepository'));
+});
+
 test('a review of several PRs is checked here and run by the engine; the answer names its task and reviewer', async () => {
   const { ctx } = project();
   const asked: { req: unknown; who: string }[] = [];
@@ -136,42 +178,50 @@ test('a review of several PRs is checked here and run by the engine; the answer 
   assert.equal(Array.isArray(all) && all.length, 2);
 });
 
-test('🤝 a panel of several PRs: upstream’s review panel on the one in the floor’s own repository, briefed with all of them', async () => {
+test('🤝 a review panel of several PRs: kanban.pr.brief answers the meeting form’s preset (prompt, title, the floor’s own repository’s PR) and starts no meeting', async () => {
   const { ctx } = project();
-  const started: { req: MeetingRequest; by: string; owner?: string }[] = [];
-  let busy: string | undefined;
+  const started: MeetingRequest[] = [];
   const floor = {
     githubFor: (repo?: string) => ({ pulls: { items: (repo === 'o/api' ? LISTS[1] : LISTS[0]).pulls, fetchedAt: 1, loading: false } }),
     project: { agentProviders: ['claude'] },
-    meetings: { start: (req: MeetingRequest, by: string, owner?: string) => (busy ? busy : void started.push({ req, by, owner })) },
+    meetings: { start: (req: MeetingRequest) => void started.push(req) },
   } as unknown as Floor;
   ctx.floors.set('web', floor);
-  ctx.engine = { ...ctx.engine, reviewPrs: async () => assert.fail('a panel is not the engine’s') } as typeof ctx.engine;
+  ctx.engine = { ...ctx.engine, reviewPrs: async () => assert.fail('a brief is not the engine’s') } as typeof ctx.engine;
   const parts = createPullsParts(ctx, { gh: async () => Promise.reject(new Error('gh not needed')) });
   const t = ctx.repo.createTask({ project: 'web', title: 'Login', tool: 'claude', usePlan: true, planApproval: 'auto', useReview: true, createdBy: 't', ticket: 'UYT-1415' });
   const c = client();
-  await parts.plugin.ws!['kanban.pr.review']!(c, { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'o/api', number: 3 }, { repo: 'o/web', number: 10 }], taskId: t.id, panel: true, rid: 'p' });
-  assert.deepEqual(c.got.at(-1), { t: 'kanban.ok', rid: 'p', taskId: t.id });
-  assert.equal(started.length, 1);
-  const { req, by } = started[0];
-  assert.equal(by, 'Tester');
-  assert.equal(req.pattern, 'review');
-  assert.equal(req.pr, 10, "the floor's own repository's PR: its review is posted there");
-  assert.equal(req.title, 'Review of o/api#3, o/web#10');
-  assert.match(req.prompt, /- o\/api#3 “Refactor” \(branch office\/bolt-1a2b\) https:\/\/github\.com\/x\/y\/pull\/3/);
-  assert.match(req.prompt, /- o\/web#10 “UYT-1415: login”/);
-  assert.match(req.prompt, /#10 of o\/web\) is only where the combined review is posted: review every one of them/);
-  assert.match(req.prompt, new RegExp(`kanban task #${t.id}'s: Login \\(UYT-1415\\)`));
-  assert.match(ctx.repo.listComments(t.id).comments.at(-1)!.text, /called a 🤝 review panel on o\/api#3, o\/web#10/);
+  const commentsBefore = ctx.repo.listComments(t.id).comments.length;
+  await parts.plugin.ws!['kanban.pr.brief']!(c, { t: 'kanban.pr.brief', project: 'web', prs: [{ repo: 'o/api', number: 3 }, { repo: 'o/web', number: 10 }], taskId: t.id, rid: 'p' });
+  const got = c.got.at(-1) as { t: string; rid: string; prompt: string; title: string; pr: number };
+  assert.equal(got.t, 'kanban.pr.brief');
+  assert.equal(got.rid, 'p');
+  assert.equal(got.pr, 10, "the floor's own repository's PR: its review is posted there");
+  assert.equal(got.title, 'Review of o/api#3, o/web#10');
+  assert.match(got.prompt, /- o\/api#3 “Refactor” \(branch office\/bolt-1a2b\) https:\/\/github\.com\/x\/y\/pull\/3/);
+  assert.match(got.prompt, /- o\/web#10 “UYT-1415: login”/);
+  assert.match(got.prompt, /#10 of o\/web\) is only where the combined review is posted: review every one of them/);
+  assert.match(got.prompt, new RegExp(`kanban task #${t.id}'s: Login \\(UYT-1415\\)`));
+  assert.deepEqual(started, [], 'no meeting is started');
+  assert.equal(ctx.repo.listComments(t.id).comments.length, commentsBefore, 'no task comment');
   // Only other repositories' PRs: there's nowhere for upstream's panel to post, so no.
-  await parts.plugin.ws!['kanban.pr.review']!(c, { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'o/api', number: 3 }, { repo: 'o/api', number: 10 }], panel: true, rid: 'q' });
-  assert.match((c.got.at(-1) as { message: string }).message, /posts its review on a pull request of the project's own repository \(o\/web\): pick one there too, or use 🔍 Review/);
-  // The meeting room's own no, and a tool the office doesn't have.
-  busy = 'The meeting room is busy';
-  assert.equal(await parts.api.panel!({ project: 'web', prs: [{ repo: 'o/web', number: 10 }] }, WHO), 'The meeting room is busy');
-  assert.match(String(await parts.api.panel!({ project: 'web', prs: [{ repo: 'o/web', number: 10 }], tool: 'codex' }, WHO)), /codex isn't set up/);
-  ctx.floors.delete('web');
-  assert.match(String(await parts.api.panel!({ project: 'web', prs: [{ repo: 'o/web', number: 10 }] }, WHO)), /floor isn't open/);
+  await parts.plugin.ws!['kanban.pr.brief']!(c, { t: 'kanban.pr.brief', project: 'web', prs: [{ repo: 'o/api', number: 3 }, { repo: 'o/api', number: 10 }], rid: 'q' });
+  assert.match((c.got.at(-1) as { message: string }).message, /posts its review on a pull request of the project's own repository \(o\/web\): pick one there too/);
+  assert.match(String(await parts.api.brief!({ project: 'nope', prs: [{ repo: 'o/web', number: 10 }] })), /no project nope/);
+});
+
+test('the brief of PR_REVIEW_MAX pull requests with long titles fits the 20,000 characters a meeting keeps of a prompt', async () => {
+  const { ctx } = project();
+  const long = (n: number): GhPull => ({ number: n, title: `${'x'.repeat(250)} ${n}`, url: `https://github.com/o/web/pull/${n}`, state: 'OPEN', isDraft: false, headRefName: `feat/${'b'.repeat(200)}-${n}`, repo: 'o/web', createdAt: LATER } as GhPull);
+  const numbers = Array.from({ length: PR_REVIEW_MAX }, (_, i) => 100 + i);
+  const floor = { githubFor: () => ({ pulls: { items: numbers.map(long), fetchedAt: 1, loading: false } }), project: { agentProviders: ['claude'] } } as unknown as Floor;
+  ctx.floors.set('web', floor);
+  const parts = createPullsParts(ctx, { gh: async () => Promise.reject(new Error('gh not needed')) });
+  const got = await parts.api.brief!({ project: 'web', prs: numbers.map((n) => ({ repo: 'o/web', number: n })) });
+  assert.equal(typeof got, 'object');
+  const brief = got as { prompt: string; title: string; pr: number };
+  assert.ok(brief.prompt.length <= 20000, `the prompt is ${brief.prompt.length} characters`);
+  assert.ok(brief.title.length <= 100);
 });
 
 test("a task's linked PRs take the board's states when its floor's PRs come back", async () => {
@@ -408,11 +458,15 @@ test('branch linking: two projects with an active task on the same repository an
   assert.deepEqual([ctx.repo.listPrLinks(a.id), ctx.repo.listPrLinks(b.id)], [[], []]);
 });
 
-test('kanban.pr.review takes panel, kanban.pr.bundle takes includeClosed: true or false, nothing else', () => {
+test('kanban.pr.review takes post and uiTest, kanban.pr.bundle takes includeClosed: true or false, nothing else', () => {
   const prs = [{ repo: 'o/web', number: 10 }];
-  assert.deepEqual(parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, panel: true }), { t: 'kanban.pr.review', project: 'web', prs, panel: true });
-  assert.deepEqual(parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, panel: false }), { t: 'kanban.pr.review', project: 'web', prs });
-  assert.match(String(parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, panel: 'yes' })), /panel must be true or false/);
+  assert.deepEqual(parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, post: true, uiTest: true }), { t: 'kanban.pr.review', project: 'web', prs, post: true, uiTest: true });
+  assert.deepEqual(parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, post: false, uiTest: false }), { t: 'kanban.pr.review', project: 'web', prs });
+  assert.match(String(parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, post: 'yes' })), /post must be true or false/);
+  assert.match(String(parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, uiTest: 1 })), /uiTest must be true or false/);
+  assert.equal((parseKanbanClientMsg({ t: 'kanban.pr.review', project: 'web', prs, panel: true }) as { panel?: boolean }).panel, undefined, 'panel is no longer known');
+  assert.deepEqual(parseKanbanClientMsg({ t: 'kanban.pr.brief', project: 'web', prs, taskId: 4 }), { t: 'kanban.pr.brief', project: 'web', prs, taskId: 4 });
+  assert.match(String(parseKanbanClientMsg({ t: 'kanban.pr.brief', project: 'web', prs: [] })), /at least one/);
   assert.deepEqual(parseKanbanClientMsg({ t: 'kanban.pr.bundle', project: 'web', branch: 'b', includeClosed: true }), { t: 'kanban.pr.bundle', project: 'web', branch: 'b', includeClosed: true });
   assert.match(String(parseKanbanClientMsg({ t: 'kanban.pr.bundle', project: 'web', branch: 'b', includeClosed: 1 })), /includeClosed must be true or false/);
 });

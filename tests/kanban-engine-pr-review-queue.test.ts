@@ -42,8 +42,9 @@ const shell = (fx: EngineFixture, desk: string) => {
 
 const reviewPrompts = (fx: EngineFixture) => fx.invocations().filter((i) => i.prompt && /Review these pull requests/.test(i.prompt));
 
-async function queuedReview(fx: EngineFixture, why: RegExp) {
-  const got = await fx.engine.reviewPrs({ project: 'proj', prs: PRS, tool: 'claude' }, ADA);
+async function queuedReview(fx: EngineFixture, why: RegExp, tool: 'claude' | 'codex' = 'claude') {
+  // (An identical request within a minute is answered with the task already made for it: the second review of a test asks with another tool.)
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: PRS, tool }, ADA);
   assert.ok(typeof got !== 'string', `queued, not refused: ${String(got)}`);
   if (typeof got === 'string') throw new Error(got);
   assert.equal(got.workerId, undefined, 'no reviewer yet');
@@ -121,7 +122,7 @@ test('a queued PR review stopped, or moved to Done, leaves the queue and never s
   assert.equal(s.status, 'waiting');
   assert.equal(s.waitingReason, 'stopped');
 
-  const moved = await queuedReview(fx, /^Queued: The office is at its limit/);
+  const moved = await queuedReview(fx, /^Queued: The office is at its limit/, 'codex');
   // As kanban.task.move does it: the column, then the engine lets go of it.
   fx.repo.updateTask(moved.id, { status: 'done' });
   await fx.engine.releaseIdle!(moved.id, ADA);

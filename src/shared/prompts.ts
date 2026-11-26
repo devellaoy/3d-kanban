@@ -127,7 +127,7 @@ const DEFS = {
   'pull.review': {
     group: 'pulls',
     label: '🔍 Review',
-    used: 'What 🔍 Review on an open pull request sends a worker.',
+    used: 'What 🔍 Review on an open pull request sends a worker, on a floor with no kanban project (or for a pull request the kanban can’t place): on a project’s floor Review is a kanban task, which sends the “Review pull requests together” prompt instead.',
     vars: PULL_VARS,
     text: "Review pull request #{{number}}: \"{{title}}\".\n\nUse `gh pr view {{number}} --comments` and `gh pr diff {{number}}`. Look for bugs, risky changes and missing tests, then give me a short summary with concrete suggestions. Don't push any commits.",
   },

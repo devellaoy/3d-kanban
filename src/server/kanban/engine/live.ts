@@ -6,6 +6,9 @@ import type { KanbanCaller } from '../registry.js';
 import type { RunEffect } from './machine.js';
 import type { HeldRun } from './turnhold.js';
 
+/** Whether a run is a pull-request review's UI test: the pr-review phase's implementer-role run (followed as an implement run: see Live.ui). */
+export const isUiRun = (run: { phase: string; role: string }) => run.phase === 'pr-review' && run.role === 'implementer';
+
 /** A run the engine started and is following, by the worker it runs on. */
 export interface Live extends HeldRun {
   round?: number;
@@ -15,6 +18,8 @@ export interface Live extends HeldRun {
   /** The part of a review round with several reviewers this run is (absent: an ordinary run). */
   panel?: ReviewPanelPart;
   tool: KanbanTool;
+  /** The run is a pull-request review's UI test (phase pr-review, role implementer): followed as an implement run, so its `phase` is 'implement'. */
+  ui?: true;
   /** Claude asked to leave plan mode (ExitPlanMode): its needs_input is the finished plan. */
   exitPlan: boolean;
   /** The plan of that ExitPlanMode, as its hook gave it: Claude writes the call to its session log later than the hook comes (see planFromHook). */

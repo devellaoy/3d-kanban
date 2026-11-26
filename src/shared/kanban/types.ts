@@ -534,8 +534,10 @@ export interface KanbanPrReviewRequest {
   tool?: KanbanTool;
   model?: string;
   effort?: KanbanEffort;
-  /** 🤝 A review panel in the floor's meeting room instead of one reviewer (see integrations/pulls). */
-  panel?: boolean;
+  /** Post the finished review on the pull requests. */
+  post?: boolean;
+  /** Also have an implementer agent test the pull requests' UI and save pictures to the task's images. */
+  uiTest?: boolean;
 }
 
 /** How a bundle of related pull requests is found in a project: one task's PRs, or those sharing a branch or a ticket. */

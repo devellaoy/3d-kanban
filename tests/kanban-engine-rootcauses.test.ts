@@ -275,14 +275,18 @@ test('🤝 the multi-PR panel brief is the kanban.pr.panel prompt: an office rew
   let office: Record<string, { text: string }> = {};
   pc.officePrompts = () => office;
   const parts = createPullsParts(pc, { gh: async () => Promise.reject(new Error('gh not needed')) });
-  const call = () => parts.api.panel!({ project: 'web', prs: [{ repo: 'o/api', number: 3 }, { repo: 'o/web', number: 10 }] }, WHO);
+  const call = async () => {
+    const got = await parts.api.brief!({ project: 'web', prs: [{ repo: 'o/api', number: 3 }, { repo: 'o/web', number: 10 }] });
+    assert.ok(typeof got === 'object', String(got));
+    return got as { prompt: string; title: string; pr: number };
+  };
 
-  assert.equal(await call(), undefined);
-  assert.match(started[0].prompt, /^Review these pull requests in the project web together/, 'the default');
+  const first = await call();
+  assert.match(first.prompt, /^Review these pull requests in the project web together/, 'the default');
+  assert.equal(first.pr, 10, 'the floor’s own repository’s PR, where upstream’s panel posts');
   office = { 'kanban.pr.panel': { text: 'Office brief for {{project}}: {{prs}}\nPosted on {{postedRepo}}#{{posted}}.' } };
-  assert.equal(await call(), undefined);
-  assert.equal(started[1].prompt, `Office brief for web: - o/api#3 “Login API” (branch feat/login) https://github.com/x/y/pull/3\n- o/web#10 “Login” (branch feat/login) https://github.com/x/y/pull/10\nPosted on o/web#10.\n\n${KANBAN_CONTRACTS.panel}`, 'sealed with the panel contract');
+  assert.equal((await call()).prompt, `Office brief for web: - o/api#3 “Login API” (branch feat/login) https://github.com/x/y/pull/3\n- o/web#10 “Login” (branch feat/login) https://github.com/x/y/pull/10\nPosted on o/web#10.\n\n${KANBAN_CONTRACTS.panel}`, 'sealed with the panel contract');
   pc.settings.setProject('web', { prompts: { 'kanban.pr.panel': 'Project brief: {{prs}}' } });
-  assert.equal(await call(), undefined);
-  assert.match(started[2].prompt, /^Project brief: - o\/api#3/);
+  assert.match((await call()).prompt, /^Project brief: - o\/api#3/);
+  assert.deepEqual(started, [], 'a brief starts no meeting: the meeting form’s button does');
 });

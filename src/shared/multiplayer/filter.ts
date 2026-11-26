@@ -148,6 +148,7 @@ export const SERVER_MSG_OUT = {
   'kanban.settings': 'drop',
   'kanban.skills': 'drop',
   'kanban.pr.owner': 'drop',
+  'kanban.pr.brief': 'drop',
   'kanban.prFound': 'drop',
   'kanban.ok': 'drop',
   'kanban.secrets.jiraTested': 'drop',

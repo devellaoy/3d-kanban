@@ -47,6 +47,7 @@ test('scoped kanban reads need a project in scope', () => {
   assert.equal(may({ t: 'kanban.subscribe', project: 'sharedfloor' }), true);
   assert.equal(may({ t: 'kanban.snapshot', project: null }), false);
   assert.equal(may({ t: 'kanban.pr.bundle', project: 'sharedfloor' }), true);
+  assert.equal(may({ t: 'kanban.pr.brief', project: 'sharedfloor' }), false);
   assert.equal(may({ t: 'kanban.task.get', id: 1 }), true);
   assert.equal(may({ t: 'kanban.task.get', id: 2 }), false);
   assert.equal(may({ t: 'kanban.task.get', id: 99 }), false);
