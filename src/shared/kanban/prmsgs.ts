@@ -6,7 +6,7 @@
 import type { KanbanEffort, KanbanPrBundleItem, KanbanPrBundleKey, KanbanTool, PrRef } from './types.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, PR_REVIEW_MAX } from './types.js';
 import { KANBAN_LIMITS, PROJECT_ID_RE, bad, bool, id, isObj, isRepoName, list, model, oneOf, optOneOf, project, text, type Obj, type Req } from './validate.js';
-import { PR_ANSWER_TEXT_MAX, PR_COMMENTS_MAX, PR_COMMENT_DECISIONS, type PrCommentAnswer } from './prcomments.js';
+import { PR_ANSWER_TEXT_MAX, PR_COMMENTS_MAX, PR_COMMENT_DECISIONS, PR_COMMENT_ID_MAX, type PrCommentAnswer } from './prcomments.js';
 
 /** How many pull requests one kanban.pr.link takes (the review's limit too). */
 export const PR_LINK_MAX = PR_REVIEW_MAX;
@@ -78,7 +78,7 @@ function commentAnswer(x: unknown): PrCommentAnswer {
   if (!isObj(x)) bad('answers must be decisions: {id, decision, text?}');
   const a = x as Obj;
   const text0 = a.text === undefined ? undefined : text(a.text, 'The text', PR_ANSWER_TEXT_MAX, { empty: true });
-  return { id: text(a.id, 'The comment id', 200), decision: oneOf(a.decision, 'decision', PR_COMMENT_DECISIONS), ...(text0?.trim() ? { text: text0 } : {}) };
+  return { id: text(a.id, 'The comment id', PR_COMMENT_ID_MAX), decision: oneOf(a.decision, 'decision', PR_COMMENT_DECISIONS), ...(text0?.trim() ? { text: text0 } : {}) };
 }
 function bundleKey(r: Obj): KanbanPrBundleKey {
   const keys = ['taskId', 'branch', 'ticket'].filter((k) => r[k] !== undefined);

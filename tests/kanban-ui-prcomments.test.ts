@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { PR_ANSWER_TEXT_MAX, type PrCommentItem, type PrCommentsState } from '../src/shared/kanban/prcomments.js';
-import { DraftStore, EMPTY_TEXT, RUNNING_TEXT, SEND_TITLE, WAITING_TITLE, WARNING_TITLE, answeredCount, countText, draftAnswers, droppedText, groupByPr, placeText, safeHref, sendState, textHint, viewOf, warningOf, type Drafts } from '../src/client/kanban/prcommentsmodel.js';
+import { DraftStore, EMPTY_TEXT, RUNNING_TEXT, SEND_TITLE, WAITING_TITLE, WARNING_TITLE, answeredCount, countText, draftAnswers, droppedText, duplicatesText, groupByPr, placeText, remarkOf, remarkText, safeHref, sendState, textHint, viewOf, warningOf, type Drafts } from '../src/client/kanban/prcommentsmodel.js';
 
 const P1 = 'https://github.com/acme/api/pull/1';
 const P2 = 'https://github.com/acme/web/pull/7';
@@ -23,7 +23,7 @@ test('the list is by pull request, in the order of the task’s links, with what
 });
 
 test('each state has its view: nothing, a line, the failure, or the list (locked once sent)', () => {
-  const s = (patch: Partial<PrCommentsState>): PrCommentsState => ({ status: 'ready', items: [], dropped: 0, ...patch });
+  const s = (patch: Partial<PrCommentsState>): PrCommentsState => ({ status: 'ready', items: [], dropped: 0, duplicates: 0, ...patch });
   assert.deepEqual(viewOf(null), { kind: 'none' });
   assert.deepEqual(viewOf(s({ status: 'none' })), { kind: 'none' });
   assert.deepEqual(viewOf(s({ status: 'running' })), { kind: 'line', text: RUNNING_TEXT });
@@ -37,7 +37,7 @@ test('each state has its view: nothing, a line, the failure, or the list (locked
 });
 
 test('a parked fetch says it is waiting and why; a warning shows with a list or a failure only', () => {
-  const s = (patch: Partial<PrCommentsState>): PrCommentsState => ({ status: 'running', items: [], dropped: 0, ...patch });
+  const s = (patch: Partial<PrCommentsState>): PrCommentsState => ({ status: 'running', items: [], dropped: 0, duplicates: 0, ...patch });
   assert.equal(WAITING_TITLE, 'The fetch of the review comments is waiting');
   assert.deepEqual(viewOf(s({ waiting: ' Usage limit reached: resets at 14:00 ' })), { kind: 'waiting', title: WAITING_TITLE, reason: 'Usage limit reached: resets at 14:00' });
   assert.deepEqual(viewOf(s({ waiting: '  ' })), { kind: 'line', text: RUNNING_TEXT }, 'no reason, no notice: it reads');
@@ -104,4 +104,13 @@ test('the count and Send: every comment needs a decision, Other its text, and th
 test('the text box says whether its text is needed', () => {
   assert.match(textHint('custom'), /required/);
   for (const dec of [undefined, 'fix', 'skip'] as const) assert.match(textHint(dec), /optional/);
+});
+
+test('remarkOf reads the #<n> of an id of a comment with several remarks; duplicatesText says how many repeats were left out', () => {
+  assert.equal(remarkOf('review:9#3'), 3);
+  assert.equal(remarkOf('thread:5#9999'), 9999);
+  for (const id of ['review:9', 'review:9#0', 'review:9#', 'review:9#x', 'review:9#10000', 'review:9#2a', '#', '']) assert.equal(remarkOf(id), undefined, id);
+  assert.equal(remarkText(3), 'Remark 3');
+  assert.equal(duplicatesText(1), '1 duplicate remark was left out');
+  assert.equal(duplicatesText(3), '3 duplicate remarks were left out');
 });

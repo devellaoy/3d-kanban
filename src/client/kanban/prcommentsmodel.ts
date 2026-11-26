@@ -49,6 +49,23 @@ export function droppedText(n: number): string {
   return `${n} ${n === 1 ? 'item' : 'items'} the agent wrote could not be read`;
 }
 
+/** What the note under the list says of the repeats left out. */
+export function duplicatesText(n: number): string {
+  return n === 1 ? '1 duplicate remark was left out' : `${n} duplicate remarks were left out`;
+}
+
+/** The number of the remark an item is, when its comment holds several (an id ending in `#<k>`), else undefined. */
+export function remarkOf(id: string): number | undefined {
+  const m = /#(\d{1,4})$/.exec(id);
+  const n = m ? Number(m[1]) : 0;
+  return n > 0 ? n : undefined;
+}
+
+/** The label of the remark's number. */
+export function remarkText(n: number): string {
+  return `Remark ${n}`;
+}
+
 /** Where a comment is: a line comment's file and line, else its kind. */
 export function placeText(i: Pick<PrCommentItem, 'kind' | 'path' | 'line'>): string {
   if (i.path) return i.line ? `${i.path}:${i.line}` : i.path;

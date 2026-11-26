@@ -120,8 +120,8 @@ What the office does for you:
   ([docs/kanban.md](docs/kanban.md#issue-sources)).
 - **Agent-written pull requests**: **O** at a desk, or the task's PR phase, has the agent push and open (or
   fix, or update) the PRs ([docs/kanban.md](docs/kanban.md#pull-requests)). **Fetch review comments** on a
-  task's Pull requests tab has the agent list and judge every unresolved comment, from anyone; you then decide
-  per comment (fix, don't fix, or your own instruction) and send the decisions back; the agent replies on each
+  task's Pull requests tab has the agent list and judge every unresolved comment, from anyone, each remark of a comment as a row of its own and duplicates once; you then decide
+  per remark (fix, don't fix, or your own instruction) and send the decisions back; the agent replies on each
   and resolves the threads it settled, the ones it only answered included.
 - **Multi-PR reviews, review panels and meetings** across repositories ([features](docs/features.md)). The PR window's **Review** is a
   kanban task with the pull request's head checked out for the reviewers of the review settings, and can post the review on

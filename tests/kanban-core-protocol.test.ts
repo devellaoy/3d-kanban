@@ -121,6 +121,9 @@ test('good messages come through rebuilt, without anything the validator did not
   refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: 'a', decision: 'merge' }] }, /decision/);
   refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: '', decision: 'fix' }] }, /empty/);
   refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: 'fix' }, /answers/);
+  // The longest id the office gives an item (shared/kanban/prcomments.ts PR_COMMENT_ID_MAX) is one the answers may name.
+  assert.equal((good({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: `${'x'.repeat(198)}#2`, decision: 'fix' }] }) as { answers: { id: string }[] }).answers[0]!.id.length, 200);
+  refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: 'x'.repeat(201), decision: 'fix' }] }, /id/);
   refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: 'a', decision: 'fix' }, { id: 'a', decision: 'skip' }] }, /decided once/);
   refused({ t: 'kanban.pr.comments.send', taskId: 4, fetchedAt: 5, answers: [{ id: 'a', decision: 'custom', text: 'x'.repeat(4001) }] }, /too long/);
   assert.deepEqual(good({ t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null }), { t: 'kanban.project.prompt.set', project: 'web', id: 'kanban.pr.create', text: null });
