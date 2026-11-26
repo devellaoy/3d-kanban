@@ -24,7 +24,7 @@ export function slot(task: Pick<KanbanTask, 'workerId' | 'sessionId' | 'reviewer
 
 /**
  * The task columns to write for the role's (and seat's) ids: only the ones given, a null clears one. A seat of 1 or more
- * writes its entry of coReviewers, so it needs the task as it is now; `spec` (re)sets the entry's tool, model and effort.
+ * writes its entry of coReviewers, so it needs the task as it is now; `spec` (re)sets the entry's tool, model, effort and focus.
  */
 export function slotPatch(role: KanbanRole, ids: Slot, seat = 0, task?: Pick<KanbanTask, 'coReviewers'>, spec?: ReviewerSpec): Columns {
   if (role === 'implementer') {
@@ -34,10 +34,10 @@ export function slotPatch(role: KanbanRole, ids: Slot, seat = 0, task?: Pick<Kan
     const list = [...(task?.coReviewers ?? [])];
     const at = list.findIndex((c) => c.seat === seat);
     const base: CoReviewer = at >= 0 ? { ...list[at] } : { seat, tool: spec?.tool ?? 'claude' };
-    if (spec) Object.assign(base, { tool: spec.tool, model: spec.model, effort: spec.effort });
+    if (spec) Object.assign(base, { tool: spec.tool, model: spec.model, effort: spec.effort, focus: spec.focus });
     if (ids.workerId !== undefined) ids.workerId === null ? delete base.workerId : (base.workerId = ids.workerId);
     if (ids.sessionId !== undefined) ids.sessionId === null ? delete base.sessionId : (base.sessionId = ids.sessionId);
-    for (const k of ['model', 'effort'] as const) if (base[k] === undefined) delete base[k];
+    for (const k of ['model', 'effort', 'focus'] as const) if (!base[k]) delete base[k];
     if (at >= 0) list[at] = base;
     else list.push(base);
     return { coReviewers: list.sort((a, b) => a.seat - b.seat) };

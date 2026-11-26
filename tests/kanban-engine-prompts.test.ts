@@ -910,3 +910,27 @@ test('plan file: a rereview names the plan file, carries the text where the file
   const text = compose.build('rereview', def, bare, 'claude', dir, histX('review'));
   assert.doesNotMatch(text, /accepted plan|\{\{|\n{3,}/i);
 });
+
+test('review focus: the reviewer\'s own review and re-review carry it before the panel rule, the combine and no-focus prompts do not', (t) => {
+  const { def, dir, repo, compose } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: true, createdBy: 'Ada' });
+  const base = { phase: 'review' as const, round: 2, rounds: 2, fixSummary: 'Fixed' };
+  for (const kind of ['review', 'rereview'] as const) {
+    const plain = compose.build(kind, def, task, 'claude', dir, base);
+    for (const empty of [undefined, '', '  ']) assert.equal(compose.build(kind, def, task, 'claude', dir, { ...base, focus: empty }), plain, `${kind}: an empty focus changes nothing`);
+    const focused = compose.build(kind, def, task, 'claude', dir, { ...base, focus: 'Security' });
+    assert.match(focused, /Your viewpoint for your own review: Security\. Look hardest for what matters from that viewpoint\. Still report a problem outside it when it is serious\./);
+    assert.doesNotMatch(focused, /on its own merits/);
+    assert.doesNotMatch(focused, /\{\{/);
+    assert.ok(focused.endsWith(KANBAN_CONTRACTS.review));
+    const co = compose.build(kind, def, task, 'claude', dir, { ...base, focus: 'Security', panel: 'co' });
+    assert.ok(co.indexOf('Your viewpoint') < co.indexOf('reviewing this same folder'), `${kind}: focus, then the panel rule`);
+  }
+  const combine = compose.build('rereview', def, task, 'claude', dir, { ...base, focus: 'Security', panel: 'combine', reviews: 'x' });
+  assert.equal(combine, compose.build('rereview', def, task, 'claude', dir, { ...base, panel: 'combine', reviews: 'x' }), 'the combine prompt is the same with and without a focus');
+  assert.match(compose.build('rereview', def, task, 'claude', dir, { ...base, panel: 'combine', reviews: 'x' }), /Judge each finding on its own merits, whatever viewpoint you or its reviewer reviewed from\./, 'the combiner is told so without a focus of its own too');
+  assert.match(combine, /Combine them into the review/);
+  assert.doesNotMatch(combine, /Your viewpoint/);
+  assert.deepEqual(placeholders(KANBAN_PROMPT_DEFS['kanban.review.focus'].text), ['focus']);
+  assert.equal(PROMPT_CONTRACT['kanban.review.focus'], undefined, 'a fragment like kanban.review.co: the contract follows the whole prompt');
+});
