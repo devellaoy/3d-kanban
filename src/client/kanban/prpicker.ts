@@ -56,11 +56,12 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: PickerMode, singl
   uiTest.box.addEventListener('change', () => writeFlag(UI_TEST_KEY, uiTest.box.checked));
   const opts = mode === 'review' ? h('div.kb-prs-opts', { role: 'group', 'aria-label': 'What the review also does' }, post.el, uiTest.el) : null;
   const shell = modalShell({
-    cls: 'kb-prs w640',
+    cls: 'kb-prs kb-prs-pick w640',
     icon: mode === 'panel' ? 'users' : 'eye',
     title: mode === 'panel' ? 'Review panel: which pull requests?' : 'Review: which pull requests?',
     id: `${repo.split('/').pop()} #${pull.number}`,
-    body: [h('div.kb-prs-body', {}, note, list, opts)],
+    // The lists scroll in a pane of their own, and the ticks stay under it (prfind.css).
+    body: [h('div.kb-prs-body.kb-prs-scroll', {}, note, list), opts],
     footerLeft: [count],
     footerRight: [cancel, justThis, go],
   });
