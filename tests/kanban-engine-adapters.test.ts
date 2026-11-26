@@ -870,22 +870,22 @@ test('antigravity transcript: the office\'s prompts not in the log yet are unhea
 test('unpasted takes a <pasted_content> wrapper around the whole prompt off, nothing else', () => {
   assert.equal(unpasted('Plain prompt\nline two'), 'Plain prompt\nline two');
   assert.equal(unpasted('\n\n<pasted_content id="a1b2">\nBody\nmore\n</pasted_content id="a1b2">\n'), 'Body\nmore');
-  assert.equal(unpasted('<pasted_content id="a1b2">\nBody\n</pasted_content>'), 'Body');
-  assert.equal(unpasted('\n\n\n  <pasted_content id="a1b2">\nBody\n</pasted_content>  \n'), 'Body');
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody\n</pasted_content id="a1b2">'), 'Body');
+  assert.equal(unpasted('\n\n\n  <pasted_content id="a1b2">\nBody\n</pasted_content id="a1b2">  \n'), 'Body');
   assert.equal(unpasted('<pasted_content>\nBody\n</pasted_content>'), 'Body');
-  // Typed text before the paste is a person's prompt: unchanged.
-  const prefixed = 'Fix these:\n\n\n\n<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\n';
-  assert.equal(unpasted(prefixed), prefixed);
-  // So is typed text after it, and a wrapper left open.
-  const suffixed = '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\nDo not do that.';
-  assert.equal(unpasted(suffixed), suffixed);
-  assert.equal(unpasted('<pasted_content id="a1b2">\nBody'), '<pasted_content id="a1b2">\nBody');
-  assert.equal(unpasted('<pasted_content id="a1b2">\nBody </pasted_content and more >'), 'Body ');
-  assert.equal(unpasted('<pasted_content id="a1b2">\nBody </pasted_contents>'), '<pasted_content id="a1b2">\nBody </pasted_contents>');
-  // The body may quote the closing tag; Windows line ends.
-  assert.equal(unpasted('<pasted_content id="a1b2">\nSee </pasted_content> here\n</pasted_content id="a1b2">'), 'See </pasted_content> here');
+  assert.equal(unpasted('<pasted_content id="a1b2">\n \n</pasted_content id="a1b2">'), ' ');
   assert.equal(unpasted('<pasted_content id="a1b2">\r\nBody\r\n</pasted_content id="a1b2">\r\n').trim(), 'Body');
-  // Ids that differ, an extra attribute.
-  assert.equal(unpasted('<pasted_content id="a1b2">\nBody\n</pasted_content id="zz99">'), 'Body');
-  assert.equal(unpasted('<pasted_content id="a1b2" lines="3">\nBody\n</pasted_content id="a1b2">'), 'Body');
+  // The body may quote a closing tag that is not its own.
+  assert.equal(unpasted('<pasted_content id="a1b2">\nSee </pasted_content> here\n</pasted_content id="a1b2">'), 'See </pasted_content> here');
+  // Anything else is a person's prompt, unchanged: typed text before or after the paste, several pastes (whatever their ids), a wrapper left open or closed by another's tag.
+  for (const same of [
+    'Fix these:\n\n\n\n<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\n',
+    '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\nDo not do that.',
+    '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\nDo this instead:\n<pasted_content id="cd34">\nOther\n</pasted_content id="cd34">',
+    '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\n<pasted_content id="ab12">\nOther\n</pasted_content id="ab12">',
+    '<pasted_content id="a1b2">\nBody',
+    '<pasted_content id="a1b2">\nBody\n</pasted_content id="zz99">',
+    '<pasted_content id="a1b2">\nBody\n</pasted_content>',
+    '<pasted_content id="a1b2">\nBody </pasted_contents>',
+  ]) assert.equal(unpasted(same), same, same);
 });

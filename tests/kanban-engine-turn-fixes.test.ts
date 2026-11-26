@@ -286,6 +286,10 @@ test('a prompt hook hears a prompt logged wrapped in <pasted_content>, but not t
   assert.equal((p[0] as { heard?: boolean }).heard, undefined);
   hearPrompt(p, `<pasted_content id="ab12">\n${body}\n</pasted_content id="ab12">\nDo not do that.`);
   assert.equal((p[0] as { heard?: boolean }).heard, undefined, 'typed text after the paste: a person\'s');
+  // A paste of nothing but whitespace is a prompt with a text, not a hook without one: it hears no comment (the oldest waiting stays unheard).
+  hearPrompt(p, '\n\n<pasted_content id="ab12">\n   \n</pasted_content id="ab12">\n');
+  hearPrompt(p, '<pasted_content id="ab12">\n</pasted_content id="ab12">');
+  assert.equal((p[0] as { heard?: boolean }).heard, undefined, 'an empty paste hears nothing');
   hearPrompt(p, `\n\n<pasted_content id="ab12">\n${body}\n</pasted_content id="ab12">\n`);
   assert.equal((p[0] as { heard?: boolean }).heard, true);
 });

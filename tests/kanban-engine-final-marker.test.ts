@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { finalMarker, stripWorkDone, workDone } from '../src/server/kanban/engine/markers.js';
 import { promptHead } from '../src/server/kanban/engine/turnhold.js';
+import { TurnEnd, type EndLive, type TurnEndDeps } from '../src/server/kanban/engine/turnend.js';
 import { readClaudeTurn } from '../src/server/kanban/engine/adapters/claude.js';
 import { readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
 import { KANBAN_CONTRACTS, PROMPT_CONTRACT, finishNudge } from '../src/shared/kanban/prompts.js';
@@ -252,7 +253,8 @@ const pasted = (body: string, id = 'q7x2') => ({
 const C1 = 'Comment #5 from Ada on task #7 while you work:\nPlease also log the redirect target.';
 const C2 = 'Comment #6 from Ada on task #7 while you work:\nAnd rename the helper.';
 
-test('office comments logged wrapped in <pasted_content> (user line and queued attachment) are acknowledged', (t) => {
+/** The read of a log whose office comments came wrapped, one queued behind a running turn and one as a user line: both acknowledged. */
+const wrappedComments = (t: { after(fn: () => void): void }) => {
   const write = scratch(t);
   const officePrompts = [{ at: T0 + 2000, head: promptHead(C1) }, { at: T0 + 2500, head: promptHead(C2) }];
   const opts = { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts };
@@ -273,6 +275,19 @@ test('office comments logged wrapped in <pasted_content> (user line and queued a
   assert.equal(r?.waiting, undefined);
   assert.ok(r?.text?.endsWith('WORK DONE'));
   assert.equal(r?.complete, true);
+  return r;
+};
+
+test('office comments logged wrapped in <pasted_content> (user line and queued attachment) are acknowledged', (t) => void wrappedComments(t));
+
+test('the WORK DONE after wrapped office comments ends the run', async (t) => {
+  const deps = { holds: { hold() {}, restate: () => false }, following: () => true, serial: (_id: number, fn: () => Promise<unknown>) => fn(), task: () => undefined, floor: () => undefined, note() {}, read: async () => undefined, turnEnded: async () => {}, nudgeIdleMs: () => 60_000, maxNudges: () => 4 } as unknown as TurnEndDeps<EndLive>;
+  const live = { taskId: 7, runId: 1, phase: 'implement', workerId: 'w', floorId: 'f', ended: false, tool: 'claude', role: 'implementer' } as unknown as EndLive;
+  const ending = await new TurnEnd<EndLive>(deps).decide(live, wrappedComments(t), { planExit: false, force: false });
+  clearTimeout(live.nudgeTimer);
+  assert.equal(ending.end, true);
+  assert.equal(ending.end && ending.unfinished, undefined);
+  assert.equal(ending.end && ending.result?.text, 'Renamed.\nWORK DONE');
 });
 
 test('a wrapped launch prompt and a wrapped restate are found among a person\'s prompts', (t) => {
@@ -310,6 +325,14 @@ test('a person\'s typed text followed by a paste that quotes the office comment 
   const r2 = readClaudeTurn(write([...log.slice(0, 2), user(after, 3, { origin: { kind: 'human' } }), asst(4, 'm2', text('Fixed.'))]), { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts });
   assert.equal(r2?.typed, true);
   assert.equal(r2?.seen, undefined);
+  // And several pastes in one prompt (the quoted comment, the person's own words, another paste): never joined into one wrapper, so the person's WORK DONE turn is not the office's answer.
+  for (const id of ['cd34', 'ab12']) {
+    const blocks = `<pasted_content id="ab12">\n${C1}\n</pasted_content id="ab12">\nIgnore that, do this:\n<pasted_content id="${id}">\nOther text\n</pasted_content id="${id}">`;
+    const r3 = readClaudeTurn(write([...log.slice(0, 2), user(blocks, 3, { origin: { kind: 'human' } }), asst(4, 'm2', text('Did that.\nWORK DONE'))]), { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts });
+    assert.equal(r3?.typed, true, id);
+    assert.equal(r3?.seen, undefined, id);
+    assert.equal(r3?.text, 'Working.', id);
+  }
 });
 
 test('a queue-operation line holding the wrapped comment changes nothing; wrapped and plain comments mix', (t) => {
