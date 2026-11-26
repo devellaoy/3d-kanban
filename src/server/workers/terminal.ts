@@ -64,9 +64,11 @@ export function flushScreens(workers: Iterable<Worker>, events: WorkerEvents, ch
       w.lastLines = [];
       w.screenDirty = true;
     }
+    // A worker that needs input is looked at even when nothing was drawn: its prompt may have been drawn before it said so.
+    if (!w.screenDirty && w.info.status !== 'needs_input') continue;
+    check(w);
     if (!w.screenDirty) continue;
     w.screenDirty = false;
-    check(w);
     const frame = snapshotScreen(w.term, w.lastLines);
     if (frame) events.screen(w.info.id, frame);
   }

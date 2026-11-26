@@ -107,6 +107,11 @@ export interface ProviderAdapter<S = undefined, P = undefined> {
      * in), or undefined when it can. `early`: it hasn't started, or was already found blocked.
      */
     blocked?(text: string, early: boolean): string | undefined;
+    /**
+     * Its screen shows a permission prompt waiting for an answer. Seen and then gone means it was
+     * answered in the terminal, which its hooks say nothing about until the approved tool has finished.
+     */
+    asking?(text: string): boolean;
   };
   usage?: ProviderUsage<S>;
   /** The office names its workers' tasks (see TaskNamer); the others keep the task their first prompt gives. */

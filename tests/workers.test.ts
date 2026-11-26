@@ -7,9 +7,12 @@ import path from 'node:path';
 import { Ledger } from '../src/server/usage.js';
 import { CARRY_ON_PROMPT, WorkerManager, type WorkerEvents } from '../src/server/workers.js';
 import { askedQuestion, heardQuestion } from '../src/server/kanban/engine/signals.js';
-import type { WorkerObservation } from '../src/server/workers/types.js';
+import type { Worker, WorkerObservation } from '../src/server/workers/types.js';
+import { checkAnswered } from '../src/server/workers/answered.js';
+import { claudeAsking } from '../src/server/providers/claude.js';
+import { flushScreens, newTerm } from '../src/server/workers/terminal.js';
 import { Worktrees } from '../src/server/worktrees.js';
-import type { AgentProvider, WorkerInfo } from '../src/shared/protocol.js';
+import type { AgentProvider, WorkerInfo, WorkerStatus } from '../src/shared/protocol.js';
 import type { PromptSource } from '../src/server/prompts.js';
 import { PROMPTS } from '../src/shared/prompts.js';
 import { stationBrief } from '../src/server/stations.js';
@@ -1840,4 +1843,98 @@ test("a task's worker the engine follows is told to continue when its terminal h
   const resumed = (await waitFor(() => launches(f), (x) => x.length >= 2))[1];
   assert.ok(resumed.args.includes('followed-run'));
   assert.equal(promptOf(resumed), CARRY_ON_PROMPT);
+});
+
+const DIALOG = ' Do you want to proceed?\n ❯ 1. Yes\n   2. Yes, and don\'t ask again for npm test commands in /foo\n   3. No, and tell Claude what to do differently (esc)\n';
+
+test('claudeAsking matches Claude Code permission dialogs and nothing else', () => {
+  assert.equal(claudeAsking(DIALOG), true);
+  assert.equal(claudeAsking(' Do you want to proceed?\n   1. Yes\n ❯ 2. No, and tell Claude what to do differently (esc)\n'), true);
+  assert.equal(claudeAsking('│ Do you want to proceed?\n│ ❯ 1. Yes\n│   2. No (esc)\n'), true);
+  assert.equal(claudeAsking(' Do you want to proceed?\n ❯ Yes\n   No\n'), true, 'a dialog without numbers');
+  assert.equal(claudeAsking(' ❯ No\n   Yes\n'), true, 'No first');
+  assert.equal(claudeAsking('   1. Yes\n   2. Yes, and enable auto mode\n   3. Yes, and don\'t ask again\n ❯ 4. No\n'), true);
+  assert.equal(claudeAsking(' ❯ 1. Yes\n   2. Deny, and tell Claude what to do differently\n'), true);
+  assert.equal(claudeAsking('The options are:\n1. Yes, go on\n2. No, stop\n'), false, 'a list without the cursor');
+  assert.equal(claudeAsking(' ❯ 1. Yes\n   2. Yes, always\n'), false);
+  assert.equal(claudeAsking('I said Yes\n1. Yes we can\nand then no\nNo way'), false);
+  assert.equal(claudeAsking('1. Yes\n\n\n\n\n\n\n\n2. No'), false);
+  assert.equal(claudeAsking('all tests passed\n$ '), false);
+});
+
+/** A Claude worker with a real headless terminal, for checkAnswered: no workers, no PTY. */
+function screenWorker(status: 'needs_input' | 'working' | 'done') {
+  const w = { info: { kind: 'agent', provider: 'claude', status, cols: 100, rows: 30, waitingSince: 1 }, bootBlocked: false } as unknown as Worker;
+  w.term = newTerm(w, { title() {} });
+  return w;
+}
+const draw = (w: Worker, text: string) => new Promise<void>((resolve) => w.term!.write('\x1b[2J\x1b[H' + text.replace(/\n/g, '\r\n'), resolve));
+
+test('a Claude prompt seen on the screen and then gone is answered, but only on a later check', async () => {
+  const w = screenWorker('needs_input');
+  const seen: string[] = [];
+  const set = (x: Worker, s: WorkerStatus) => { x.info.status = s; x.info.waitingSince = (x.info.waitingSince ?? 0) + 1; seen.push(s); };
+  await draw(w, DIALOG);
+  checkAnswered(w, set, 1000);
+  await draw(w, 'running tests...\n');
+  checkAnswered(w, set, 2000);
+  assert.deepEqual(seen, [], 'the first check that finds it gone only notes it');
+  checkAnswered(w, set, 2100);
+  assert.deepEqual(seen, [], 'too soon');
+  await draw(w, DIALOG);
+  checkAnswered(w, set, 2300);
+  await draw(w, 'running tests...\n');
+  checkAnswered(w, set, 2400);
+  checkAnswered(w, set, 2800);
+  assert.deepEqual(seen, [], 'back on screen in between resets the timer');
+  checkAnswered(w, set, 2950);
+  assert.deepEqual(seen, ['working']);
+  // The next queued prompt appears: asking again.
+  await draw(w, DIALOG);
+  checkAnswered(w, set, 3000);
+  assert.deepEqual(seen, ['working', 'needs_input']);
+  await draw(w, 'x\n');
+  checkAnswered(w, set, 3100);
+  checkAnswered(w, set, 3700);
+  assert.deepEqual(seen, ['working', 'needs_input', 'working']);
+});
+
+test('a prompt never seen on the screen leaves the worker asking', async () => {
+  const w = screenWorker('needs_input');
+  const seen: string[] = [];
+  await draw(w, 'a question the pattern does not know\n');
+  for (const at of [1000, 2000, 3000]) checkAnswered(w, (_x, s) => seen.push(s), at);
+  assert.deepEqual(seen, []);
+  assert.equal(w.info.status, 'needs_input');
+});
+
+test('a worker that is working without the screen having moved it is left alone when a dialog shows', async () => {
+  const w = screenWorker('working');
+  const seen: string[] = [];
+  await draw(w, DIALOG);
+  checkAnswered(w, (_x, s) => seen.push(s), 1000);
+  assert.deepEqual(seen, []);
+});
+
+test('PostToolUse still answers a permission prompt through the hooks', async (t) => {
+  const f = carryOnFixture(t);
+  const workers = manager(f, f.claude, []);
+  t.after(() => workers.shutdown());
+  const worker = await hireInState(f, workers, 'desk-1', 'post-tool', 'needs_input');
+  const token = launches(f).at(-1)!.env.hookToken!;
+  workers.handleHook(worker.id, token, 'PostToolUse', { session_id: 'post-tool', tool_name: 'Bash' });
+  assert.equal(workers.get(worker.id)?.status, 'working');
+});
+
+test('a worker that needs input has its screen looked at even when nothing was drawn since', async () => {
+  const w = screenWorker('needs_input');
+  Object.assign(w, { screenDirty: false, lastLines: [], keyframeAt: Date.now(), viewers: new Map() });
+  await draw(w, DIALOG);
+  w.screenDirty = false; // drawn and flushed before it said it needs input
+  let checked = 0;
+  flushScreens([w], { screen() {} } as unknown as WorkerEvents, () => checked++);
+  assert.equal(checked, 1);
+  w.info.status = 'working';
+  flushScreens([w], { screen() {} } as unknown as WorkerEvents, () => checked++);
+  assert.equal(checked, 1, 'a clean screen of a working one is left alone');
 });

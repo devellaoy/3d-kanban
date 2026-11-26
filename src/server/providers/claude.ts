@@ -188,6 +188,24 @@ export function claudeBlocked(text: string, early: boolean): string | undefined 
   return undefined;
 }
 
+/** A row of the permission dialog's options: the cursor if it is on it, a number unless the dialog hides them, and what it answers. */
+const ASK_OPTION = /^[\s│|]*(❯)?\s*(?:\d\.\s*)?(Yes|No|Deny)\b/;
+/** How many rows apart the options of one dialog may be. */
+const ASK_SPAN = 7;
+
+/**
+ * Claude Code's permission dialog is on the screen: a "Yes" option and a "No" (or "Deny") one close together, in either order,
+ * numbered or not, with the cursor on one of the options. Text that merely lists yes and no has no cursor.
+ */
+export function claudeAsking(text: string): boolean {
+  const rows = text.split('\n').map((l) => ASK_OPTION.exec(l));
+  return rows.some((m, i) => {
+    if (!m?.[1]) return false;
+    const near = rows.slice(Math.max(0, i - ASK_SPAN), i + ASK_SPAN + 1);
+    return near.some((n) => n?.[2] === 'Yes') && near.some((n) => n && n[2] !== 'Yes');
+  });
+}
+
 export const claude: ProviderAdapter<undefined, ClaudeSetup> = {
   id: 'claude',
   scrubEnv: ['CLAUDECODE', 'CLAUDE_CODE_ENTRYPOINT', 'CLAUDE_CODE_SSE_PORT', 'CLAUDE_CODE_EXECPATH', 'CLAUDE_PID', 'CLAUDE_EFFORT'],
@@ -222,7 +240,7 @@ export const claude: ProviderAdapter<undefined, ClaudeSetup> = {
   hook: { strictJson: false, handle: claudeHook },
   // OSC 9;4 progress (Claude Code emits it): 0 = idle, anything else = busy. Catches Esc-cancel,
   // which fires no Stop hook.
-  screen: { progress: true, blocked: claudeBlocked },
+  screen: { progress: true, blocked: claudeBlocked, asking: claudeAsking },
   usage: { transcript: true },
   namesTasks: true,
 };
