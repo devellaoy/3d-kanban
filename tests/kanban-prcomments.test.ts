@@ -133,7 +133,7 @@ test('parsePrComments: an id seen before is another remark of that comment and g
 });
 
 test('parsePrComments: a repeat of a remark (same pull request, same words) is left out and counted in duplicates, not dropped', () => {
-  const r = parsePrComments({ items: [raw(), raw({ id: 'thread:12', body: '  3) this LEAKS\n the   handle!! ' }), raw({ id: 'thread:13', line: 13 }), raw({ id: 'thread:14', path: 'src/b.ts' })] }, [PR]);
+  const r = parsePrComments({ items: [raw(), raw({ id: 'thread:12', body: '  3) This leaks the handle!! ' }), raw({ id: 'thread:13', line: 13 }), raw({ id: 'thread:14', path: 'src/b.ts' })] }, [PR]);
   assert.deepEqual(r.items.map((i) => i.id), ['thread:11', 'thread:13', 'thread:14'], 'the first is kept; the same words on another line or file are another remark');
   assert.deepEqual([r.dropped, r.duplicates], [0, 1]);
   // Another author's same words stay (who agrees with whom is the agent's to say), and so do two threads whose line is gone.
@@ -164,19 +164,22 @@ test('parsePrComments: the same words in another pull request are not a repeat, 
   assert.deepEqual([marks.items.length, marks.duplicates], [2, 0]);
 });
 
-test('normalisedBody: case, a leading list marker, the closing mark and spacing don’t tell remarks apart; the words and the code do', () => {
-  const same = ['This leaks the handle.', '3. this leaks the handle', '(3) This  leaks\nthe handle!', '- This leaks the handle', '* This leaks the handle?!…'];
-  for (const b of same) assert.equal(normalisedBody(b), 'this leaks the handle', b);
+test('normalisedBody: a leading list marker and the closing marks don’t tell remarks apart; everything inside does', () => {
+  const same = ['This leaks the handle.', '3. This leaks the handle', '(3) This leaks the handle!', '- This leaks the handle \n', '* This leaks the handle?!…'];
+  for (const b of same) assert.equal(normalisedBody(b), 'This leaks the handle', b);
   assert.notEqual(normalisedBody('This leaks the socket'), normalisedBody(same[0]!));
-  assert.equal(normalisedBody('Käyttöoikeus puuttuu'), 'käyttöoikeus puuttuu', 'letters of any alphabet are kept');
   assert.equal(normalisedBody(' ?! '), '');
   // Operators and other marks inside a remark are what it says: these are different remarks.
-  for (const [a, b] of [['Use === instead of ==', 'Use !== instead of !='], ['a < b', 'a > b'], ['Return x + 1', 'Return x - 1'], ['Call foo()', 'Call foo'], ['Use `a.b`', 'Use `a?.b`']]) assert.notEqual(normalisedBody(a!), normalisedBody(b!), `${a} / ${b}`);
+  for (const [a, b] of [['Use === instead of ==', 'Use !== instead of !='], ['a < b', 'a > b'], ['Return x + 1', 'Return x - 1'], ['Call foo()', 'Call foo'], ['Use `a.b`', 'Use `a?.b`'], ['Add a test for `user.ID`.', 'Add a test for `user.id`.'], ['Expect "a  b"', 'Expect "a b"'], ['Split on "\\n"', 'Split on " "'], ['Rename Foo', 'Rename foo']]) assert.notEqual(normalisedBody(a!), normalisedBody(b!), `${a} / ${b}`);
 });
 
 test('parsePrComments: remarks that differ only in their code are both kept, at the same place by the same author', () => {
   const r = parsePrComments({ items: [raw({ body: 'Use === instead of ==' }), raw({ id: 'thread:12', body: 'Use !== instead of !=' })] }, [PR]);
   assert.deepEqual([r.items.map((i) => i.id), r.duplicates], [['thread:11', 'thread:12'], 0]);
+  // Case and the spacing of a string are code too.
+  const bodies = ['Add a test for `user.ID`.', 'Add a test for `user.id`.', 'Expect "a  b" here', 'Expect "a b" here'];
+  const c = parsePrComments({ items: bodies.map((body, n) => raw({ id: `review:9#${n + 1}`, body })) }, [PR]);
+  assert.deepEqual([c.items.map((i) => i.body), c.duplicates], [bodies, 0]);
 });
 
 test('parsePrComments: a repeat left out stays as a source of the item that is kept, and reaches the answers', () => {

@@ -258,15 +258,14 @@ function itemOf(raw: unknown, prs: Map<string, string>): PrCommentItem | undefin
 }
 
 /**
- * A remark's body as it is compared, for telling repeats apart: lower case, a leading list marker (`3.`, `3)`, `(3)`, `-`, `*`) taken
- * off, every run of whitespace made one space, and the sentence's closing marks (`.`, `!`, `?`, `…`) taken off the end. Everything else
- * stays as written: `Use === instead of ==` and `Use !== instead of !=` are two remarks. Pure string work: a body is data.
+ * A remark's body as it is compared, for telling repeats apart: the body as written, without a leading list marker (`3.`, `3)`, `(3)`,
+ * `-`, `*`) and without the sentence's closing marks (`.`, `!`, `?`, `…`) and space at its ends. Nothing inside is touched: case, spacing
+ * and every mark can be what a remark about code says (`user.ID` and `user.id`, `"a  b"` and `"a b"`, `===` and `!==` are different
+ * remarks), and a repeat the office misses only shows a row twice, while a wrong match hides a remark. Pure string work: a body is data.
  */
 export function normalisedBody(body: string): string {
   return body
-    .toLowerCase()
     .replace(/^\s*(?:\d{1,4}[.)]|\(\d{1,4}\)|[-*+•])\s+/u, '')
-    .replace(/\s+/gu, ' ')
     .replace(/[\s.!?…]+$/u, '')
     .trim();
 }
