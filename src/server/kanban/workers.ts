@@ -26,14 +26,14 @@ interface CodexLog {
 }
 
 /** Kills a process and waits for it to exit: SIGTERM, then after 5 s SIGKILL and a few more seconds; resolves to what went wrong if it is still there. */
-async function endProcess(proc: Pty, name: string): Promise<string | undefined> {
+async function endProcess(proc: Pty, name: string, graceMs: readonly [number, number]): Promise<string | undefined> {
   let exited = false;
   proc.onExit(() => (exited = true));
   const within = async (ms: number) => {
     for (const end = Date.now() + ms; !exited && Date.now() < end; ) await new Promise((r) => setTimeout(r, 25));
     return exited;
   };
-  for (const [signal, ms] of [[undefined, 5000], ['SIGKILL', 3000]] as const) {
+  for (const [signal, ms] of [[undefined, graceMs[0]], ['SIGKILL', graceMs[1]]] as const) {
     try {
       proc.kill(signal);
     } catch {
@@ -60,6 +60,8 @@ export abstract class KanbanWorkers {
 
   /** ⚙️ Settings: whether workers cut off mid-turn by the office stopping carry on by themselves (set by the floor; on without it). */
   carryOn: () => boolean = () => true;
+  /** How long an old process gets to exit on SIGTERM, and then on SIGKILL, before a relaunch or halt gives up on it (shorter in tests). */
+  exitGraceMs: readonly [number, number] = [5000, 3000];
   /** Between one carrying-on worker's start and the next one's. */
   carryOnStaggerMs = CARRY_ON_STAGGER_MS;
 
@@ -123,7 +125,7 @@ export abstract class KanbanWorkers {
     setCarryOn(w, { relaunching: true, cutOff: undefined });
     try {
       // The old process lets go of the session before the new one picks it up; one that won't leave is not resumed over (two agents on a session).
-      const stuck = proc && (await endProcess(proc, w.info.name));
+      const stuck = proc && (await endProcess(proc, w.info.name, this.exitGraceMs));
       if (stuck) {
         if (!w.pty && this.workers.get(id) === w) w.pty = proc;
         return stuck;
@@ -143,7 +145,7 @@ export abstract class KanbanWorkers {
   /** Ends a worker's agent process in place (the exit handler then marks it `exited` at its desk: R resumes it); resolves to what went wrong, if anything. */
   async halt(id: string): Promise<string | undefined> {
     const w = this.workers.get(id);
-    return w?.pty ? endProcess(w.pty, w.info.name) : undefined;
+    return w?.pty ? endProcess(w.pty, w.info.name, this.exitGraceMs) : undefined;
   }
 
   /** When a person last opened or shut this worker's window (in memory): a sign of life for the idle close, which a sweep between the two would miss. */

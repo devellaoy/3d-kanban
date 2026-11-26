@@ -51,6 +51,24 @@ async function start(fx: EngineFixture) {
 }
 const inReview = (x: KanbanTask) => x.status === 'review' && x.runState === 'idle';
 const coWorker = (fx: EngineFixture, seat = 1) => fx.workers.list().find((w) => w.kanban?.seat === seat);
+/** The co-reviewer's agent has taken its prompt and works on its turn: a restart now finds its terminal busy, not one that has not started yet (which a restart drops). */
+const coWorking = (fx: EngineFixture, seat = 1) => coWorker(fx, seat)?.status === 'working';
+/**
+ * Runs `fn` synchronously in the update that puts the task in its fix phase, before the fix run can end and the next round open: polling for the
+ * phase (`sawTask`) can come too late, and a round that opened first has read the settings `fn` was to change.
+ */
+function atFix(fx: EngineFixture, fn: () => void) {
+  const update = fx.repo.updateTask.bind(fx.repo);
+  let done = false;
+  fx.repo.updateTask = (taskId, patch) => {
+    const t = update(taskId, patch);
+    if (!done && t?.phase === 'fix') {
+      done = true;
+      fn();
+    }
+    return t;
+  };
+}
 
 // --- The prompts -----------------------------------------------------------------------------------
 
@@ -102,7 +120,7 @@ test('one extra reviewer: main approves first, the co-reviewer asks for changes 
 
 test('the co-reviewer is on a worker of its own in the task worktree, with its own tool, a seat on its card, and no desk behind the implementer', async (t) => {
   const fx = await setup(t);
-  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 2000 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
+  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 1200 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
   const id = await start(fx);
   await until('the co-reviewer at work', () => !!coWorker(fx));
   const w = coWorker(fx)!;
@@ -160,8 +178,8 @@ test('a co-reviewer asking in its terminal is not a question for the task: its s
 for (const order of ['main first', 'main last'] as const) {
   test(`two extra reviewers (codex and claude): ${order}; the combine lists the three and the round is one`, async (t) => {
     const fx = await setup(t, { extra: [{ tool: 'codex' }, { tool: 'claude' }] });
-    const slow = { delayMs: 1500 };
-    fx.setRules([IMPLEMENT, FIX, co(CHANGES('Codex: a.ts:1.'), { kind: 'codex', ...(order === 'main first' ? slow : {}) }), co(APPROVED, { kind: 'claude', ...(order === 'main first' ? { delayMs: 2500 } : {}) }), MAIN1(CHANGES('Main: m.ts:2.'), order === 'main last' ? { delayMs: 3000 } : {}), COMBINE(CHANGES('Confirmed: a.ts:1 and m.ts:2.'))]);
+    const slow = { delayMs: 1200 };
+    fx.setRules([IMPLEMENT, FIX, co(CHANGES('Codex: a.ts:1.'), { kind: 'codex', ...(order === 'main first' ? slow : {}) }), co(APPROVED, { kind: 'claude', ...(order === 'main first' ? { delayMs: 2000 } : {}) }), MAIN1(CHANGES('Main: m.ts:2.'), order === 'main last' ? { delayMs: 2000 } : {}), COMBINE(CHANGES('Confirmed: a.ts:1 and m.ts:2.'))]);
     const id = await start(fx);
     await fx.waitTask(id, inReview, 'the review column', 50_000);
     const r = runs(fx, id);
@@ -269,10 +287,9 @@ test('changes requested, fixed, reviewed again: the co-reviewers come back on th
 test('a co-reviewer whose tool changed since its last round starts a fresh session with the full review prompt', async (t) => {
   const fx = await setup(t, { rounds: 2 });
   fx.setRules([IMPLEMENT, FIX, { when: 'round 2 of 2[\\s\\S]*Combine them', reply: APPROVED }, { when: `round 2 of 2[\\s\\S]*${CO}`, reply: APPROVED }, { when: 'Review the changes again', reply: APPROVED }, co(CHANGES('Co: a.ts:1.')), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: a.ts:1.'))]);
-  const id = await start(fx);
   // Between the rounds, while the implementer fixes, the seat's tool changes to claude.
-  await fx.sawTask(id, (x) => x.phase === 'fix', 'the fix', 40_000);
-  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 2, reReviewLastFix: false, extra: [{ tool: 'claude' }] } });
+  atFix(fx, () => fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 2, reReviewLastFix: false, extra: [{ tool: 'claude' }] } }));
+  const id = await start(fx);
   await fx.waitTask(id, inReview, 'the review column', 60_000);
   const second = runs(fx, id).filter((x) => x.seat === 1);
   assert.deepEqual(second.map((x) => x.tool), ['codex', 'claude']);
@@ -307,7 +324,8 @@ test('stop while the co-reviewer works (the main reviewer is done): every run of
 });
 
 test('stop while the main reviewer and the co-reviewer are both still working: both runs stop, one stop event', async (t) => {
-  const fx = await setup(t);
+  // The main reviewer's turn ignores the Esc (escSilent): its run ends when the stop grace runs out.
+  const fx = await setup(t, { engine: { stopGraceMs: 500 } });
   fx.setRules([IMPLEMENT, co(CHANGES('Slow.'), { delayMs: 30_000 }), MAIN1(APPROVED, { delayMs: 30_000, escSilent: true })]);
   const id = await start(fx);
   await until('both reviewers working', () => !!coWorker(fx) && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
@@ -361,6 +379,8 @@ test('the office restarts while the combine runs: it carries on as the combine, 
   fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: z.ts:1.')), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: z.ts:1.'), { delayMs: 30_000 }), { when: 'office was restarted', reply: CHANGES('Confirmed after the restart: z.ts:1.') }]);
   const id = await start(fx);
   await until('the combine running', () => fx.repo.listRuns(id).some((r) => r.panel === 'combine' && r.status === 'running') && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
+  // The combine that was cut off is working through its 30 s turn; the rules are read when a turn starts, so the rest of the test needs no wait.
+  fx.setRules([IMPLEMENT, FIX, { when: 'office was restarted', reply: CHANGES('Confirmed after the restart: z.ts:1.') }, COMBINE(CHANGES('Confirmed: z.ts:1.'))]);
   await fx.restartOffice();
   await fx.waitTask(id, inReview, 'the review column', 60_000);
   const mainRuns = shape(runs(fx, id)).filter((x) => x.startsWith('0'));
@@ -387,9 +407,10 @@ test('no additional reviewers: one review run, no panel, nothing of the round`s 
 
 test('the engine restarts in the gap, the co-reviewer`s terminal still there: it is followed again, and the round goes on to the combine', async (t) => {
   const fx = await setup(t);
-  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: y.ts:2.'), { delayMs: 3000 }), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: y.ts:2.'))]);
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: y.ts:2.'), { delayMs: 1500 }), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: y.ts:2.'))]);
   const id = await start(fx);
-  await until('the main reviewer done and the co-reviewer working', () => runs(fx, id).some((r) => r.panel === 'solo' && r.status === 'succeeded') && fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status === 'running'));
+  // Its agent must have the prompt: a restart that finds the terminal of a seat not yet started drops the seat (the run row says `running` from the launch on).
+  await until('the main reviewer done and the co-reviewer working', () => runs(fx, id).some((r) => r.panel === 'solo' && r.status === 'succeeded') && fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status === 'running') && coWorking(fx));
   fx.restartEngine();
   await fx.waitTask(id, inReview, 'the review column', 60_000);
   assert.deepEqual(shape(runs(fx, id)), ['0:solo:succeeded', '1:co:succeeded', '0:combine:succeeded']);
@@ -443,7 +464,7 @@ test('an old co-reviewer worker leaving after its seat was given to a new one do
 
 test('a co-reviewer worker the task no longer lists is still sent home when the round ends', async (t) => {
   const fx = await setup(t);
-  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 1500 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
+  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 1000 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
   const id = await start(fx);
   await until('the co-reviewer at work', () => !!coWorker(fx));
   fx.repo.updateTask(id, { coReviewers: fx.task(id).coReviewers!.map((c) => ({ ...c, workerId: undefined })) });
@@ -495,9 +516,9 @@ test('the office restarts during the main reviewer`s own review with the co-revi
 
 test('the engine restarts during the main reviewer`s own review with the co-reviewer working: it is followed again, one set of co-reviewers', async (t) => {
   const fx = await setup(t);
-  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: n.ts:1.'), { delayMs: 2500 }), MAIN1(APPROVED, { delayMs: 1500 }), COMBINE(APPROVED)]);
+  fx.setRules([IMPLEMENT, FIX, co(CHANGES('Co: n.ts:1.'), { delayMs: 2000 }), MAIN1(APPROVED, { delayMs: 1000 }), COMBINE(APPROVED)]);
   const id = await start(fx);
-  await until('both working', () => !!coWorker(fx) && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
+  await until('both working', () => coWorking(fx) && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
   fx.restartEngine();
   await fx.waitTask(id, inReview, 'the review column', 60_000);
   assert.equal(fx.repo.listRuns(id).filter((r) => r.seat === 1).length, 1);
@@ -550,7 +571,7 @@ test('a combine that cannot start publishes nothing: the task waits failed, and 
 for (const shrink of ['one reviewer removed', 'the list emptied'] as const) {
   test(`settings changed mid-round (${shrink}): the combine still has every finished result under its own label`, async (t) => {
     const fx = await setup(t, { extra: [{ tool: 'codex' }, { tool: 'claude' }] });
-    fx.setRules([IMPLEMENT, FIX, co(CHANGES('Codex: q.ts:1.'), { kind: 'codex' }), co(CHANGES('Claude: q.ts:2.'), { kind: 'claude', delayMs: 3000 }), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed.'))]);
+    fx.setRules([IMPLEMENT, FIX, co(CHANGES('Codex: q.ts:1.'), { kind: 'codex' }), co(CHANGES('Claude: q.ts:2.'), { kind: 'claude', delayMs: 1500 }), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed.'))]);
     const id = await start(fx);
     await until('both co-reviewers hired', () => !!coWorker(fx, 1) && !!coWorker(fx, 2));
     fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 1, reReviewLastFix: false, ...(shrink === 'one reviewer removed' ? { extra: [{ tool: 'claude' }] } : {}) } });
@@ -620,11 +641,10 @@ test('the list emptied before Retry: an interrupted combine still combines', asy
 
 async function twoRounds(t: { after(fn: () => unknown): void }, first: { tool: 'claude' | 'codex'; model?: string; effort?: 'low' | 'medium' | 'high' }, then: { tool: 'claude' | 'codex' }) {
   const fx = await setup(t, { rounds: 2, extra: [first] });
+  atFix(fx, () => fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 2, reReviewLastFix: false, extra: [then] } }));
   const R2 = 'round 2 of 2[\\s\\S]*';
   fx.setRules([IMPLEMENT, FIX, { when: `${R2}Combine them into the review`, reply: APPROVED }, { when: `${R2}${CO}`, reply: APPROVED }, { when: 'Review the changes again \\(round 2 of 2\\)', reply: APPROVED }, co(CHANGES('Co: u.ts:1.')), MAIN1(APPROVED), COMBINE(CHANGES('Confirmed: u.ts:1.'))]);
   const id = await start(fx);
-  await fx.sawTask(id, (x) => x.phase === 'fix', 'the fix', 40_000);
-  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 2, reReviewLastFix: false, extra: [then] } });
   await fx.waitTask(id, inReview, 'the review column', 60_000);
   return { fx, id, seat: runs(fx, id).filter((r) => r.seat === 1) };
 }
@@ -695,7 +715,7 @@ test('no focus: no viewpoint text anywhere and no focus in the seat or the names
 
 test('a seat keeps its focus when the settings change mid-round', async (t) => {
   const fx = await setup(t, { extra: [{ tool: 'codex', focus: 'Security' }] });
-  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 2000 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
+  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 1500 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
   const id = await start(fx);
   await until('the co-reviewer at work', () => !!coWorker(fx));
   assert.equal(fx.task(id).coReviewers?.[0].focus, 'Security');

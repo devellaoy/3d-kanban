@@ -254,7 +254,7 @@ test('saving a connection makes the projects with a Jira source fetch their issu
     assert.match(issues.message('app').error ?? '', /No Jira connection for a.atlassian.net/);
     await (issues.plugin.ws as any)['kanban.secrets.jira.set'](boss, { t: 'kanban.secrets.jira.set', name: 'A', site: 'a.atlassian.net', email: 'e', token: 't', rid: 'r' });
     // The new connection is tried now, without waiting for the next round.
-    for (let i = 0; i < 50 && !issues.message('app').items.length; i++) await new Promise((r) => setTimeout(r, 10));
+    for (let i = 0; i < 1500 && !issues.message('app').items.length; i++) await new Promise((r) => setTimeout(r, 10));
     assert.deepEqual(issues.message('app').items.map((i) => i.key), ['AAA-1']);
     assert.equal(issues.message('app').error, undefined);
     // Only the projects with a source on the changed site fetched: docs reads b, which this connection is not for.

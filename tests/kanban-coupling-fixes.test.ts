@@ -140,7 +140,7 @@ const coreOf = (fx: EngineFixture) => {
     assert.equal(moved.queuedRun, undefined);
     state.limit = Infinity;
     await fx.workers.kill(sh.id);
-    await sleep(1500);
+    await sleep(700); // a drain that hired anybody would have spawned the worker by now
     assert.equal(fx.workers.list().filter((w) => w.kanban?.taskId === q.id).length, 0, 'the drain hired nobody');
     assert.equal(fx.task(q.id).status, to);
   });
@@ -157,7 +157,7 @@ test('the drain looks at the task’s column again: a queued run of a task that 
   fx.repo.updateTask(q.id, { status: 'done', doneAt: Date.now() });
   state.limit = Infinity;
   await fx.workers.kill(sh.id);
-  await sleep(1500);
+  await sleep(700); // a drain that hired anybody would have spawned the worker by now
   const after = fx.task(q.id);
   assert.equal(after.status, 'done');
   assert.equal(after.runState, 'idle');

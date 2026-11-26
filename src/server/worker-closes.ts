@@ -29,6 +29,8 @@ export class WorkerCloses {
   private retired = new Set<string>();
   /** What was told about a PR, so a warning comes once and not after each turn. */
   private told = new Set<string>();
+  /** The checks under way (see settled). */
+  private running = new Set<Promise<void>>();
 
   constructor(
     private floor: Floor,
@@ -70,8 +72,15 @@ export class WorkerCloses {
       if (c.done || c.asking || c.tries >= TRIES) continue;
       c.tries++;
       c.asking = true;
-      void this.check(info, c, pull, ref).finally(() => (c!.asking = false));
+      const running = this.check(info, c, pull, ref).finally(() => (c!.asking = false, this.running.delete(running)));
+      this.running.add(running);
+      void running;
     }
+  }
+
+  /** Resolves once the checks under way are done: they are fire and forget otherwise. */
+  async settled(): Promise<void> {
+    while (this.running.size) await Promise.allSettled([...this.running]);
   }
 
   private async check(info: WorkerInfo, c: Check, pull: GhPull, ref: string) {

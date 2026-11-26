@@ -828,7 +828,7 @@ export class WorkerManager extends KanbanWorkers {
         info.activity = adapter.bootHint;
         this.setStatus(w, 'needs_input');
       } else this.setStatus(w, 'idle');
-    }, 12000);
+    }, 12000).unref(); // only a hint for a running office: it must not keep a process that is otherwise done alive
   }
 
   private startFailed(w: Worker, message: string) {

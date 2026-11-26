@@ -197,7 +197,7 @@ test('a stopped pr-fix that was fetched over is continued as pr-fix, by the impl
   const fx = await engineFixture();
   t.after(() => fx.close());
   const task = await reviewed(fx, []);
-  fx.setRules([{ when: 'Address the open review comments', reply: 'Fixing.', delayMs: 5000 }, { when: 'List the unresolved review comments', reply: 'Fetched.' }, { when: 'carry on|Continue', reply: 'Carried on.' }]);
+  fx.setRules([{ when: 'Address the open review comments', reply: 'Fixing.', delayMs: 2500 }, { when: 'List the unresolved review comments', reply: 'Fetched.' }, { when: 'carry on|Continue', reply: 'Carried on.' }]);
   assert.equal(await fx.engine.prRun(task.id, ADA, 'fix'), undefined);
   await fx.waitTask(task.id, (x) => x.runState === 'running' && x.phase === 'pr-fix', 'pr-fix running');
   assert.equal(await fx.engine.stop(task.id, ADA), undefined);

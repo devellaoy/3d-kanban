@@ -48,6 +48,8 @@ async function setup(script: (hello: number) => Error | undefined, officeCheck: 
     onDown: () => {},
     verifier: officeCheck,
     unavailableMinMs: 100,
+    // The pause before a retry starts at a second and doubles: nothing here depends on its length, so it is short.
+    backoffStartMs: 50,
     ...extra,
   });
   cleanup.push(async () => {

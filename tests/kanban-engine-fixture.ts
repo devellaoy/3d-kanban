@@ -5,7 +5,7 @@
 import { PROMPTS } from '../src/shared/prompts.js';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
 import { rm } from 'node:fs/promises';
 import http from 'node:http';
 import { tmpdir } from 'node:os';
@@ -49,6 +49,8 @@ export interface Rule {
   noMarker?: boolean;
   /** Waits this long before submitting the prompt (the UserPromptSubmit hook), after the process started. */
   submitDelayMs?: number;
+  /** Instead of `submitDelayMs`: submits the prompt only once this file exists, so a test holds it exactly as long as it looks (no timer to outwait). */
+  submitReleaseFile?: string;
   /** Run git with these arguments in the agent's folder first (checking out a branch, say). */
   git?: string[];
   /** Exit mid-turn instead of answering. */
@@ -234,7 +236,8 @@ async function turn(prompt, answered) {
   escLogs = !!rule.escLogs;
   escStopMs = rule.escStopMs;
   if (!answered) {
-    if (rule.submitDelayMs) await new Promise((r) => setTimeout(r, rule.submitDelayMs));
+    if (rule.submitReleaseFile) while (!fs.existsSync(rule.submitReleaseFile)) await new Promise((r) => setTimeout(r, 25));
+    else if (rule.submitDelayMs) await new Promise((r) => setTimeout(r, rule.submitDelayMs));
     await post('UserPromptSubmit', { prompt });
   }
   if (silent && rule.delayMs) {
@@ -669,7 +672,12 @@ export async function engineFixture(opts: { engine?: EngineOptions; repos?: Floo
       return (fx.engine = makeEngine());
     },
     broadcasts,
-    setRules: (rules) => writeFileSync(rulesFile, JSON.stringify(rules)),
+    // Whole or not at all: a fake agent reads the file at every prompt, and a plain write is a truncate and then the text, which a read can fall between.
+    setRules: (rules) => {
+      const next = `${rulesFile}.${process.pid}.tmp`;
+      writeFileSync(next, JSON.stringify(rules));
+      renameSync(next, rulesFile);
+    },
     // Only whole lines: a fake agent may be mid-append, and a read can then see the start of its line without the end.
     invocations: () => (existsSync(log) ? readFileSync(log, 'utf8').split('\n').slice(0, -1).filter(Boolean).map((l) => JSON.parse(l) as Invocation) : []),
     task: (id) => repo.getTask(id)!,

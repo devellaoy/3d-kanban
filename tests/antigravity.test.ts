@@ -134,6 +134,8 @@ test('the helper posts the snake_case body to the authenticated bridge and print
   const dir = temp();
   const received: { url?: string; authorization?: string; body?: unknown } = {};
   const server = createServer((req, res) => {
+    // A free port of the machine: the office's own port probe (a GET /) may knock on it. Only the helper's post counts.
+    if (req.method !== 'POST') return void res.writeHead(404).end();
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => {
@@ -484,6 +486,8 @@ test('a huge prompt loses no event: the helper cuts it and every hook gets throu
   const dir = temp();
   const bodies: Record<string, unknown>[] = [];
   const server = createServer((req, res) => {
+    // The port is a free one of the machine's: the office's own port probe (a GET /) and the like may knock on it. Only the helper's hook post counts.
+    if (req.method !== 'POST' || !req.url?.startsWith('/hooks/antigravity')) return void res.writeHead(404).end();
     const chunks: Buffer[] = [];
     req.on('data', (c: Buffer) => chunks.push(c));
     req.on('end', () => { bodies.push(JSON.parse(Buffer.concat(chunks).toString('utf8'))); res.writeHead(200).end(); });

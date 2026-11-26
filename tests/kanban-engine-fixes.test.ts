@@ -20,7 +20,7 @@ test('a comment typed while a review round runs is worked on when the review app
   t.after(() => fx.close());
   fx.setRules([
     { when: 'Implement kanban task', reply: 'Done.', commit: 'Work' },
-    { when: 'This is review round 1 of', reply: 'Looks fine.\n\nREVIEW: APPROVED', delayMs: 2500 },
+    { when: 'This is review round 1 of', reply: 'Looks fine.\n\nREVIEW: APPROVED', delayMs: 1200 },
     { when: 'commented on task', reply: 'Handled the comment.', commit: 'Rename' },
   ]);
   const task = fx.newTask({ usePlan: false });

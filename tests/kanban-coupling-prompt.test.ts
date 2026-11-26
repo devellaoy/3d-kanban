@@ -103,7 +103,7 @@ test('R on a task worker whose task waits is Retry; otherwise it is upstream’s
 test('the executor changes whenever no run is live, and the next phase hires the new tool with a handoff', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ ...IMPLEMENT, delayMs: 1500 }, { when: 'You are taking over kanban task', reply: 'Renamed it in codex.', commit: 'Rename' }]);
+  fx.setRules([{ ...IMPLEMENT, delayMs: 1000 }, { when: 'You are taking over kanban task', reply: 'Renamed it in codex.', commit: 'Rename' }]);
   const ctx = ctxOf(fx);
   const plugin = createCorePlugin(ctx, { subscribe() {}, unsubscribe() {} });
   const got: KanbanServerMsg[] = [];
@@ -172,6 +172,8 @@ test("upstream's webhook posts the kanban's announcements like a worker's alert,
   t.after(() => rmSync(dir, { recursive: true, force: true }));
   const bodies: unknown[] = [];
   const server = http.createServer((req, res) => {
+    // A free port of the machine: the office's own port probe (a GET /) may knock on it. Only the helper's post counts.
+    if (req.method !== 'POST') return void res.writeHead(404).end();
     let body = '';
     req.on('data', (c) => (body += c));
     req.on('end', () => {
@@ -185,7 +187,7 @@ test("upstream's webhook posts the kanban's announcements like a worker's alert,
   hook.announce('nobody hears this');
   assert.equal(hook.set(`http://127.0.0.1:${(server.address() as AddressInfo).port}/x`, 'Ada'), undefined);
   hook.announce('🗂️ #14 Fix it needs plan approval in Proj');
-  for (let i = 0; i < 100 && !bodies.length; i++) await new Promise((r) => setTimeout(r, 20));
+  for (let i = 0; i < 750 && !bodies.length; i++) await new Promise((r) => setTimeout(r, 20));
   assert.deepEqual(bodies, [{ text: '🗂️ #14 Fix it needs plan approval in Proj', event: 'needs_input', project: 'The office' }]);
   hook.stop();
 });

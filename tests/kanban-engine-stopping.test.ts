@@ -123,6 +123,8 @@ function managerWith(exitsOn: 'SIGTERM' | 'SIGKILL' | 'never') {
     }
   }
   const mgr = new Workers();
+  // The grace periods are 5 s and 3 s in the office; the fake process answers a signal at once, so a short one tells the same.
+  mgr.exitGraceMs = [300, 300];
   mgr.workers.set('w1', { info: { id: 'w1', kind: 'agent', provider: 'claude', name: 'Ada', sessionId: 's1' }, pty } as unknown as Worker);
   return { mgr, signals, resumed, w: () => mgr.workers.get('w1')! };
 }

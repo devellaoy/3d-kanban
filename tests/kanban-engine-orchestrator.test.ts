@@ -202,7 +202,8 @@ test('codex: a read-only plan, relaunched to implement, no review without change
 
   // Someone types straight into the task worker's terminal: no run of the engine's, so the task stays put.
   fx.workers.prompt(done.workerId!, 'what did you do?');
-  await new Promise((r) => setTimeout(r, 800));
+  await waitFor(() => fx.invocations().some((i) => i.prompt === 'what did you do?'), 'the typed prompt to reach the agent');
+  await new Promise((r) => setTimeout(r, 400)); // its hooks, and anything the engine would do about them, come by now
   assert.equal(fx.repo.listRuns(task.id).length, 2);
   assert.equal(fx.task(task.id).status, 'review');
 });
@@ -554,14 +555,16 @@ test('a pr turn: PR: lines link their own repositories’ PRs nobody has; any ot
 test('a turn that ends on background agents is not the run\'s end: the task waits for the agent\'s own Stop', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Implement kanban task', background: 'The helper agent is at it; I will wait for it to finish.', reply: 'Changed the redirect; tests pass.', commit: 'Work', backgroundMs: 1500 }]);
+  const release = path.join(fx.root, 'release-helper');
+  fx.setRules([{ when: 'Implement kanban task', background: 'The helper agent is at it; I will wait for it to finish.', reply: 'Changed the redirect; tests pass.', commit: 'Work', releaseFile: release }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
-  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
-  // The first Stop has come (the interim text is in the log) and the task is still at work.
-  await new Promise((r) => setTimeout(r, 500));
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The first Stop has come (the interim text is in the log) and the engine has looked at it: the task is still at work (the helper is held until the test releases it).
+  await holdsForHelper(fx, task.id, running.workerId!);
   assert.equal(fx.task(task.id).status, 'in_progress');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
+  writeFileSync(release, '');
   const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
   assert.equal(done.summary, 'Changed the redirect; tests pass.');
   const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
@@ -572,19 +575,21 @@ test('a turn that ends on background agents is not the run\'s end: the task wait
 test('a turn that ends on a background command (a test suite) is not the run\'s end: no result, no review until the command is done', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
+  const release = path.join(fx.root, 'release-helper');
   fx.setRules([
-    { when: 'Implement kanban task', background: 'Waiting for the full suite.', backgroundCommand: true, reply: 'Changed the redirect; the full suite passes.', commit: 'Work', backgroundMs: 1500 },
+    { when: 'Implement kanban task', background: 'Waiting for the full suite.', backgroundCommand: true, reply: 'Changed the redirect; the full suite passes.', commit: 'Work', releaseFile: release },
     { when: 'You are reviewing the work', reply: 'Fine.\n\nREVIEW: APPROVED' },
   ]);
   const task = fx.newTask({ usePlan: false, useReview: true });
   await fx.engine.start(task.id, ADA);
-  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
-  // The first Stop has come (the interim text is in the log): no result, no review round, still at work.
-  await new Promise((r) => setTimeout(r, 600));
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The first Stop has come (the interim text is in the log) and the engine has looked at it: no result, no review round, still at work (the command is held until the test releases it).
+  await holdsForHelper(fx, task.id, running.workerId!);
   assert.equal(fx.task(task.id).status, 'in_progress');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
   assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result'), []);
   assert.equal(reviewRuns(fx, task.id), 0);
+  writeFileSync(release, '');
   // The notification and the second Stop: the result is the second turn's text, and the review starts.
   await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle' && reviewRuns(fx, x.id) >= 1, 'the review round after the command', 30_000);
   const results = fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result');
@@ -607,8 +612,9 @@ test('a prompt typed into the terminal while a background agent works does not h
   const logs = path.join(fx.root, 'transcripts');
   const typedLogged = () => readdirSync(logs).some((f) => f.endsWith('.jsonl') && readFileSync(path.join(logs, f), 'utf8').includes('Answered what you typed.'));
   for (const until = Date.now() + 20_000; !typedLogged(); await new Promise((r) => setTimeout(r, 50))) if (Date.now() > until) assert.fail('the typed prompt was never answered');
-  // Time for the engine to read that Stop's log (readTries × readPauseMs); the helper is held meanwhile, so waiting longer is safe.
-  await new Promise((r) => setTimeout(r, 1500));
+  // The typed turn's Stop is heard (its reply is logged just before it) and the engine has read its log (a release probe goes through the task's serial queue behind that read); the helper is held meanwhile, so looking later is safe.
+  await waitFor(() => fx.workers.get(fx.repo.activeRun(task.id)!.workerId!)?.status !== 'working', "the typed turn's Stop");
+  await fx.engine.releaseIdle(task.id, ADA);
   assert.equal(fx.task(task.id).status, 'in_progress');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
   assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result'), []);
@@ -720,6 +726,8 @@ test('a stop the agent never confirms (no Stop after Esc) restarts the worker on
   const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
   const workerId = running.workerId!;
   await waitFor(() => fx.invocations().some((i) => /Implement kanban task/.test(i.prompt ?? '')), 'the agent to have the implement prompt');
+  // Its UserPromptSubmit hook is heard (the worker works): a hook still on its way would mark the worker working again after the stop rested it.
+  await waitFor(() => fx.workers.get(workerId)?.status === 'working', 'the agent to work on the prompt');
   const launches = () => fx.invocations().filter((i) => i.kind === 'claude' && !i.prompt && !i.interrupted && !i.args.includes('--output-format'));
   const before = launches().length;
   assert.equal(await fx.engine.stop(task.id, ADA), undefined);
@@ -778,6 +786,8 @@ test('a stop only the transcript confirms (Esc logged as an interrupt, no Stop h
   const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
   const workerId = running.workerId!;
   await waitFor(() => fx.invocations().some((i) => /Implement kanban task/.test(i.prompt ?? '')), 'the agent to have the implement prompt');
+  // Its UserPromptSubmit hook is heard (the worker works): a hook still on its way would mark the worker working again after the stop rested it.
+  await waitFor(() => fx.workers.get(workerId)?.status === 'working', 'the agent to work on the prompt');
   const launches = () => fx.invocations().filter((i) => i.kind === 'claude' && !i.prompt && !i.interrupted && !i.args.includes('--output-format')).length;
   const before = launches();
   assert.equal(await fx.engine.stop(task.id, ADA), undefined);
@@ -791,18 +801,21 @@ test('a stop only the transcript confirms (Esc logged as an interrupt, no Stop h
 });
 
 test('a Stop hook just before the grace ends the stop by itself: no relaunch, no "didn\'t stop" note', async (t) => {
-  const fx = await engineFixture({ engine: { stopGraceMs: 1500 } });
+  // The grace runs from the Esc written, the Stop hook comes escStopMs after the agent got it: the 1.5 s between them is what a slow
+  // machine can eat (the Esc reaching the agent, the hook reaching the office) before the grace would win the race.
+  const fx = await engineFixture({ engine: { stopGraceMs: 1800 } });
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Implement kanban task', reply: 'Done.', delayMs: 30_000, escSilent: true, escStopMs: 1100 }]);
+  fx.setRules([{ when: 'Implement kanban task', reply: 'Done.', delayMs: 30_000, escSilent: true, escStopMs: 300 }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
-  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
   await waitFor(() => fx.invocations().some((i) => /Implement kanban task/.test(i.prompt ?? '')), 'the agent to have the implement prompt');
+  await waitFor(() => fx.workers.get(running.workerId!)?.status === 'working', 'the agent to work on the prompt');
   const launches = () => fx.invocations().filter((i) => i.kind === 'claude' && !i.prompt && !i.interrupted && !i.args.includes('--output-format')).length;
   const before = launches();
   assert.equal(await fx.engine.stop(task.id, ADA), undefined);
   await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 10_000);
-  await new Promise((r) => setTimeout(r, 1000)); // past the grace, when the timer would have fired
+  await new Promise((r) => setTimeout(r, 1900)); // past the grace (1.8 s from the Esc; the stop ended 0.3 s after it), when the timer would have fired
   assert.equal(launches(), before, 'no relaunch');
   assert.equal(fx.repo.listComments(task.id).comments.some((c) => c.kind === 'status' && /restarted|didn't stop/.test(c.text)), false, 'no note');
 });
@@ -840,7 +853,9 @@ test('stop during the resumed turn, after the agent reported back, interrupts th
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
   const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
-  await new Promise((r) => setTimeout(r, 1200));
+  // The helper reported back (backgroundMs) and the resumed turn runs its tool (PreToolUse: the worker works again).
+  await holdsForHelper(fx, task.id, running.workerId!);
+  await waitFor(() => fx.workers.get(running.workerId!)?.status === 'working', 'the resumed turn to work');
   assert.equal(fx.task(task.id).status, 'in_progress', 'the resumed turn is still the run');
   assert.equal(await fx.engine.stop(task.id, ADA), undefined);
   await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 10_000);
@@ -852,12 +867,15 @@ test('stop during the resumed turn, after the agent reported back, interrupts th
 test('a log that lags behind the first Stop (the launch not logged yet) still holds the run for the background agent', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Changed the redirect; tests pass.', commit: 'Work', launchLateMs: 100, backgroundMs: 1500 }]);
+  const release = path.join(fx.root, 'release-helper');
+  fx.setRules([{ when: 'Implement kanban task', background: 'Waiting for the helper agent.', reply: 'Changed the redirect; tests pass.', commit: 'Work', launchLateMs: 100, releaseFile: release }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
-  await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
-  await new Promise((r) => setTimeout(r, 700));
+  const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
+  // The first Stop came before the launch was logged; the launch is in the log now (holdsForHelper), the engine has looked at that Stop, and the helper is held.
+  await holdsForHelper(fx, task.id, running.workerId!);
   assert.equal(fx.task(task.id).status, 'in_progress');
+  writeFileSync(release, '');
   const done = await fx.waitTask(task.id, (x) => x.status === 'review', 'the review column', 15_000);
   assert.equal(done.summary, 'Changed the redirect; tests pass.');
   assert.deepEqual(fx.repo.listComments(task.id).comments.filter((c) => c.kind === 'result').map((c) => c.text), ['Changed the redirect; tests pass.']);
@@ -876,12 +894,14 @@ test('Stop #1 racing the agent\'s notification: the run waits for the resumed tu
 test('a turn that ends on teammates is not the run\'s end: their hooks leave it, and the task waits for the lead\'s own Stop', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ when: 'Implement kanban task', teammates: 'The teammate is at it; I will wait for its report.', reply: 'Changed the redirect; tests pass.', commit: 'Work', teammatesMs: 1500 }]);
+  fx.setRules([{ when: 'Implement kanban task', teammates: 'The teammate is at it; I will wait for its report.', reply: 'Changed the redirect; tests pass.', commit: 'Work', teammatesMs: 1000 }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
+  let teammateHooked = false;
+  fx.workers.addObserver((o) => void (o.event === 'hook' && o.hookEvent === 'PreToolUse' && (o.payload as { agent_id?: string } | undefined)?.agent_id && (teammateHooked = true)));
   await fx.engine.start(task.id, ADA);
   const running = await fx.waitTask(task.id, (x) => x.phase === 'implement' && x.runState === 'running', 'the implement turn');
-  // The first Stop has come and so has the teammate's hook (the worker works): the task is still at work.
-  await new Promise((r) => setTimeout(r, 700));
+  // The first Stop has come and so has the teammate's hook (the worker works): the task is still at work (the teammate reports back teammatesMs after its hook).
+  await waitFor(() => teammateHooked, "the teammate's hook");
   assert.equal(fx.task(task.id).status, 'in_progress');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running');
   assert.equal(fx.workers.get(running.workerId!)?.status, 'working');

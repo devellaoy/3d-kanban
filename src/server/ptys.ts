@@ -50,8 +50,9 @@ export interface Pty {
   onExit(cb: (e: PtyExit) => void): void;
 }
 
-/** How long a terminal gets to go on the default signal before it is killed outright. */
-export const KILL_GRACE_MS = 5000;
+/** How long a terminal gets to go on the default signal before it is killed outright. AGENT_OFFICE_KILL_GRACE_MS (at least 100) shortens it for tests, which start the host with it. */
+const graceFromEnv = Number(process.env.AGENT_OFFICE_KILL_GRACE_MS);
+export const KILL_GRACE_MS = Number.isFinite(graceFromEnv) && graceFromEnv >= 100 ? graceFromEnv : 5000;
 
 /**
  * Ends a terminal for good: the default signal (SIGHUP), then SIGKILL if it is still there after

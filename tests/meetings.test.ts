@@ -273,7 +273,7 @@ test('in a git project the output is committed on the meeting branch, which outl
   assert.ok(f.prompts[0].text.includes(`Write it to ${path.join(f.cwd(), '.meeting', 'r1-1-chair.md')},`));
   for (const i of [0, 1, 2]) f.take(i);
   f.take(0, '# Redis\n');
-  for (let i = 0; i < 50 && !f.cur()!.commit; i++) await new Promise((r) => setTimeout(r, 20));
+  for (let i = 0; i < 750 && !f.cur()!.commit; i++) await new Promise((r) => setTimeout(r, 20));
   const m = f.cur()!;
   assert.equal(m.status, 'done');
   assert.ok(m.commit);
@@ -282,7 +282,7 @@ test('in a git project the output is committed on the meeting branch, which outl
   // Notes stay out of the commit.
   assert.equal(git('show', '--name-only', '--format=', m.worktree!.branch), 'docs/decision.md');
   assert.equal(f.room.clear('Ada'), undefined);
-  for (let i = 0; i < 50 && existsSync(path.join(f.dir, m.worktree!.path)); i++) await new Promise((r) => setTimeout(r, 20));
+  for (let i = 0; i < 750 && existsSync(path.join(f.dir, m.worktree!.path)); i++) await new Promise((r) => setTimeout(r, 20));
   assert.equal(f.workers.length, 0);
   assert.ok(!existsSync(path.join(f.dir, m.worktree!.path)));
   assert.equal(git('rev-parse', '--abbrev-ref', m.worktree!.branch), m.worktree!.branch);

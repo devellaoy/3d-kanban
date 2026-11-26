@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { closingPr, closingRef, promptIssue } from '../src/shared/kanban/issuecard.js';
-import { checkClosing, ensureClosingRef, type ClosingMark } from '../src/server/kanban/integrations/pulls/closes.js';
+import { checkClosing, closingsIdle, ensureClosingRef, type ClosingMark } from '../src/server/kanban/integrations/pulls/closes.js';
 import { TaskQueue, type QueueWorkers } from '../src/server/queue.js';
 import type { GhPull, QueueTask, WorkerInfo } from '../src/shared/protocol.js';
 import { Floor } from '../src/server/floor.js';
@@ -109,7 +109,7 @@ test('checkClosing leaves a task with a run going alone, and gives up on a pull 
   let views = 0;
   const io = { run: async () => { views++; throw new Error('nope'); }, defaultBranch: async () => 'main' };
   const checked = new Map<string, ClosingMark>();
-  const settle = () => new Promise((r) => setTimeout(r, 20));
+  const settle = closingsIdle;
   checkClosing(ctx, 'api', checked, io);
   await settle();
   assert.equal(views, 0, 'a running task is not touched');
@@ -142,7 +142,7 @@ test('a task whose issue number collides with another repository’s is still ch
     defaultBranch: async () => 'main',
   };
   checkClosing(ctx, 'api', new Map(), io);
-  await new Promise((r) => setTimeout(r, 30));
+  await closingsIdle();
   assert.ok(seen.some((c) => c.args[1] === 'edit'), 'edited despite the number being closed in another repository');
   assert.ok(seen.length > 0 && seen.every((c) => c.env?.GH_TOKEN === 'ada'), 'every gh call as the creator');
 });
@@ -297,7 +297,7 @@ test('a kanban PR is checked again after a later run of its task, which may have
     defaultBranch: async () => 'main',
   };
   const checked = new Map<string, ClosingMark>();
-  const sync = async () => (checkClosing(ctx, 'api', checked, io), await new Promise((r) => setTimeout(r, 20)));
+  const sync = async () => (checkClosing(ctx, 'api', checked, io), await closingsIdle());
   await sync();
   await sync();
   assert.equal(views, 1, 'once per run');
@@ -371,13 +371,13 @@ test('an account user without a gh sign-in has no pull request edited with the o
   const comments: string[] = [];
   const calls: string[][] = [];
   const checked = new Map<string, ClosingMark>();
-  for (let i = 0; i < 2; i++) (checkClosing(kctx(task, link, { comments, ghAs: () => 'Sign in to GitHub first' }), 'api', checked, viewing(calls)), await wait());
+  for (let i = 0; i < 2; i++) (checkClosing(kctx(task, link, { comments, ghAs: () => 'Sign in to GitHub first' }), 'api', checked, viewing(calls)), await closingsIdle());
   assert.deepEqual(calls, []);
   assert.equal(comments.length, 1);
   assert.match(comments[0], /Sign in to GitHub first/);
   // Shared-password users (ghAs undefined) are the office's gh's owners.
   checkClosing(kctx({ ...task, id: 2 }, { ...link, taskId: 2, url: 'https://github.com/acme/api/pull/4' }, { ghAs: () => undefined }), 'api', checked, viewing(calls));
-  await wait();
+  await closingsIdle();
   assert.ok(calls.some((c) => c[1] === 'edit'));
 });
 
@@ -387,11 +387,11 @@ test('only pull requests off the task’s own branches in the project’s reposi
   const base = { taskId: 1, repoId: 'api', repo: 'acme/api', number: 3, url: 'https://github.com/acme/api/pull/3', state: 'OPEN' };
   for (const link of [{ ...base, branch: 'other' }, { ...base }, { ...base, branch: 'b', repo: 'evil/api', url: 'https://github.com/evil/api/pull/3' }]) {
     checkClosing(kctx(task, link, {}, [{ id: 'api', primary: true, remote: 'acme/api' }]), 'api', new Map(), viewing(calls));
-    await wait();
+    await closingsIdle();
   }
   assert.deepEqual(calls, [], 'a hand-linked PR, a PR without a branch and one in another repository are left alone');
   checkClosing(kctx(task, { ...base, branch: 'b' }), 'api', new Map(), viewing(calls));
-  await wait();
+  await closingsIdle();
   assert.ok(calls.some((c) => c[1] === 'edit'));
 });
 
@@ -416,10 +416,10 @@ test('the closing check keeps one mark per pull request and drops the ones it no
   const ctx = kctx(task, link);
   (ctx.repo as { latestRunId: () => number }).latestRunId = () => 1;
   checkClosing(ctx, 'api', checked, viewing([]));
-  await wait();
+  await closingsIdle();
   (ctx.repo as { latestRunId: () => number }).latestRunId = () => 2;
   checkClosing(ctx, 'api', checked, viewing([]));
-  await wait();
+  await closingsIdle();
   assert.equal(checked.size, 1);
   assert.equal(checked.get(link.url)?.runId, 2);
   (ctx.repo as { prLinksOfProject: () => unknown[] }).prLinksOfProject = () => [];
@@ -491,20 +491,20 @@ test('a plain worker’s PR from its worktree branch gets the closing line once 
   const pull = { number: 9, state: 'OPEN', isDraft: false, url: 'https://github.com/memo2/api/pull/9', headRefName: 'wb', closes: [] } as unknown as GhPull;
   as = 'Sign in to GitHub first';
   w.onPulls([pull]);
-  await wait(10);
+  await w.settled();
   assert.match(toasts[0] ?? '', /Sign in to GitHub first/);
   w.onPulls([pull]);
-  await wait(10);
+  await w.settled();
   assert.equal(toasts.length, 1, 'once');
   (info as { status: string }).status = 'working';
   w.onWorker(info);
   w.onPulls([pull]);
-  await wait(10);
+  await w.settled();
   assert.equal(toasts.length, 1, 'not while it works');
   (info as { status: string }).status = 'done';
   w.onWorker(info);
   w.onPulls([{ ...pull, headRefName: 'other' }]);
-  await wait(10);
+  await w.settled();
   assert.equal(toasts.length, 1, 'only the worker’s own branch');
   // With a sign-in, the line goes in once per turn.
   as = { env: { GH_TOKEN: 'ada' } };
@@ -512,15 +512,15 @@ test('a plain worker’s PR from its worktree branch gets the closing line once 
   const edits = () => calls.filter((c) => c.args[1] === 'edit').length;
   const w2 = new WorkerCloses(floor as never, { ghAs: () => as, toast() {} } as never, async (args, _cwd, _t, env) => (calls.push({ args, env }), args[0] === 'repo' ? 'main' : args[1] === 'view' ? JSON.stringify({ body: 'x', baseRefName: 'main', closingIssuesReferences: [] }) : ''));
   w2.onPulls([pull]);
-  await wait(10);
+  await w2.settled();
   w2.onPulls([pull]);
-  await wait(10);
+  await w2.settled();
   assert.equal(edits(), 1);
   assert.ok(calls.every((c) => c.env?.GH_TOKEN === 'ada'));
   w2.onWorker({ ...info, status: 'working' });
   w2.onWorker({ ...info, status: 'done' });
   w2.onPulls([pull]);
-  await wait(10);
+  await w2.settled();
   assert.equal(edits(), 2, 'again after a new turn');
 });
 
@@ -533,7 +533,7 @@ test('a task is told once per pull request that it cannot be edited, not once pe
   for (const run of [1, 2, 3]) {
     (ctx.repo as { latestRunId: () => number }).latestRunId = () => run;
     checkClosing(ctx, 'api', checked, viewing([]));
-    await wait();
+    await closingsIdle();
   }
   assert.equal(comments.length, 1);
 });
@@ -549,7 +549,7 @@ test('a plain worker’s issue goes with its first pull request, and its warning
   const pull = { number: 9, state: 'OPEN', isDraft: false, url: 'https://github.com/retire/api/pull/9', headRefName: 'wb', closes: [] } as unknown as GhPull;
   for (let turn = 0; turn < 2; turn++) {
     w.onPulls([pull]);
-    await wait(10);
+    await w.settled();
     w.onWorker({ ...info, status: 'working' });
     w.onWorker({ ...info, status: 'done' });
   }
@@ -562,7 +562,7 @@ test('a plain worker’s issue goes with its first pull request, and its warning
   w.onWorker({ ...info, status: 'working' });
   w.onWorker({ ...info, status: 'done' });
   w.onPulls([{ ...pull, number: 10, url: 'https://github.com/retire/api/pull/10' }]);
-  await wait(10);
+  await w.settled();
   assert.equal(edits(), before, 'a later pull request is not edited');
 });
 
@@ -586,7 +586,7 @@ function movable(first: string, extra: { updatedAt?: () => string; office?: bool
     defaultBranch: async () => 'main',
   };
   const checked = new Map<string, ClosingMark>();
-  const sync = async () => (checkClosing(ctx, 'api', checked, io), await wait());
+  const sync = async () => (checkClosing(ctx, 'api', checked, io), await closingsIdle());
   const retarget = (ticket: string | undefined) => { events.push({ kind: 'edited', data: { ticketWas: task.ticket } }); task.ticket = ticket; };
   return { pr, task, comments, sync, retarget };
 }
@@ -671,7 +671,7 @@ test('jobs on one pull request run in order and the last one reflects the task�
   const change = (ticket: string) => { events.push({ kind: 'edited', data: { ticketWas: task.ticket } }); task.ticket = ticket; checkClosing(ctx, 'api', checked, io); };
   const view = () => JSON.stringify({ body, updatedAt: 'x', baseRefName: 'main', closingIssuesReferences: [] });
   const release = async (kind: string) => {
-    for (let i = 0; i < 50 && !waiting.some((w) => w.args[1] === kind); i++) await wait(2);
+    for (let i = 0; i < 2500 && !waiting.some((w) => w.args[1] === kind); i++) await wait(2);
     const at = waiting.findIndex((w) => w.args[1] === kind);
     assert.ok(at >= 0, `a pr ${kind} is asked for`);
     const [w] = waiting.splice(at, 1);
@@ -679,13 +679,15 @@ test('jobs on one pull request run in order and the last one reflects the task�
     w.go(kind === 'view' ? view() : '');
   };
   change('gh:acme/api#8');
-  await wait(5);
+  for (let i = 0; i < 2500 && !waiting.some((w) => w.args[1] === 'view'); i++) await wait(2);
   change('gh:acme/api#9');
   // The first job is in its first read; the second waits behind it, then works from the task as it is by then.
   await release('view');
   await release('view');
   await release('edit');
-  for (let i = 0; i < 20; i++) await wait(3), (waiting.length ? await release(waiting[0].args[1]) : undefined);
+  let idle = false;
+  void closingsIdle().then(() => (idle = true));
+  while (!idle) waiting.length ? await release(waiting[0].args[1]) : await wait(1);
   assert.equal(body, 'Did it\n\nCloses #9\n');
   assert.equal(checked.get('https://github.com/acme/api/pull/3')?.sig?.startsWith('gh:acme/api#9'), true);
 });

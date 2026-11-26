@@ -1,31 +1,49 @@
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Changes } from '../src/server/changes.js';
 import { Worktrees } from '../src/server/worktrees.js';
+
+const runGit = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
+
+/** The origin and the two clones, made once (a dozen git processes) and copied for every test, with the origin's path in their config changed. */
+let template: string | undefined;
+after(() => template && rmSync(template, { recursive: true, force: true }));
+function copyOfTemplate(root: string) {
+  if (!template) {
+    template = realpathSync(mkdtempSync(path.join(tmpdir(), 'office-worktrees-template-')));
+    const origin = path.join(template, 'origin.git');
+    runGit(template, 'init', '-q', '--bare', '-b', 'main', origin);
+    const dir = path.join(template, 'project');
+    runGit(template, 'clone', '-q', origin, dir);
+    runGit(dir, 'checkout', '-q', '-b', 'main');
+    writeFileSync(path.join(dir, 'a.txt'), 'a');
+    runGit(dir, 'add', '.');
+    runGit(dir, 'commit', '-qm', 'a');
+    runGit(dir, 'push', '-q', '-u', 'origin', 'main');
+    runGit(template, 'clone', '-q', origin, path.join(template, 'github'));
+  }
+  cpSync(template, root, { recursive: true });
+  for (const clone of ['project', 'github']) {
+    const config = path.join(root, clone, '.git', 'config');
+    writeFileSync(config, readFileSync(config, 'utf8').split(template).join(root));
+  }
+}
 
 /**
  * A project cloned from a bare origin, plus a second clone standing in for GitHub: whatever it
  * pushes is a pull request merged there, which the project hasn't pulled (issue #119).
  */
 function fixture(t: { after(fn: () => void): void }) {
-  const root = mkdtempSync(path.join(tmpdir(), 'office-worktrees-'));
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'office-worktrees-')));
   t.after(() => rmSync(root, { recursive: true, force: true }));
-  const run = (cwd: string, ...args: string[]) => execFileSync('git', ['-c', 'user.email=t@t', '-c', 'user.name=t', ...args], { cwd, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
-  const origin = path.join(root, 'origin.git');
-  run(root, 'init', '-q', '--bare', '-b', 'main', origin);
+  const run = runGit;
+  copyOfTemplate(root);
   const dir = path.join(root, 'project');
-  run(root, 'clone', '-q', origin, dir);
-  run(dir, 'checkout', '-q', '-b', 'main');
-  writeFileSync(path.join(dir, 'a.txt'), 'a');
-  run(dir, 'add', '.');
-  run(dir, 'commit', '-qm', 'a');
-  run(dir, 'push', '-q', '-u', 'origin', 'main');
   const github = path.join(root, 'github');
-  run(root, 'clone', '-q', origin, github);
   const commit = (cwd: string, file: string) => {
     writeFileSync(path.join(cwd, file), file);
     run(cwd, 'add', '.');
