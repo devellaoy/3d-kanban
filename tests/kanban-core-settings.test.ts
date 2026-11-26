@@ -7,6 +7,7 @@ import {
   KanbanSettingsStore,
   DEFAULT_REVIEW,
   defaultKanbanSettings,
+  sanitizeExtraReviewers,
   sanitizeIssueSource,
   sanitizeKanbanSettings,
   sanitizePartialReview,
@@ -452,4 +453,44 @@ test('additional reviewers: the office list is replaced on save and removed by a
   assert.equal(store.effectiveReview('web').extra, undefined);
   assert.ok(!('extra' in readSettings(dir).review), 'and it is gone from the file');
   assert.equal(readSettings(dir).schemaVersion, 2, 'no schema bump');
+});
+
+test('a reviewer\'s focus: cleaned to one short line, kept for the main reviewer and the extra rows, removed with null', (t) => {
+  const messy = '  Secu\n\trity \t check  ';
+  assert.deepEqual(sanitizeReview({ focus: messy }).focus, 'Secu rity check');
+  assert.equal(sanitizeReview({ focus: 'x'.repeat(60) }).focus, 'x'.repeat(40));
+  assert.equal(sanitizeReview({ focus: 'Sec\u0000urity\u001b\u0007' }).focus, 'Sec urity', 'control characters go');
+  assert.equal(sanitizeReview({ focus: 'x'.repeat(39) + '😀😀' }).focus, 'x'.repeat(39) + '😀', 'cut by character');
+  for (const bad of [7, null, {}, '', '  \n ']) assert.ok(!('focus' in sanitizeReview({ focus: bad })), String(bad));
+  assert.equal(sanitizeReview({}, { ...DEFAULT_REVIEW, focus: 'Simplicity' }).focus, 'Simplicity', 'absent: the base\'s');
+  assert.ok(!('focus' in sanitizeReview({ focus: '' }, { ...DEFAULT_REVIEW, focus: 'Simplicity' })), 'empty: none');
+  assert.deepEqual(sanitizeExtraReviewers([{ tool: 'codex', focus: messy }, { tool: 'claude', focus: 'y'.repeat(50) }, { tool: 'claude', focus: 5 }, { tool: 'claude', focus: ' ' }]), [
+    { tool: 'codex', focus: 'Secu rity check' },
+    { tool: 'claude', focus: 'y'.repeat(40) },
+    { tool: 'claude' },
+    { tool: 'claude' },
+  ]);
+  const dir = scratch(t);
+  const store = new KanbanSettingsStore(dir);
+  store.set({ review: { focus: 'Security' } });
+  assert.equal(store.get().review.focus, 'Security');
+  assert.equal(new KanbanSettingsStore(dir).get().review.focus, 'Security', 'survives a reload');
+  store.set({ review: { rounds: 2 } as never });
+  assert.equal(store.get().review.focus, 'Security', 'untouched by another change');
+  store.set({ review: { focus: null } as never });
+  assert.ok(!('focus' in store.get().review));
+});
+
+test('a project\'s own review settings with an empty focus stand over the office\'s focus; one without a focus key inherits it', (t) => {
+  const store = new KanbanSettingsStore(scratch(t));
+  store.set({ review: { focus: 'Security' } });
+  assert.equal(store.effectiveReview('web').focus, 'Security');
+  store.setProject('web', { review: { tool: 'claude', rounds: 1, reReviewLastFix: false, sandbox: true, extra: [], focus: '' } });
+  assert.ok(!store.effectiveReview('web').focus);
+  store.setProject('web', { review: { tool: 'claude', rounds: 1, reReviewLastFix: false, sandbox: true, extra: [] } });
+  assert.equal(store.effectiveReview('web').focus, 'Security');
+  store.setProject('web', { review: { tool: 'claude', rounds: 1, reReviewLastFix: false, sandbox: true, extra: [], focus: ' Simplicity ' } });
+  assert.equal(store.effectiveReview('web').focus, 'Simplicity');
+  assert.deepEqual(sanitizePartialReview({ focus: '' }), { focus: '' });
+  assert.equal(sanitizePartialReview({ focus: 3 }), undefined);
 });

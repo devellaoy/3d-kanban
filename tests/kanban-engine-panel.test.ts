@@ -20,10 +20,10 @@ const APPROVED = 'Looks right.\nREVIEW: APPROVED';
 const CHANGES = (what: string) => `${what}\nREVIEW: CHANGES_REQUESTED`;
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-async function setup(t: { after(fn: () => unknown): void }, opts: { extra?: { tool: 'claude' | 'codex' | 'antigravity' }[]; rounds?: number; engine?: Parameters<typeof engineFixture>[0] extends infer O ? (O extends { engine?: infer E } ? E : never) : never; capacity?: Capacity } = {}) {
+async function setup(t: { after(fn: () => unknown): void }, opts: { extra?: { tool: 'claude' | 'codex' | 'antigravity'; focus?: string }[]; focus?: string; rounds?: number; engine?: Parameters<typeof engineFixture>[0] extends infer O ? (O extends { engine?: infer E } ? E : never) : never; capacity?: Capacity } = {}) {
   const fx = await engineFixture({ engine: { panelWaitMs: 20_000, ...opts.engine }, ...(opts.capacity ? { capacity: opts.capacity } : {}) });
   t.after(() => fx.close());
-  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: opts.rounds ?? 1, reReviewLastFix: false, ...(opts.extra === undefined ? { extra: [{ tool: 'codex' }] } : opts.extra.length ? { extra: opts.extra } : {}) } });
+  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: opts.rounds ?? 1, reReviewLastFix: false, ...(opts.focus ? { focus: opts.focus } : {}), ...(opts.extra === undefined ? { extra: [{ tool: 'codex' }] } : opts.extra.length ? { extra: opts.extra } : {}) } });
   return fx;
 }
 
@@ -647,4 +647,59 @@ test('a co-reviewer whose tool changes between rounds: the new tool, no model ca
   assert.equal(seat[1].model, undefined);
   assert.notEqual(seat[1].sessionId, seat[0].sessionId);
   assert.ok(!args(fx, 'claude').some((a) => /gpt-special/.test(a)));
+});
+
+// --- Focus -----------------------------------------------------------------------------------------
+
+const VIEWPOINT = /Your viewpoint for your own review: (.+?)\. Look hardest/;
+
+test('a focus: in the main reviewer`s and the co-reviewer`s own review and re-review prompts, never in the combine, whose list names the co-reviewer`s', async (t) => {
+  const fx = await setup(t, { rounds: 2, focus: 'Simplicity', extra: [{ tool: 'codex', focus: 'Security' }] });
+  const R2 = 'round 2 of 2[\\s\\S]*';
+  fx.setRules([
+    IMPLEMENT, FIX,
+    { when: `${R2}Combine them into the review`, reply: APPROVED },
+    { when: `${R2}${CO}`, reply: APPROVED },
+    { when: 'Review the changes again \\(round 2 of 2\\)', reply: APPROVED },
+    co(CHANGES('Co finds a.ts:1.')),
+    MAIN1(APPROVED),
+    COMBINE(CHANGES('Confirmed: a.ts:1.')),
+  ]);
+  const id = await start(fx);
+  await fx.waitTask(id, inReview, 'the review column', 60_000);
+  const ps = prompts(fx).map((p) => p.prompt);
+  const combines = ps.filter((p) => /Combine them into the review/.test(p));
+  assert.equal(combines.length, 2);
+  for (const c of combines) {
+    assert.doesNotMatch(c, /Your viewpoint/);
+    assert.match(c, /Reviewer 2 \(Codex, focus: Security\)/);
+    assert.match(c, /Reviewer 1 \(Claude\), you:/);
+  }
+  const own = ps.filter((p) => !/Combine them into the review/.test(p) && /review/i.test(p) && VIEWPOINT.test(p));
+  const mine = own.filter((p) => !p.includes(CO)).map((p) => VIEWPOINT.exec(p)![1]);
+  const theirs = own.filter((p) => p.includes(CO)).map((p) => VIEWPOINT.exec(p)![1]);
+  assert.deepEqual(mine, ['Simplicity', 'Simplicity'], 'the main reviewer: review and re-review');
+  assert.deepEqual(theirs, ['Security', 'Security'], 'the co-reviewer: review and re-review');
+  assert.ok(ps.filter((p) => p.includes(CO)).every((p) => p.indexOf('Your viewpoint') < p.indexOf(CO)), 'the focus comes before the panel rule');
+  for (const p of ps) assert.doesNotMatch(p, /\{\{/);
+});
+
+test('no focus: no viewpoint text anywhere and no focus in the seat or the names', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([IMPLEMENT, co(APPROVED), MAIN1(APPROVED), COMBINE(APPROVED)]);
+  const id = await start(fx);
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  for (const p of prompts(fx)) assert.doesNotMatch(p.prompt, /Your viewpoint|focus:/);
+  assert.match(prompts(fx).map((p) => p.prompt).find((p) => /Combine them/.test(p))!, /Reviewer 2 \(Codex\):/);
+});
+
+test('a seat keeps its focus when the settings change mid-round', async (t) => {
+  const fx = await setup(t, { extra: [{ tool: 'codex', focus: 'Security' }] });
+  fx.setRules([IMPLEMENT, co(APPROVED, { delayMs: 2000 }), MAIN1(APPROVED), COMBINE(APPROVED)]);
+  const id = await start(fx);
+  await until('the co-reviewer at work', () => !!coWorker(fx));
+  assert.equal(fx.task(id).coReviewers?.[0].focus, 'Security');
+  fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 1, reReviewLastFix: false, extra: [{ tool: 'codex' }], focus: '' } });
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.match(prompts(fx).map((p) => p.prompt).find((p) => /Combine them/.test(p))!, /Reviewer 2 \(Codex, focus: Security\)/);
 });

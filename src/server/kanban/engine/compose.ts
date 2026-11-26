@@ -161,6 +161,8 @@ export interface ComposeExtra {
   prRepoIds?: string[];
   /** A review round with several reviewers: an additional reviewer's prompt ('co'), or the main reviewer's combining of them ('combine', with the reviews as `reviews`). */
   panel?: 'co' | 'combine';
+  /** The reviewer's own viewpoint (review and rereview only); empty = none. */
+  focus?: string;
   reviews?: string;
   /** The answers run: the comments and the user's decisions as they were sent. */
   prAnswers?: { items: PrCommentItem[]; answers: PrCommentAnswer[] };
@@ -424,12 +426,12 @@ export class Composer {
       case 'review': {
         const h = history();
         const summary = task.summary?.trim() ? this.text('kanban.review.summary', p, { summary: task.summary.trim() }) : '';
-        return seal(ins('kanban.review', hist('kanban.review', this.withUi('kanban.review', def, task, 'review', { ...v, history: h, summary }), h)) + this.coText(x, p));
+        return seal(ins('kanban.review', hist('kanban.review', this.withUi('kanban.review', def, task, 'review', { ...v, history: h, summary }), h)) + this.reviewerText(x, p));
       }
       case 'rereview': {
         if (x.panel === 'combine') return seal(ins('kanban.review.combine', this.text('kanban.review.combine', p, { taskId: task.id, round: v.round, rounds: v.rounds, reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })));
         const h = history();
-        return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', plan: v.plan, history: h, instructions: v.instructions, language: v.language }), h)) + this.coText(x, p));
+        return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', plan: v.plan, history: h, instructions: v.instructions, language: v.language }), h)) + this.reviewerText(x, p));
       }
       case 'fix':
         return seal(ins('kanban.fix', this.withUi('kanban.fix', def, task, 'fix', { taskId: task.id, round: x.round ?? 1, rounds: x.round === undefined ? 1 : v.rounds, findings: x.findings?.trim() || '(the review gave no findings; look again at what it said in its terminal)', instructions: v.instructions, language: v.language })));
@@ -483,9 +485,10 @@ export class Composer {
     }
   }
 
-  /** What an additional reviewer's prompt has after the ordinary review prompt (see ComposeExtra.panel); empty for any other. */
-  private coText(x: ComposeExtra, project: string): string {
-    return x.panel === 'co' ? `\n\n${this.text('kanban.review.co', project)}` : '';
+  /** What a reviewer's prompt has after the ordinary review prompt: its focus, then an additional reviewer's rule (see ComposeExtra.panel); empty for any other. */
+  private reviewerText(x: ComposeExtra, project: string): string {
+    const focus = x.focus?.trim() ? `\n\n${this.text('kanban.review.focus', project, { focus: x.focus.trim() })}` : '';
+    return focus + (x.panel === 'co' ? `\n\n${this.text('kanban.review.co', project)}` : '');
   }
 
   /** The kanban.checkout text: a fresh worktree is to check out the task's existing branch (`branches`: one line per repository). */

@@ -264,6 +264,14 @@ Review the changes again (round {{round}} of {{rounds}}): check that each findin
     vars: {},
     text: `Other reviewers are reviewing this same folder at the same time as you. Don't change any files, and don't start servers or other long-running processes. Don't ask the user questions. Your result goes to the main reviewer, who combines the reviews, so make each finding concrete and checkable.`,
   },
+  'kanban.review.focus': {
+    group: 'kanban',
+    label: 'Review · focus',
+    used: "Added to a reviewer's own review prompt (the main reviewer's or an additional reviewer's) when that reviewer has a focus set in the review settings. The combine prompt does not repeat it.",
+    vars: { focus: "The reviewer's focus, a short viewpoint such as Security" },
+    needs: ['focus'],
+    text: `Your viewpoint for your own review: {{focus}}. Look hardest for what matters from that viewpoint. Still report a problem outside it when it is serious. If you later combine other reviewers' results, judge each finding on its own merits, whatever viewpoint it came from.`,
+  },
   'kanban.review.combine': {
     group: 'kanban',
     label: 'Review · combine',
