@@ -14,10 +14,12 @@ export const PR_LINK_MAX = PR_REVIEW_MAX;
 export type PrClientMsg =
   /**
    * A review of several pull requests together: answered with kanban.ok {taskId, workerId} (the
-   * review's task and its reviewer). With `panel`, the floor's meeting room reviews them instead,
-   * answered with kanban.ok {} (and taskId when one was given).
+   * review's task and its reviewer). `post` posts the finished review on the PRs; `uiTest` also has
+   * an implementer test their UI.
    */
-  | Req<{ t: 'kanban.pr.review'; project: string; prs: PrRef[]; taskId?: number; tool?: KanbanTool; model?: string; effort?: KanbanEffort; panel?: boolean }>
+  | Req<{ t: 'kanban.pr.review'; project: string; prs: PrRef[]; taskId?: number; tool?: KanbanTool; model?: string; effort?: KanbanEffort; post?: boolean; uiTest?: boolean }>
+  /** The meeting form's preset for a review panel of several PRs (the prompt, the title and the PR of the project's own repository); answered with kanban.pr.brief. Starts nothing. */
+  | Req<{ t: 'kanban.pr.brief'; project: string; prs: PrRef[]; taskId?: number }>
   /** The pull requests that belong together (open and draft ones; merged and closed too with includeClosed); answered with kanban.pr.bundle. */
   | Req<{ t: 'kanban.pr.bundle'; project: string; includeClosed?: boolean } & KanbanPrBundleKey>
   /** The task that owns a pull request, and whether its agent can fix it now: kanban.pr.owner. */
@@ -35,6 +37,8 @@ export type PrClientMsg =
 
 export type PrServerMsg =
   | { t: 'kanban.pr.bundle'; rid?: string; project: string; key: KanbanPrBundleKey; prs: KanbanPrBundleItem[]; error?: string }
+  /** The answer to kanban.pr.brief: the meeting form's prompt and title, and `pr`, the number of the project's own repository's PR the panel posts on. */
+  | { t: 'kanban.pr.brief'; rid?: string; prompt: string; title: string; pr: number }
   | { t: 'kanban.pr.owner'; rid?: string; taskId: number | null; title?: string; fixable: boolean; reason?: string }
   /** `linked`: what the search linked just now (branch matches); `candidates`: ticket matches, linked only when the user confirms; `skipped`: found but not taken, with why; `notes`: repositories that couldn't be searched. */
   | { t: 'kanban.prFound'; rid?: string; taskId: number; linked: PrRef[]; candidates: KanbanPrBundleItem[]; skipped: { repo: string; number: number; reason: string }[]; notes: string[] };
@@ -43,6 +47,7 @@ export type PrServerMsg =
 export const PR_CLIENT_TYPE_LIST: Readonly<Record<PrClientMsg['t'], true>> = {
   'kanban.pr.review': true,
   'kanban.pr.bundle': true,
+  'kanban.pr.brief': true,
   'kanban.pr.owner': true,
   'kanban.pr.find': true,
   'kanban.pr.link': true,
@@ -101,8 +106,13 @@ export function parsePrMsg(t: PrClientMsg['t'], r: Obj): Bare<PrClientMsg> {
         ...(tool ? { tool } : {}),
         ...(mdl ? { model: mdl } : {}),
         ...(effort ? { effort } : {}),
-        ...(bool(r.panel, 'panel') ? { panel: true } : {}),
+        ...(bool(r.post, 'post') ? { post: true } : {}),
+        ...(bool(r.uiTest, 'uiTest') ? { uiTest: true } : {}),
       };
+    }
+    case 'kanban.pr.brief': {
+      const taskId = r.taskId === undefined ? undefined : id(r.taskId, 'taskId');
+      return { t, project: project(r.project), prs: prRefs(r.prs), ...(taskId !== undefined ? { taskId } : {}) };
     }
     case 'kanban.pr.bundle':
       return { t, project: project(r.project), ...bundleKey(r), ...(bool(r.includeClosed, 'includeClosed') ? { includeClosed: true } : {}) };

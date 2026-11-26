@@ -110,7 +110,7 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
     }
     const taskId = reviewTaskOf(keys, bundle);
     // The panel keeps being a panel for several PRs too: the meeting room reviews them as one change set.
-    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.review', project, prs, ...(taskId ? { taskId } : {}), ...(mode === 'panel' ? { panel: true } : {}) }), button);
+    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.review', project, prs, ...(taskId ? { taskId } : {}) }), button);
     return { ok, prs };
   };
 

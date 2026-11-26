@@ -143,10 +143,11 @@ export interface KanbanPullsApi {
    */
   review(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string>;
   /**
-   * 🤝 The same PRs to the floor's meeting room: upstream's review panel, briefed with all of them.
-   * Resolves to why not, if it couldn't. (Optional only so stand-ins in tests needn't have it.)
+   * 🤝 The meeting form's preset for a review panel of the same PRs: the layered panel prompt briefed
+   * with all of them, a title, and the number of the project's own repository's PR the review is
+   * posted on. Starts nothing. Resolves to why not, if it couldn't. (Optional only so stand-ins in tests needn't have it.)
    */
-  panel?(req: KanbanPrReviewRequest, who: KanbanCaller): Promise<string | void>;
+  brief?(req: KanbanPrReviewRequest): Promise<{ prompt: string; title: string; pr: number } | string>;
 }
 
 /** Reading other tasks, for agents (implemented by the task-references plugin). */

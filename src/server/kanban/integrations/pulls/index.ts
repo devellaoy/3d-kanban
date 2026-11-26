@@ -6,10 +6,10 @@
 // the floor is closed.
 
 import type { KanbanCaller, KanbanContext, KanbanPlugin, KanbanPullsApi } from '../../registry.js';
-import type { KanbanEffort, KanbanTask, KanbanPrBundleItem, KanbanPrBundleKey, KanbanPrReviewRequest, PrRef, ProjectRepo } from '../../../../shared/kanban/types.js';
+import type { KanbanTask, KanbanPrBundleItem, KanbanPrBundleKey, KanbanPrReviewRequest, PrRef, ProjectRepo } from '../../../../shared/kanban/types.js';
 import { canFixPrs, reviewOf } from '../../../../shared/kanban/prs.js';
 import { PR_REVIEW_MAX } from '../../../../shared/kanban/types.js';
-import type { AgentEffort, GhPull, MeetingRequest } from '../../../../shared/protocol.js';
+import type { GhPull } from '../../../../shared/protocol.js';
 import { sameRepo } from '../../../../shared/floors.js';
 import { prWebUrl, repoRefOf } from '../../../../shared/hosting/remote.js';
 import { resolveKanbanPrompt, withContract } from '../../../../shared/kanban/prompts.js';
@@ -67,12 +67,6 @@ const ASK_KEPT = 2000;
 /** A project's GitHub repositories: owner/name and ProjectRepo. */
 function githubRepos(ctx: KanbanContext, project: string): (ProjectRepo & { remote: string })[] {
   return ctx.repos(project).filter((r): r is ProjectRepo & { remote: string } => r.kind === 'git' && !!r.remote);
-}
-
-/** Claude takes low…max; the kanban's `minimal` is Codex's. */
-function claudeEffort(e: KanbanEffort | undefined): AgentEffort | undefined {
-  if (!e) return undefined;
-  return e === 'minimal' ? 'low' : e;
 }
 
 /** A pull request that's still to be looked at: not merged, not closed. */
@@ -176,46 +170,32 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
   const review = async (req: KanbanPrReviewRequest, who: KanbanCaller): Promise<{ taskId: number; workerId?: string } | string> => {
     const checked = await checkReview(req);
     if (typeof checked === 'string') return checked;
-    const { panel: _, ...rest } = req;
     // The PRs as checked (titles, URLs and branches along), for the engine's prompt.
-    return ctx.engine.reviewPrs({ ...rest, prs: checked.prs }, who);
+    return ctx.engine.reviewPrs({ ...req, prs: checked.prs }, who);
   };
 
   /**
-   * Upstream's meeting room takes one pull request, of the floor's own repository: its reviewers
-   * read it with gh in the floor's checkout, and the combined review is posted on it. So the panel
-   * gets one of the picked PRs from there, and its brief (the meeting's prompt) lists every PR, so
-   * the table reviews them as one change set.
+   * The meeting form's preset for a review panel of several PRs. Upstream's meeting room takes one
+   * pull request, of the floor's own repository: its reviewers read it with gh in the floor's
+   * checkout and the combined review is posted on it. So the brief carries one of the picked PRs
+   * from there, and its prompt lists every PR, so the table reviews them as one change set. Starts
+   * nothing: the user's form does.
    */
-  const panel = async (req: KanbanPrReviewRequest, who: KanbanCaller): Promise<string | void> => {
+  const brief = async (req: KanbanPrReviewRequest): Promise<{ prompt: string; title: string; pr: number } | string> => {
     if (!ctx.project(req.project)) return `There's no project ${req.project}`;
-    const floor = ctx.floor(req.project);
-    if (!floor) return "The project's floor isn't open, so there's no meeting room for a panel";
     const checked = await checkReview(req);
     if (typeof checked === 'string') return checked;
     const primary = ctx.repos(req.project).find((r) => r.primary);
     const home = primary?.kind === 'git' ? primary.remote : undefined;
     const posted = home ? checked.prs.find((p) => sameRepo(p.repo, home)) : undefined;
-    if (!home || !posted) return `A review panel posts its review on a pull request of the project's own repository${home ? ` (${home})` : ''}: pick one there too, or use 🔍 Review for these`;
-    if (req.tool && !floor.project.agentProviders.includes(req.tool)) return `${req.tool} isn't set up on this office`;
-    const request: MeetingRequest = {
-      pattern: 'review',
-      // The brief is the layered kanban.pr.panel prompt (default → office → project), editable like the others, sealed with the panel contract.
-      prompt: withContract(resolveKanbanPrompt('kanban.pr.panel', { office: ctx.officePrompts(), project: ctx.settings.project(req.project).prompts }, { ...reviewVars(req, checked.prs), posted: String(posted.number), postedRepo: posted.repo }), 'panel'),
-      title: `Review of ${checked.prs.map((p) => `${p.repo}#${p.number}`).join(', ')}`.slice(0, 100),
-      roles: [],
-      pr: posted.number,
-      ...(req.tool ? { provider: req.tool, ...(req.tool === 'claude' ? { model: req.model, effort: claudeEffort(req.effort) } : {}) } : {}),
-    };
-    const err = floor.meetings.start(request, who.name, who.accountId);
-    if (err) return err;
-    const task = req.taskId !== undefined ? ctx.repo.getTask(req.taskId) : undefined;
-    if (task) {
-      const names = checked.prs.map((p) => `${p.repo}#${p.number}`);
-      ctx.repo.addComment({ taskId: task.id, authorKind: 'system', authorName: 'Kanban', kind: 'status', text: `${who.name} called a 🤝 review panel on ${names.join(', ')} (its review goes on ${posted.repo}#${posted.number})` });
-      ctx.repo.appendEvent(task.id, 'pr.panel', { by: who.name, prs: names });
-      ctx.taskChanged(task.id);
-    }
+    if (!home || !posted) return `A review panel posts its review on a pull request of the project's own repository${home ? ` (${home})` : ''}: pick one there too`;
+    // The meeting keeps 20,000 characters of a prompt: the PR list is clipped to leave the rest of it room.
+    const vars = reviewVars(req, checked.prs);
+    const room = 20000 - 6000;
+    const prs = vars.prs.length > room ? `${vars.prs.slice(0, room).replace(/\n[^\n]*$/, '')}\n- (the rest of the ${checked.prs.length} pull requests are cut off)` : vars.prs;
+    // The brief is the layered kanban.pr.panel prompt (default → office → project), editable like the others, sealed with the panel contract.
+    const prompt = withContract(resolveKanbanPrompt('kanban.pr.panel', { office: ctx.officePrompts(), project: ctx.settings.project(req.project).prompts }, { ...vars, prs, posted: String(posted.number), postedRepo: posted.repo }), 'panel');
+    return { prompt, title: `Review of ${checked.prs.map((p) => `${p.repo}#${p.number}`).join(', ')}`.slice(0, 100), pr: posted.number };
   };
 
   /**
@@ -485,7 +465,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       return bundleItems(project, by, o?.includeClosed === true);
     },
     review,
-    panel,
+    brief,
   };
 
   const plugin: KanbanPlugin = {
@@ -553,13 +533,13 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
         ctx.taskChanged(m.taskId);
         ok(c, m.rid, { taskId: m.taskId });
       },
+      'kanban.pr.brief': async (c, m) => {
+        const got = await brief({ project: m.project, prs: m.prs, ...(m.taskId !== undefined ? { taskId: m.taskId } : {}) });
+        if (typeof got === 'string') return fail(c, m.rid, got);
+        c.send({ t: 'kanban.pr.brief', ...(m.rid ? { rid: m.rid } : {}), ...got });
+      },
       'kanban.pr.review': async (c, m) => {
-        const req: KanbanPrReviewRequest = { project: m.project, prs: m.prs, ...(m.taskId !== undefined ? { taskId: m.taskId } : {}), ...(m.tool ? { tool: m.tool } : {}), ...(m.model ? { model: m.model } : {}), ...(m.effort ? { effort: m.effort } : {}) };
-        if (m.panel) {
-          const err = await panel(req, c);
-          if (typeof err === 'string') return fail(c, m.rid, err);
-          return ok(c, m.rid, m.taskId !== undefined ? { taskId: m.taskId } : {});
-        }
+        const req: KanbanPrReviewRequest = { project: m.project, prs: m.prs, ...(m.taskId !== undefined ? { taskId: m.taskId } : {}), ...(m.tool ? { tool: m.tool } : {}), ...(m.model ? { model: m.model } : {}), ...(m.effort ? { effort: m.effort } : {}), ...(m.post ? { post: true } : {}), ...(m.uiTest ? { uiTest: true } : {}) };
         const got = await review(req, c);
         if (typeof got === 'string') return fail(c, m.rid, got);
         ok(c, m.rid, { taskId: got.taskId, ...(got.workerId ? { workerId: got.workerId } : {}) });
