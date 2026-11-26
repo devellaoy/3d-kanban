@@ -317,6 +317,10 @@ allowed: `todo → in_progress` (= start), `waiting|review → done`, `done → 
   engine does not apply `working` itself: the task stays `waiting`/`agent_asking` until the worker's
   own hooks move it on (`needs_input` → `working`, the machine's `working`, as when it's answered at
   the terminal), so a question with more to answer keeps it asking. The engine follows the same run on.
+  A Claude permission prompt answered in the terminal is read off its screen, because Claude's hooks
+  say nothing until the approved tool has finished: the prompt seen (`ProviderAdapter.screen.asking`)
+  and then gone moves the worker to `working` (`server/workers/answered.ts`); a prompt never seen
+  there leaves it to the hooks.
   A `permission` (or unknown) is never typed into: pasted text plus Enter would pick the prompt's
   highlighted option ("no" would approve). `continue(answer)` is refused ("The agent is asking for a
   permission in its terminal: answer it there (⌨️ Open its terminal)"; unknown: "The agent is waiting
