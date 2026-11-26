@@ -242,8 +242,13 @@ test('uiTest: a fork’s pull request is left out of the test and named as such;
 
 test('uiTest: the tester’s worktree is cut from the target of the first pull request tested in the repository, and the prompt says which is which', async (t) => {
   // Its fetch of a pull request's own ref fails (nothing to fetch it from); a branch's fetch works: the worktree starts from the target, which is a local branch here.
-  const fx = await setup(t, { prGit: async (_d: string, args: string[]) => {
+  // A fetched branch lands where a real fetch puts it (refs/remotes/origin/<branch>), from the local branch of that name.
+  const fx = await setup(t, { prGit: async (d: string, args: string[]) => {
       if (args.some((a) => /refs\/pull\//.test(a))) throw new Error('no such ref');
+      for (const a of args) {
+        const m = /^\+refs\/heads\/(.+):(refs\/remotes\/origin\/.+)$/.exec(a);
+        if (m) git(d, 'update-ref', m[2], `refs/heads/${m[1]}`);
+      }
     } });
   const mainTip = git(fx.dir, 'rev-parse', 'HEAD');
   git(fx.dir, 'checkout', '-q', '-b', 'release');
@@ -269,7 +274,14 @@ test('uiTest: the tester’s worktree is cut from the target of the first pull r
     throw new Error('the tester never started');
   })();
   assert.match(start.prompt!, /#3 .* it targets release, which your workspace starts from \(origin\/release\)/);
-  assert.match(start.prompt!, /#4 .* it targets main, not release that your workspace starts from: compare against origin\/main yourself/);
+  // The other pull request targets main: its "before" pictures come from a worktree of main, by the command its line gives.
+  const cmd = /#4 .* it targets main, not release that your workspace starts from: take its "before" pictures in a worktree of its own target, (git worktree add --detach \.\/base-4 origin\/main)/.exec(start.prompt!)?.[1];
+  assert.ok(cmd, start.prompt!);
+  assert.match(start.prompt!, /When its line names another target, put that target in a worktree of its own/);
+  git(wt, ...cmd!.split(' ').slice(1));
+  assert.equal(git(path.join(wt, 'base-4'), 'rev-parse', 'HEAD'), mainTip, 'the second pull request’s pictures start from its own target');
+  assert.ok(!existsSync(path.join(wt, 'base-4', 'release.txt')));
+  git(wt, 'worktree', 'remove', '--force', 'base-4');
   await fx.waitTask(got.taskId, inReview, 'the review column', 40_000);
 });
 

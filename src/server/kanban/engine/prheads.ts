@@ -45,6 +45,8 @@ export interface PrHeads {
   bases: Record<string, string>;
   /** For a UI test (`every`): each repository's checkout (absolute) → the base branch of the first pull request tested there, fetched, which the tester's worktree is cut from. */
   uiBases: Record<string, string>;
+  /** For a UI test: the pull requests whose own target branch is fetched (as `origin/<base>`), by `prKey`: where the "before" pictures of one that targets another branch than its worktree's come from. */
+  targets: Set<string>;
   /** Every pull request whose head was fetched, by `prKey`. */
   fetched: Map<string, FetchedHead>;
   /** The pull requests that are checked out in the reviewer's worktree (the first of each repository, when its fetch worked), by `prKey`. */
@@ -99,7 +101,7 @@ export async function fetchHead(repo: ProjectRepo, p: HeadPr, git: GitRunner, si
  * fetched by then is abandoned (its git is aborted) and falls back to gh pr diff. Never rejects.
  */
 export async function fetchPrHeads(def: FloorDef, prs: HeadPr[], git: GitRunner = runGit, every = false, ms = HEADS_DEADLINE_MS): Promise<PrHeads> {
-  const out: PrHeads = { bases: {}, uiBases: {}, fetched: new Map(), checkedOut: new Set() };
+  const out: PrHeads = { bases: {}, uiBases: {}, targets: new Set(), fetched: new Map(), checkedOut: new Set() };
   const first = new Set<string>();
   const stop = new AbortController();
   let open = true;
@@ -111,8 +113,9 @@ export async function fetchPrHeads(def: FloorDef, prs: HeadPr[], git: GitRunner 
     if (!mine && !every) return;
     const got = await fetchHead(repo, p, git, stop.signal).catch(() => undefined);
     // A UI test's worktree starts from the first tested pull request's target, even when its head could not be fetched.
-    const base = got?.base ?? (every && mine && trusted(p) && p.base && (await fetchBase(repo, p.base, git, stop.signal)) ? p.base : undefined);
+    const base = got?.base ?? (every && trusted(p) && p.base && (await fetchBase(repo, p.base, git, stop.signal)) ? p.base : undefined);
     if (!open) return;
+    if (every && base) out.targets.add(prKey(p));
     if (every && mine && base) out.uiBases[path.resolve(repo.dir)] = base;
     if (!got) return;
     out.fetched.set(prKey(p), got);

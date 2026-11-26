@@ -68,9 +68,9 @@ const SUMMARY_MAX = 20_000;
 const ASKED_MS = 60_000;
 
 export class PrReviews {
-  /** The pull requests' lines of each task's latest review, as the main reviewer's prompt had them (an additional reviewer's prompt takes the same). */
   /** Reviews asked for lately, by what they ask: the answer given (or still to come) for an identical request. */
   private asked = new Map<string, { answer: Promise<{ taskId: number; workerId?: string } | string>; at?: number }>();
+  /** The pull requests' lines of each task's latest review, as the main reviewer's prompt had them (an additional reviewer's prompt takes the same). */
   private lines = new Map<number, string>();
   /** A main reviewer's solo run's whole text, by task: its run row keeps only the first SUMMARY_MAX characters, and the round's fallback posts the review whole. Cleared when the round is published. */
   private solo = new Map<number, string>();
@@ -391,7 +391,7 @@ export class PrReviews {
   /** An additional reviewer's prompt takes the pull requests' lines the main reviewer's got (kept when it was hired), else works them out again (an office restart in between). */
   private async coExtra(floor: Floor, def: FloorDef, task: KanbanTask, req: KanbanPrReviewRequest, involved: string[]): Promise<ComposeExtra> {
     const kept = this.lines.get(task.id);
-    const heads = kept ? { bases: {}, uiBases: {}, fetched: new Map(), checkedOut: new Set<string>() } : await fetchPrHeads(def, req.prs as ReviewedPr[], this.d.git, false, this.d.headsMs);
+    const heads = kept ? { bases: {}, uiBases: {}, targets: new Set<string>(), fetched: new Map(), checkedOut: new Set<string>() } : await fetchPrHeads(def, req.prs as ReviewedPr[], this.d.git, false, this.d.headsMs);
     const x = this.described(floor, def, task, req, involved, heads);
     return kept ? { ...x, prs: kept } : x;
   }

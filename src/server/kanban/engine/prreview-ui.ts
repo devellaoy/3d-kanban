@@ -67,8 +67,7 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
     const head = got ? `its head is fetched as origin/${got.ref}` : `its head is not fetched: git fetch origin pull/${p.number}/head, then FETCH_HEAD is its head`;
     const target = !p.base ? 'its target branch is not known, so your workspace is on the configured base branch'
       : p.base === start ? `it targets ${p.base}, which your workspace starts from (origin/${p.base})`
-      : start ? `it targets ${p.base}, not ${start} that your workspace starts from: compare against origin/${p.base} yourself (git fetch origin ${p.base} if it is missing)`
-      : `it targets ${p.base}, which could not be fetched, so your workspace is on the configured base branch: compare against origin/${p.base} yourself (git fetch origin ${p.base})`;
+      : `it targets ${p.base}, ${start ? `not ${start} that your workspace starts from` : 'and your workspace is on the configured base branch'}: ${start ? '' : 'unless that is the same branch, '}take its "before" pictures in a worktree of its own target, ${heads.targets.has(prKey(p)) ? '' : `git fetch origin ${p.base}, then `}git worktree add --detach ./base-${p.number} origin/${p.base}`;
     return `${prLine(p)} — ${head}; ${target}`;
   };
   const prs = [
