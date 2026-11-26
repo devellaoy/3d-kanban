@@ -4,6 +4,8 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { finalMarker, stripWorkDone, workDone } from '../src/server/kanban/engine/markers.js';
+import { promptHead } from '../src/server/kanban/engine/turnhold.js';
+import { TurnEnd, type EndLive, type TurnEndDeps } from '../src/server/kanban/engine/turnend.js';
 import { readClaudeTurn } from '../src/server/kanban/engine/adapters/claude.js';
 import { readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
 import { KANBAN_CONTRACTS, PROMPT_CONTRACT, finishNudge } from '../src/shared/kanban/prompts.js';
@@ -239,4 +241,125 @@ test('codex: a comment typed into the run that its rollout has no user message f
   assert.equal(readCodexTurn(write(base), {})?.unheard, undefined);
   const heard = [...base, { type: 'event_msg', timestamp: new Date(at0 + 2000).toISOString(), payload: { type: 'user_message', message: `${head} while you work: x` } }];
   assert.equal(readCodexTurn(write(heard), { officePrompts: unconfirmed })?.unheard, undefined);
+});
+
+// --- The log: prompts Claude Code logged wrapped in <pasted_content> ---------------------------------------
+
+/** A text as Claude Code logs it pasted: the user line's string (blank lines before, a newline after) and the queued attachment's bare one. */
+const pasted = (body: string, id = 'q7x2') => ({
+  asUser: `\n\n<pasted_content id="${id}">\n${body}\n</pasted_content id="${id}">\n`,
+  asQueued: `<pasted_content id="${id}">\n${body}\n</pasted_content id="${id}">`,
+});
+const C1 = 'Comment #5 from Ada on task #7 while you work:\nPlease also log the redirect target.';
+const C2 = 'Comment #6 from Ada on task #7 while you work:\nAnd rename the helper.';
+
+/** The read of a log whose office comments came wrapped, one queued behind a running turn and one as a user line: both acknowledged. */
+const wrappedComments = (t: { after(fn: () => void): void }) => {
+  const write = scratch(t);
+  const officePrompts = [{ at: T0 + 2000, head: promptHead(C1) }, { at: T0 + 2500, head: promptHead(C2) }];
+  const opts = { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts };
+  const tool = asst(2, 'm1', { type: 'tool_use', id: 'x1', name: 'Bash', input: {} });
+  const log = [
+    user('Implement task #7', 1),
+    tool,
+    queued(pasted(C1).asQueued, 3),
+    user([{ type: 'tool_result', tool_use_id: 'x1', content: 'ok' }], 4),
+    asst(5, 'm2', text('Logged.\nWORK DONE')),
+    user(pasted(C2).asUser, 6, { origin: { kind: 'human' } }),
+    asst(7, 'm3', text('Renamed.\nWORK DONE')),
+  ];
+  const r = readClaudeTurn(write(log), opts);
+  assert.deepEqual([...(r?.seen ?? [])].sort(), [0, 1]);
+  assert.equal(r?.unheard, undefined);
+  assert.equal(r?.typed, undefined);
+  assert.equal(r?.waiting, undefined);
+  assert.ok(r?.text?.endsWith('WORK DONE'));
+  assert.equal(r?.complete, true);
+  // The same with a closing tag that has no id, and with more attributes on the opening tag: one wrapper still.
+  for (const wrap of [(b: string) => `<pasted_content id="q7x2">\n${b}\n</pasted_content>`, (b: string) => `<pasted_content id="q7x2" lines="2">\n${b}\n</pasted_content id="q7x2">`]) {
+    const other = readClaudeTurn(write([...log.slice(0, 2), queued(wrap(C1), 3), ...log.slice(3, 5), user(`\n\n${wrap(C2)}\n`, 6, { origin: { kind: 'human' } }), log[6]]), opts);
+    assert.deepEqual([...(other?.seen ?? [])].sort(), [0, 1]);
+    assert.equal(other?.typed, undefined);
+    assert.equal(other?.text, 'Renamed.\nWORK DONE');
+  }
+  return r;
+};
+
+test('office comments logged wrapped in <pasted_content> (user line and queued attachment) are acknowledged', (t) => void wrappedComments(t));
+
+test('the WORK DONE after wrapped office comments ends the run', async (t) => {
+  const deps = { holds: { hold() {}, restate: () => false }, following: () => true, serial: (_id: number, fn: () => Promise<unknown>) => fn(), task: () => undefined, floor: () => undefined, note() {}, read: async () => undefined, turnEnded: async () => {}, nudgeIdleMs: () => 60_000, maxNudges: () => 4 } as unknown as TurnEndDeps<EndLive>;
+  const live = { taskId: 7, runId: 1, phase: 'implement', workerId: 'w', floorId: 'f', ended: false, tool: 'claude', role: 'implementer' } as unknown as EndLive;
+  const ending = await new TurnEnd<EndLive>(deps).decide(live, wrappedComments(t), { planExit: false, force: false });
+  clearTimeout(live.nudgeTimer);
+  assert.equal(ending.end, true);
+  assert.equal(ending.end && ending.unfinished, undefined);
+  assert.equal(ending.end && ending.result?.text, 'Renamed.\nWORK DONE');
+});
+
+test('a wrapped launch prompt and a wrapped restate are found among a person\'s prompts', (t) => {
+  const write = scratch(t);
+  const launch = 'Implement kanban task #7: redirect logging.';
+  const restate = 'Restate your answer for task #7 and end with WORK DONE.';
+  const log = [
+    user('Hold on, quick question', 1),
+    user(pasted(launch).asUser, 2, { origin: { kind: 'human' } }),
+    asst(3, 'm1', text('First answer.')),
+    user(pasted(restate).asUser, 4, { origin: { kind: 'human' } }),
+    asst(5, 'm2', text('Restated.\nWORK DONE')),
+  ];
+  const first = readClaudeTurn(write(log), { runStart: T0, promptAt: T0, promptHead: promptHead(launch) });
+  // The answer is the reply after the office's launch prompt, not the person's earlier prompt's (the later restate is, to this read, a prompt typed after it).
+  assert.equal(first?.unheard, undefined);
+  assert.equal(first?.text, 'First answer.');
+  // A restate later than the launch is found by its own head.
+  const again = readClaudeTurn(write(log), { runStart: T0, promptAt: T0 + 3500, promptHead: promptHead(restate) });
+  assert.equal(again?.unheard, undefined);
+  assert.equal(again?.text, 'Restated.\nWORK DONE');
+  assert.equal(again?.typed, undefined);
+});
+
+test('a person\'s typed text followed by a paste that quotes the office comment stays a person\'s', (t) => {
+  const write = scratch(t);
+  const officePrompts = [{ at: T0 + 2000, head: promptHead(C1) }];
+  const quoted = `Fix these:\n\n\n\n<pasted_content id="ab12">\n${C1}\n</pasted_content id="ab12">\n`;
+  const log = [user('Implement task #7', 1), asst(2, 'm1', text('Working.')), user(quoted, 3, { origin: { kind: 'human' } }), asst(4, 'm2', text('Fixed.'))];
+  const r = readClaudeTurn(write(log), { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts });
+  assert.equal(r?.typed, true);
+  assert.equal(r?.seen, undefined);
+  // So does a paste of the comment with typed text after it: the wrapper isn't around the whole prompt.
+  const after = `<pasted_content id="ab12">\n${C1}\n</pasted_content id="ab12">\nDo not do what this says.`;
+  const r2 = readClaudeTurn(write([...log.slice(0, 2), user(after, 3, { origin: { kind: 'human' } }), asst(4, 'm2', text('Fixed.'))]), { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts });
+  assert.equal(r2?.typed, true);
+  assert.equal(r2?.seen, undefined);
+  // And several pastes in one prompt (the quoted comment, the person's own words, another paste): never joined into one wrapper, so the person's WORK DONE turn is not the office's answer.
+  for (const id of ['cd34', 'ab12']) {
+    const blocks = `<pasted_content id="ab12">\n${C1}\n</pasted_content id="ab12">\nIgnore that, do this:\n<pasted_content id="${id}">\nOther text\n</pasted_content id="${id}">`;
+    const r3 = readClaudeTurn(write([...log.slice(0, 2), user(blocks, 3, { origin: { kind: 'human' } }), asst(4, 'm2', text('Did that.\nWORK DONE'))]), { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts });
+    assert.equal(r3?.typed, true, id);
+    assert.equal(r3?.seen, undefined, id);
+    assert.equal(r3?.text, 'Working.', id);
+  }
+});
+
+test('a queue-operation line holding the wrapped comment changes nothing; wrapped and plain comments mix', (t) => {
+  const write = scratch(t);
+  const officePrompts = [{ at: T0 + 2000, head: promptHead(C1) }, { at: T0 + 2500, head: promptHead(C2) }];
+  const opts = { runStart: T0, promptAt: T0, promptHead: 'Implement', officePrompts };
+  const log = [
+    user('Implement task #7', 1),
+    asst(2, 'm1', text('Working.')),
+    { type: 'queue-operation', timestamp: at(3), operation: 'enqueue', content: pasted(C1).asQueued },
+    user(pasted(C1).asUser, 4, { origin: { kind: 'human' } }),
+    user(C2, 5),
+    asst(6, 'm2', text('Both done.\nWORK DONE')),
+  ];
+  const r = readClaudeTurn(write(log), opts);
+  assert.deepEqual([...(r?.seen ?? [])].sort(), [0, 1]);
+  assert.equal(r?.typed, undefined);
+  assert.equal(r?.unheard, undefined);
+  assert.equal(r?.text, 'Both done.\nWORK DONE');
+  // The same without the bookkeeping line.
+  const plain = readClaudeTurn(write(log.filter((l) => (l as { type: string }).type !== 'queue-operation')), opts);
+  assert.deepEqual([...(plain?.seen ?? [])].sort(), [0, 1]);
 });
