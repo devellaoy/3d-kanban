@@ -1,7 +1,9 @@
 // The review comments on the task view's Pull requests tab, under the table of pull requests (taskprs.ts): the list the
 // implementer made of the open PRs' unresolved comments with its analysis of each (what it means, whether it is valid,
 // whether this task caused it, whether it is worth fixing), a decision per comment (Fix, Don't fix or Other, with a
-// text box) and Send to the implementer. The list comes over REST and is read again when the task moves on, like the
+// text box) and Send to the implementer. A row is one remark: the several remarks of one comment are rows of their own, each
+// marked "Remark n" after the kind, and the repeats left out as duplicates are noted under the list. The list comes over
+// REST and is read again when the task moves on, like the
 // reports (taskreports.ts); the decisions being filled in are kept outside the view (prcommentsmodel.ts), and the section
 // is built once per fetched state, so a redraw of the tab puts the same boxes back. Every text of the agent and of the
 // host is drawn as plain text.
@@ -16,7 +18,7 @@ import { canFixPrs } from '../../shared/kanban/prs.js';
 import { apiUrl } from '../multiplayer/visit';
 import { getJson } from './api';
 import { fmtTime } from './labels';
-import { CAUSED_MARK, DECISION_LABEL, DraftStore, KIND_LABEL, RECOMMEND_MARK, VALID_MARK, WARNING_TITLE, answeredCount, countText, draftAnswers, droppedText, groupByPr, placeText, safeHref, sendState, textHint, viewOf, warningOf, type Drafts, type Mark, type PrGroup } from './prcommentsmodel';
+import { CAUSED_MARK, DECISION_LABEL, DraftStore, KIND_LABEL, RECOMMEND_MARK, VALID_MARK, WARNING_TITLE, answeredCount, countText, draftAnswers, droppedText, duplicatesText, groupByPr, placeText, remarkOf, remarkText, safeHref, sendState, textHint, viewOf, warningOf, type Drafts, type Mark, type PrGroup } from './prcommentsmodel';
 import type { TaskCtx } from './taskctx';
 import { textArea } from './ui';
 
@@ -81,6 +83,7 @@ export class PrComments {
     else if (v.kind === 'waiting') el.append(banner({ icon: 'hourglass', title: v.title, text: v.reason, tone: 'neutral' }));
     else if (v.kind === 'failed') el.append(this.failed(v.error, can));
     else el.append(...this.list(s, groupByPr(s.items, task.prs, repoName), can));
+    if (s.duplicates > 0 && s.status !== 'running') el.append(h('p.kb-muted.kb-prc-line', {}, duplicatesText(s.duplicates)));
     if (s.dropped > 0 && s.status !== 'running') el.append(h('p.kb-muted.kb-prc-line', {}, droppedText(s.dropped)));
     this.built = { state: s, gate, el };
     return el;
@@ -138,6 +141,9 @@ export class PrComments {
   private item(i: PrCommentItem, mode: { answer: PrCommentAnswer | undefined } | { drafts: Drafts; sync: () => void }): HTMLElement {
     const href = safeHref(i.url);
     const place = placeText(i);
+    const n = remarkOf(i.id);
+    const remark = n ? remarkText(n) : '';
+    const who = `${i.author} at ${place}${remark ? `, ${remark.toLowerCase()}` : ''}`;
     const el = h(
       'li.kb-prc-item',
       {},
@@ -147,6 +153,7 @@ export class PrComments {
         h('span.kb-who', {}, icon('user', { size: 14 }), h('b', {}, i.author)),
         i.authorAssociation ? h('small.kb-muted', {}, i.authorAssociation.toLowerCase()) : null,
         h('span.kb-kind', {}, KIND_LABEL[i.kind]),
+        remark ? h('span.kb-kind', {}, remark) : null,
         href ? h('a.kb-prc-place', { href, target: '_blank', rel: 'noopener noreferrer', title: 'Open the comment on the host' }, i.path ? h('code', {}, place) : place, icon('external-link', { size: 12 })) : h('span.kb-prc-place', {}, i.path ? h('code', {}, place) : place),
       ),
       h('blockquote.kb-prc-body', {}, i.body),
@@ -168,7 +175,7 @@ export class PrComments {
     const { drafts: mine, sync } = mode;
     const draft = mine.get(i.id) ?? {};
     const put = (patch: typeof draft) => mine.set(i.id, { ...mine.get(i.id), ...patch });
-    const ta = textArea(draft.text ?? '', { class: 'inp', rows: 2, maxlength: PR_ANSWER_TEXT_MAX, placeholder: textHint(draft.decision), 'aria-label': `Your text for the comment by ${i.author} at ${place}`, 'data-focus': `prc-text-${i.id}` });
+    const ta = textArea(draft.text ?? '', { class: 'inp', rows: 2, maxlength: PR_ANSWER_TEXT_MAX, placeholder: textHint(draft.decision), 'aria-label': `Your text for the comment by ${who}`, 'data-focus': `prc-text-${i.id}` });
     ta.addEventListener('input', () => {
       put({ text: ta.value });
       sync();
@@ -183,7 +190,7 @@ export class PrComments {
         ta.required = decision === 'custom';
         sync();
       },
-      `Decision for the comment by ${i.author} at ${place}`,
+      `Decision for the comment by ${who}`,
     );
     for (const [v, b] of seg.buttons) b.dataset.focus = `prc-${v}-${i.id}`;
     ta.required = draft.decision === 'custom';
