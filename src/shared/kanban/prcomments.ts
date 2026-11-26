@@ -12,7 +12,10 @@ export const PR_COMMENT_DECISIONS: readonly PrCommentDecision[] = ['fix', 'skip'
 
 /** One unresolved comment of a pull request with the agent's analysis of it. */
 export interface PrCommentItem {
-  /** `thread:<root comment id>`, `comment:<id>` or `review:<id>`: unique in a list. */
+  /**
+   * `thread:<root comment id>`, `comment:<id>` or `review:<id>`: unique in a list. A comment that holds several remarks gives one item per
+   * remark, each with that id followed by `#<n>` (`review:<id>#3`).
+   */
   id: string;
   /** The pull request's URL, as the task's link has it. */
   pr: string;
@@ -52,8 +55,10 @@ export interface PrCommentsState {
   /** When the list was fetched (ms): the version the answers must name when they are sent. */
   fetchedAt?: number;
   items: PrCommentItem[];
-  /** How many items of the agent's file were left out for being malformed, over the cap, duplicates or of a pull request the task doesn't have. */
+  /** How many items of the agent's file were left out for being malformed, over the cap or of a pull request the task doesn't have. */
   dropped: number;
+  /** How many items were left out as repeats of a remark already listed. */
+  duplicates: number;
   error?: string;
   /** Why a `running` fetch is parked (a usage limit, a question of the agent's...): the task's own waiting text. */
   waiting?: string;
@@ -209,31 +214,77 @@ function itemOf(raw: unknown, prs: Map<string, string>): PrCommentItem | undefin
 }
 
 /**
- * The items of the agent's file: `raw` is the parsed JSON (a list, or `{items: [...]}`), `prUrls` the task's pull requests' addresses.
- * Item by item: one that is malformed, of a pull request the task doesn't have, with an id seen before, or past the cap is left out and counted
- * in `dropped`. `error` is set only when there is no list at all.
+ * A remark's body reduced to what it says, for telling repeats apart: lower case, a leading list marker (`3.`, `3)`, `(3)`, `-`, `*`)
+ * taken off, every run of characters that are not letters or digits made one space, trimmed. Pure string work: a body is data.
  */
-export function parsePrComments(raw: unknown, prUrls: readonly string[]): { items: PrCommentItem[]; dropped: number; error?: string } {
+export function normalisedBody(body: string): string {
+  return body
+    .toLowerCase()
+    .replace(/^\s*(?:\d{1,4}[.)]|\(\d{1,4}\)|[-*+•])\s+/u, '')
+    .replace(/[^\p{L}\p{N}]+/gu, ' ')
+    .trim();
+}
+
+/**
+ * Whether two accepted items say the same thing: the same pull request, the same author and equal normalised bodies. Two on lines of code
+ * are the same only at the same known place (the same words on two lines are two remarks, and so are two threads whose line is gone); one
+ * on a line and one that is not (a review's summary repeating its line comment) are. Another author's same words stay: who agrees with whom
+ * is the agent's to say, not the office's to guess. An empty normalised body matches nothing.
+ */
+function sameRemark(a: PrCommentItem, an: string, b: PrCommentItem, bn: string): boolean {
+  if (!an || an !== bn || a.pr !== b.pr || a.author !== b.author) return false;
+  if (!a.path || !b.path) return true;
+  return a.path === b.path && a.line !== undefined && a.line === b.line;
+}
+
+/** The id without the `#<n>` of a remark: the comment's own. */
+const commentIdOf = (id: string): string => id.replace(/#\d{1,4}$/, '');
+
+/**
+ * The items of the agent's file: `raw` is the parsed JSON (a list, or `{items: [...]}`), `prUrls` the task's pull requests' addresses.
+ * Item by item: one that is malformed, of a pull request the task doesn't have, or past the cap is left out and counted in `dropped`.
+ * An id seen before is taken for another remark of that comment (the agent split it and left the `#<n>` out) and gets the comment's next
+ * free one, so a split never loses its remarks. One that repeats an earlier remark (see sameRemark) is left out and counted in
+ * `duplicates`: the agent is asked to list a remark once, this is the net for when it doesn't. Of repeats the first one's position stays,
+ * and an item on a line of code replaces one that is not. `error` is set only when there is no list at all.
+ */
+export function parsePrComments(raw: unknown, prUrls: readonly string[]): { items: PrCommentItem[]; dropped: number; duplicates: number; error?: string } {
   const list = Array.isArray(raw) ? raw : isObj(raw) && Array.isArray(raw.items) ? raw.items : undefined;
-  if (!list) return { items: [], dropped: 0, error: 'The file has no list of comments: it should be {"items": [...]}' };
+  if (!list) return { items: [], dropped: 0, duplicates: 0, error: 'The file has no list of comments: it should be {"items": [...]}' };
   const prs = new Map<string, string>();
   for (const u of prUrls) {
     const k = prUrlKey(u);
     if (k && !prs.has(k)) prs.set(k, u);
   }
   const items: PrCommentItem[] = [];
+  const norms: string[] = [];
   const seen = new Set<string>();
   let dropped = 0;
+  let duplicates = 0;
   for (const r of list) {
     const item = items.length < PR_COMMENTS_MAX ? itemOf(r, prs) : undefined;
-    if (!item || seen.has(item.id)) {
+    if (!item) {
       dropped++;
       continue;
     }
+    if (seen.has(item.id)) {
+      const base = commentIdOf(item.id);
+      let n = 2;
+      while (seen.has(`${base}#${n}`)) n++;
+      item.id = `${base}#${n}`;
+    }
     seen.add(item.id);
-    items.push(item);
+    const norm = normalisedBody(item.body);
+    const at = items.findIndex((x, i) => sameRemark(x, norms[i]!, item, norm));
+    if (at < 0) {
+      items.push(item);
+      norms.push(norm);
+      continue;
+    }
+    duplicates++;
+    if (item.path && !items[at]!.path) items[at] = item;
   }
-  return { items, dropped };
+  return { items, dropped, duplicates };
 }
 
 /** Whether `answers` decide every item of `items` (and there is at least one): `custom` needs the user's own text. */

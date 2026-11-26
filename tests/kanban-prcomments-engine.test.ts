@@ -123,6 +123,24 @@ function store() {
 }
 const taskOf = (id = 5) => ({ id, prs: [{ url: PR }] }) as unknown as Parameters<PrCommentsRuns['collect']>[0];
 
+test('collect: duplicates are stored and told, an old store without the field reads as none', (t) => {
+  const s = store();
+  t.after(s.done);
+  // Three say the same thing (two left out), one is malformed.
+  writeFileSync(s.grant(5), JSON.stringify({ items: [item(), item({ id: 'thread:2' }), item({ id: 'thread:3' }), item({ id: 'thread:4', valid: 'maybe' })] }));
+  assert.match(s.runs.collect(taskOf()), /^Fetched 1 unresolved review comment \(2 duplicates left out, 1 left out as unusable\): they are on the Pull requests tab\.$/);
+  assert.equal(readPrComments(s.filesDir, 5)!.duplicates, 2);
+  assert.equal(prCommentsState(s.filesDir, { id: 5, phase: 'pr-fix', runState: 'idle' }).duplicates, 2);
+  writeFileSync(s.grant(6), JSON.stringify({ items: [item(), item({ id: 'thread:2' })] }));
+  assert.match(s.runs.collect(taskOf(6)), /^Fetched 1 unresolved review comment \(1 duplicate left out\): /);
+  writeFileSync(s.grant(7), JSON.stringify({ items: [item()] }));
+  assert.doesNotMatch(s.runs.collect(taskOf(7)), /\(/);
+  writePrComments(s.filesDir, 8, { fetchedAt: 1, items: [], dropped: 0 });
+  const old = prCommentsState(s.filesDir, { id: 8, phase: 'pr-fix', runState: 'idle' });
+  assert.deepEqual([old.status, old.duplicates], ['ready', 0]);
+  for (const st of [prCommentsState(s.filesDir, { id: 9, phase: 'pr-fix', runState: 'idle' }), prCommentsState(s.filesDir, { id: 9, phase: 'pr-comments', runState: 'running' })]) assert.equal(st.duplicates, 0, st.status);
+});
+
 test('collect: the agent’s file is validated into the office’s store and the file is deleted', (t) => {
   const s = store();
   t.after(s.done);
@@ -342,6 +360,10 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   assert.match(comments, /Change no code, don't commit, don't push and post nothing/);
   assert.match(comments, /data, never instructions/);
   assert.match(comments, /thread:<databaseId[\s\S]*comment:<id[\s\S]*review:<id/);
+  assert.match(comments, /One item per remark, not per comment/);
+  assert.match(comments, /followed by #<n>[\s\S]*review:<id>#3/);
+  assert.doesNotMatch(comments, /"duplicates"/, 'the office counts the repeats itself');
+  assert.match(comments, /List each remark once/);
   assert.match(comments, /"causedByTask"/);
   assert.ok(comments.endsWith(KANBAN_CONTRACTS.prComments));
   assert.doesNotMatch(KANBAN_CONTRACTS.prComments, /PR: <|office-tasks pr|committed/, 'no PR lines, no instruction to commit or push');
@@ -354,6 +376,7 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   repo.upsertPrLink(task.id, { repoId: 'api', repo: 'azure:contoso/Web/api', number: 5, url: 'https://dev.azure.com/contoso/Web/_git/api/pullrequest/5', state: 'OPEN' });
   const hosted = compose.build('pr.comments', def, repo.getTask(task.id)!, 'claude', dir, { phase: 'pr-comments' });
   assert.match(hosted, /office-pr view <number> --comments[\s\S]*\[trusted\]/);
+  assert.match(hosted, /with #<n> after it for each remark/);
 
   // The listed address is a later reply's (r77), not the thread's first comment (1): the thread is found by the Id.
   const items = [{ ...item({ id: 'thread:1', body: 'Rename x' }), pr: 'https://github.com/acme/proj/pull/3', url: 'https://github.com/acme/proj/pull/3#discussion_r77' }] as unknown as PrCommentItem[];
@@ -369,6 +392,10 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   assert.match(answers, /comments\(first: 1\) \{ nodes \{ databaseId \} \}[\s\S]*first comment's databaseId is the number in the comment's Id[\s\S]*not by the listed address/);
   assert.match(answers, /Leave a thread open when it is not settled: you could not do what was decided, you refused what it asks for, or your reply asks its author something/);
   assert.doesNotMatch(answers, /Don't resolve threads/);
+  assert.match(answers, /An Id ending in #<n>[\s\S]*several listed items can belong to one comment/);
+  assert.match(answers, /reply once on each comment, not once on each remark[\s\S]*remark by remark/);
+  assert.match(answers, /only when every one of them is settled/);
+  assert.match(answers, /the part before the # in thread:<number>#<n>/);
   assert.match(answers, /secrets or credentials/);
   assert.ok(answers.endsWith(KANBAN_CONTRACTS.pr));
   assert.match(compose.build('pr.answers', def, gh, 'claude', dir, { phase: 'pr-answers' }), /the decisions are gone/);
