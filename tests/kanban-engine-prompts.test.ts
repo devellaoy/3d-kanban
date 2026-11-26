@@ -920,7 +920,7 @@ test('review focus: the reviewer\'s own review and re-review carry it before the
     for (const empty of [undefined, '', '  ']) assert.equal(compose.build(kind, def, task, 'claude', dir, { ...base, focus: empty }), plain, `${kind}: an empty focus changes nothing`);
     const focused = compose.build(kind, def, task, 'claude', dir, { ...base, focus: 'Security' });
     assert.match(focused, /Your viewpoint for your own review: Security\. Look hardest for what matters from that viewpoint\. Still report a problem outside it when it is serious\./);
-    assert.match(focused, /judge each finding on its own merits, whatever viewpoint it came from\./);
+    assert.doesNotMatch(focused, /on its own merits/);
     assert.doesNotMatch(focused, /\{\{/);
     assert.ok(focused.endsWith(KANBAN_CONTRACTS.review));
     const co = compose.build(kind, def, task, 'claude', dir, { ...base, focus: 'Security', panel: 'co' });
@@ -928,6 +928,7 @@ test('review focus: the reviewer\'s own review and re-review carry it before the
   }
   const combine = compose.build('rereview', def, task, 'claude', dir, { ...base, focus: 'Security', panel: 'combine', reviews: 'x' });
   assert.equal(combine, compose.build('rereview', def, task, 'claude', dir, { ...base, panel: 'combine', reviews: 'x' }), 'the combine prompt is the same with and without a focus');
+  assert.match(compose.build('rereview', def, task, 'claude', dir, { ...base, panel: 'combine', reviews: 'x' }), /Judge each finding on its own merits, whatever viewpoint you or its reviewer reviewed from\./, 'the combiner is told so without a focus of its own too');
   assert.match(combine, /Combine them into the review/);
   assert.doesNotMatch(combine, /Your viewpoint/);
   assert.deepEqual(placeholders(KANBAN_PROMPT_DEFS['kanban.review.focus'].text), ['focus']);

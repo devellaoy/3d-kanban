@@ -227,8 +227,9 @@ is long) and a line saying which meeting it came from.
    (a viewpoint such as Correctness, Simplicity or Security, set for the main reviewer and each additional
    one in the review settings): its own review is told to look hardest for what matters from that viewpoint,
    and the focus is named in the combining's list ("Reviewer 2 (Codex, focus: Security)"). It is an
-   emphasis, not a limit: a serious problem outside it is still reported. The combining's prompt is the same with
-   or without a focus: a reviewer with one is told with it to judge every finding on its own merits when it combines. With no focus
+   emphasis, not a limit: a serious problem outside it is still reported. The combining does not use a focus:
+   its prompt always tells the main reviewer to judge every finding on its own merits, whatever viewpoint it or
+   the finding's reviewer reviewed from. With no focus
    the review is the ordinary one. A reviewer session that is carried on remembers a focus removed in the
    middle of the task. Pull-request reviews do not use a focus. The additional reviewers go home as the round's result is ready (the
    worktree stays) and come back for the next round of the same review on their own sessions (a new review starts them afresh). The task counts as running
