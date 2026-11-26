@@ -457,7 +457,7 @@ export function createIssues(ctx: KanbanContext, opts: IssuesOptions = {}) {
     start() {
       setWallProvider({
         started: async (project, key, env) => {
-          const took = await takeIssue({ statusIo: statusIoFor(io(project), 'office', env), key, sources: ctx.settings.project(project).issueSources, status: true });
+          const took = await takeIssue({ statusIo: statusIoFor(io(project), env), key, sources: ctx.settings.project(project).issueSources, status: true });
           for (const m of took.moved) announce(ctx, patch, project, key, '📋', `${key} moved to ${m.to} on ${m.board}`);
           return took.warnings.join(' · ') || undefined;
         },

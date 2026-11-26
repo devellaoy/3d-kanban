@@ -852,7 +852,7 @@ export class Orchestrator {
     const x: ComposeExtra = {
       phase: eff.phase,
       round: eff.round,
-      rounds: review.rounds,
+      rounds: review.rounds, focus: role === 'reviewer' ? (spec ?? review).focus : undefined,
       text,
       author,
       findings: eff.prompt === 'fix' ? reviewFindings(this.latestSummary(task.id, 'review') ?? '') : undefined,

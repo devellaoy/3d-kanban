@@ -74,7 +74,6 @@ function ioWith(opts: { status?: string; options?: string[]; scope?: boolean; un
     fetch: (async () => new Response('{}')) as typeof fetch,
     cwd: '/tmp',
     projectRepos: [],
-    who: 'Tester',
     shared: true,
   };
   const mutations = () => calls.filter((a) => a.some((x) => x.startsWith('query=mutation')));

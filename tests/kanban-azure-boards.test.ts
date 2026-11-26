@@ -179,16 +179,16 @@ test('transitions are the type’s other states; a move PATCHes System.State as 
   await assert.rejects(azureTransition({ fetch }, AS, REF, `abs:${Buffer.from('Gone').toString('hex')}`), /no state Gone/);
 });
 
-test('a comment is POSTed as escaped HTML, signed when it goes out under the office’s token; comments read oldest first', async () => {
+test('a comment is POSTed as escaped HTML with nothing added to it; comments read oldest first', async () => {
   assert.equal(textToHtml('a <b>\nc\n\nd & e'), '<p>a &lt;b&gt;<br>c</p><p>d &amp; e</p>');
   const { fetch, calls } = fetchStub((c) =>
     c.method === 'POST'
       ? { body: { id: 7 } }
       : { body: { comments: [{ id: 2, text: '<p>newer</p>', createdBy: { displayName: 'B' }, createdDate: '2026-10-02' }, { id: 1, text: 'older', createdBy: { displayName: 'A' }, createdDate: '2026-10-01' }] } },
   );
-  await azureComment({ fetch }, AS, REF, 'Looks good', 'Panu');
+  await azureComment({ fetch }, AS, REF, 'Looks good');
   assert.equal(calls[0].url, 'https://dev.azure.com/acme/My%20Project/_apis/wit/workItems/42/comments?api-version=7.1-preview.4');
-  assert.deepEqual(calls[0].body, { text: '<p>Looks good</p><p>— Panu via Agent Office</p>' });
+  assert.deepEqual(calls[0].body, { text: '<p>Looks good</p>' });
   await azureComment({ fetch }, AS, REF, 'Mine');
   assert.deepEqual(calls[1].body, { text: '<p>Mine</p>' });
   const items = await azureComments({ fetch }, AS, REF);

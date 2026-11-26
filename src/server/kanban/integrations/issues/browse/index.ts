@@ -57,7 +57,7 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
   /** The keys `load` found nothing for, and when (so an action on a key that isn't the project's doesn't ask GitHub or Jira every time). */
   const missed = new Map<string, number>();
 
-  const actIo = (project: string, who: string): IssueActIo => ({ ...deps.io(project), who, shared: true });
+  const actIo = (project: string): IssueActIo => ({ ...deps.io(project), shared: true });
 
   const reply = (c: KanbanClient, m: { project: string; scope: string; rid?: string }, msg: Record<string, unknown> & { t: BrowseServerMsg['t'] }) =>
     c.send({ ...msg, ...(m.rid ? { rid: m.rid } : {}), project: m.project, scope: m.scope } as unknown as BrowseServerMsg);
@@ -83,7 +83,7 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
       const why = disabledWhy(cfg);
       if (why) return fail(c, m.rid, why);
       try {
-        await go(c, m, { cfg, io: actIo(m.project, c.name) });
+        await go(c, m, { cfg, io: actIo(m.project) });
       } catch (err) {
         fail(c, m.rid, (err as Error)?.message ?? String(err));
       }
@@ -202,7 +202,7 @@ export function createBrowse(ctx: KanbanContext, deps: BrowseDeps) {
 
   const fetchOwn = async (project: string, key: string, source?: string): Promise<NormalizedIssue | undefined> => {
     const sources = ctx.settings.project(project).issueSources;
-    const io = actIo(project, 'Agent Office');
+    const io = actIo(project);
     try {
       // An Azure Boards work item: only of one of the project's Azure Boards sources (its organization and project).
       const ab = parseAbKey(key);

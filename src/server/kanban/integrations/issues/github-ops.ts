@@ -1,9 +1,9 @@
 // Actions on one GitHub issue (or pull request), by repository and number, with gh: its comments,
 // its assignees, and closing or reopening it. `io.env` is the person's own gh sign-in (none: the
-// office's gh, whose comments are then signed). A project's Status column is project-ops.ts.
+// office's gh). A project's Status column is project-ops.ts.
 
 import type { IssueAssignTo, IssueCommentItem, IssuePerson, IssueTransition } from '../../../../shared/kanban/issueops.js';
-import { attribution, type IssueActIo } from './source.js';
+import type { IssueActIo } from './source.js';
 
 const TIMEOUT_MS = 30_000;
 /** How many comments one read brings (the newest). */
@@ -71,11 +71,10 @@ export async function ghComments(io: IssueActIo, repo: string, n: number): Promi
   }));
 }
 
-/** Adds a comment; under the office's own gh it is signed with who asked. */
+/** Adds a comment: the text as written, with nothing added to say who asked or where it came from. */
 export async function ghComment(io: IssueActIo, repo: string, n: number, text: string): Promise<void> {
   // -f, not -F: a body that starts with "@" is text, not a file.
-  const body = io.shared ? `${text.trim()}\n\n${attribution(io.who)}` : text.trim();
-  await run(io, ['api', '--method', 'POST', `repos/${repo}/issues/${n}/comments`, '-f', `body=${body}`]);
+  await run(io, ['api', '--method', 'POST', `repos/${repo}/issues/${n}/comments`, '-f', `body=${text.trim()}`]);
 }
 
 const PEOPLE_QUERY = `query($owner: String!, $name: String!, $q: String) {

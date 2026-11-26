@@ -1,9 +1,10 @@
 // The additional reviewers of the review settings (settings → Reviews, and a project's own review
-// settings): a list of rows, each a reviewer (tool), its model and its effort, at most MAX_EXTRA_REVIEWERS.
+// settings): a list of rows, each a reviewer (tool), its model, its effort and its focus (the viewpoint it
+// reviews from, optional), at most MAX_EXTRA_REVIEWERS.
 import { h } from '../ui/dom';
 import { icon, withIcon } from '../ui/icons';
 import { KANBAN_TOOLS, MAX_EXTRA_REVIEWERS, type KanbanEffort, type KanbanTool, type ReviewerSpec } from '../../shared/kanban/types.js';
-import { effortSelect, modelInput } from './agentfields';
+import { effortSelect, focusInput, modelInput } from './agentfields';
 import { toolName } from './labels';
 import { field, select } from './ui';
 
@@ -21,6 +22,7 @@ export function extraReviewersField(list: ReviewerSpec[] | undefined): { el: HTM
     const tool = select<KanbanTool>(KANBAN_TOOLS.map((t) => [t, toolName(t)] as const), spec.tool, { 'aria-label': 'Reviewer' });
     const model = modelInput(spec.model ?? '', () => tool.value as KanbanTool);
     const effort = effortSelect(spec.effort, 'Default');
+    const focus = focusInput(spec.focus ?? '');
     tool.addEventListener('change', () => model.refresh());
     const remove = h('button.btn.small.kb-admin', { type: 'button', 'aria-label': 'Remove this reviewer', title: 'Remove this reviewer' }, icon('x', { size: 14 }));
     const name = h('b.kb-icon-row');
@@ -28,7 +30,7 @@ export function extraReviewersField(list: ReviewerSpec[] | undefined): { el: HTM
       'div.kb-repo',
       {},
       h('div.kb-repo-head', {}, name, h('span.grow'), remove),
-      h('div.kb-three', {}, field('Reviewer', tool), field('Model', model.el), field('Effort', effort)),
+      h('div.kb-two', {}, field('Reviewer', tool), field('Model', model.el), field('Effort', effort), field('Focus', focus.el)),
     );
     const row: Row = {
       el,
@@ -37,6 +39,7 @@ export function extraReviewersField(list: ReviewerSpec[] | undefined): { el: HTM
         tool: tool.value as KanbanTool,
         ...(model.input.value.trim() ? { model: model.input.value.trim() } : {}),
         ...(effort.value ? { effort: effort.value as KanbanEffort } : {}),
+        ...(focus.input.value.trim() ? { focus: focus.input.value.trim() } : {}),
       }),
     };
     remove.addEventListener('click', () => {

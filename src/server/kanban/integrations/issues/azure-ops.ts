@@ -1,5 +1,5 @@
 // Actions on one Azure Boards work item, as the person who asks (their own Azure DevOps token, else
-// the office's, in which case a comment is signed with who wrote it): its states (the work item
+// the office's): its states (the work item
 // type's own, whatever its process calls them), its comments, and its assignee (from the project's
 // default team). Every function throws an Error with a text a person can act on.
 
@@ -10,7 +10,7 @@ import { hostCredentials } from '../../../hosting/index.js';
 import { hostCall } from '../../../hosting/http.js';
 import type { HostAs } from '../../../hosting/provider.js';
 import { checkOrgProject, htmlToText, NO_AZURE_TOKEN } from './azure-boards.js';
-import { attribution, type IssueSourceIo } from './source.js';
+import type { IssueSourceIo } from './source.js';
 
 const API = 'api-version=7.1';
 const COMMENTS_API = 'api-version=7.1-preview.4';
@@ -111,11 +111,10 @@ export function textToHtml(text: string): string {
     .join('');
 }
 
-/** Adds a comment; `signedBy` (the asker, when it goes out under the office's token) signs it. */
-export async function azureComment(io: Io, as: HostAs, ref: WorkItemRef, text: string, signedBy?: string): Promise<void> {
+/** Adds a comment: the text as written, with nothing added to say who asked or where it came from. */
+export async function azureComment(io: Io, as: HostAs, ref: WorkItemRef, text: string): Promise<void> {
   check(ref);
-  const all = signedBy ? `${text.trim()}\n\n${attribution(signedBy)}` : text;
-  await hostCall(io.fetch, as, 'POST', projectApi(ref, `/wit/workItems/${ref.id}/comments?${COMMENTS_API}`), { text: textToHtml(all) });
+  await hostCall(io.fetch, as, 'POST', projectApi(ref, `/wit/workItems/${ref.id}/comments?${COMMENTS_API}`), { text: textToHtml(text.trim()) });
 }
 
 interface Member {

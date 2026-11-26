@@ -19,6 +19,7 @@ import { projectDefaults, REVIEW_DEFAULTS } from './defaults';
 import { commentLanguageField, publicLanguageField } from './language-field';
 import { APPROVAL_NAMES, effortName, toolName } from './labels';
 import { kstore } from './store';
+import { focusInput } from './agentfields';
 import { extraReviewersField } from './reviewers-field';
 import { checkbox, field, numberInput, numberValue, select, textInput } from './ui';
 
@@ -68,16 +69,20 @@ export function reviewFields(r: Partial<ReviewSettings>, base: ReviewSettings | 
   const tool = select<KanbanTool | ''>([...(base ? [] : ([['', 'Default']] as const)), ...KANBAN_TOOLS.map((x) => [x, toolName(x)] as const)], r.tool ?? (base ? base.tool : ''));
   const model = textInput(r.model ?? '', { maxlength: KANBAN_LIMITS.model, placeholder: 'Default' });
   const effort = select<KanbanEffort | ''>([['', 'Default'], ...KANBAN_EFFORTS.map((e) => [e, effortName(e)] as const)], r.effort ?? '');
+  const focus = focusInput(r.focus ?? base?.focus ?? '');
   const rounds = numberInput(r.rounds ?? base?.rounds ?? REVIEW_DEFAULTS.rounds, 1, 10);
   const reRev = checkbox('Review the last fix too', r.reReviewLastFix ?? base?.reReviewLastFix ?? REVIEW_DEFAULTS.reReviewLastFix);
   const sandbox = checkbox('Keep the reviewer off the web', r.sandbox ?? base?.sandbox ?? REVIEW_DEFAULTS.sandbox);
   const extra = extraReviewersField(r.extra ?? base?.extra);
-  // The main reviewer's row keeps Rounds beside it; the additional reviewers take the full width under it.
-  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for'), extra.el, reRev.el, sandbox.el);
-  const value = (): { tool?: KanbanTool; model: string | null; effort: KanbanEffort | null; extra: ReviewerSpec[]; rounds: number; reReviewLastFix: boolean; sandbox: boolean } => ({
+  // The main reviewer's four fields on a row; Rounds, then the additional reviewers, take the full width under it.
+  const roundsField = field('Rounds', rounds, '1–10 review rounds, each followed by a fix when changes are asked for');
+  roundsField.classList.add('kb-rounds');
+  const el = h('div.kb-subfields', {}, field('Reviewer', tool), field('Model', model), field('Effort', effort), field('Focus', focus.el), roundsField, extra.el, reRev.el, sandbox.el);
+  const value = (): { tool?: KanbanTool; model: string | null; effort: KanbanEffort | null; focus: string | null; extra: ReviewerSpec[]; rounds: number; reReviewLastFix: boolean; sandbox: boolean } => ({
     ...(tool.value ? { tool: tool.value as KanbanTool } : {}),
     model: optionalModel(model.value),
     effort: (effort.value as KanbanEffort) || null,
+    focus: focus.input.value.trim() || null,
     extra: extra.value(),
     rounds: numberValue(rounds, 1, 10, REVIEW_DEFAULTS.rounds),
     reReviewLastFix: reRev.box.checked,
@@ -133,7 +138,8 @@ export function thisProjectFields(ps: ProjectSettings, s: KanbanSettings): { el:
         uiTesting: uiTesting.value ? uiTesting.value === 'on' : null,
         publicLanguage,
         commentLanguage,
-        review: overrideReview.box.checked ? { ...rv, model: rv.model ?? undefined, effort: rv.effort ?? undefined } : null,
+        // The focus goes as it is, empty too: a project's empty one stands over the office's.
+        review: overrideReview.box.checked ? { ...rv, model: rv.model ?? undefined, effort: rv.effort ?? undefined, focus: rv.focus ?? '' } : null,
       };
     },
   };

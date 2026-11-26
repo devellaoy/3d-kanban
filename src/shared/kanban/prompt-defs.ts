@@ -264,6 +264,14 @@ Review the changes again (round {{round}} of {{rounds}}): check that each findin
     vars: {},
     text: `Other reviewers are reviewing this same folder at the same time as you. Don't change any files, and don't start servers or other long-running processes. Don't ask the user questions. Your result goes to the main reviewer, who combines the reviews, so make each finding concrete and checkable.`,
   },
+  'kanban.review.focus': {
+    group: 'kanban',
+    label: 'Review · focus',
+    used: "Added to a reviewer's own review prompt (the main reviewer's or an additional reviewer's) when that reviewer has a focus set in the review settings. Not added to the combine prompt, which has its own line on judging findings whatever the viewpoint.",
+    vars: { focus: "The reviewer's focus, a short viewpoint such as Security" },
+    needs: ['focus'],
+    text: `Your viewpoint for your own review: {{focus}}. Look hardest for what matters from that viewpoint. Still report a problem outside it when it is serious.`,
+  },
   'kanban.review.combine': {
     group: 'kanban',
     label: 'Review · combine',
@@ -274,7 +282,7 @@ Review the changes again (round {{round}} of {{rounds}}): check that each findin
 
 {{reviews}}
 
-Combine them into the review's one result. Check each finding that is disputed or that you doubt against the code, and drop duplicates and findings that turn out to be wrong. Keep every finding you confirm concrete: its file:line, what's wrong and what to do about it. A reviewer that did not finish adds nothing: don't wait for it. Still don't change any files.
+Combine them into the review's one result. Check each finding that is disputed or that you doubt against the code, and drop duplicates and findings that turn out to be wrong. Keep every finding you confirm concrete: its file:line, what's wrong and what to do about it. A reviewer that did not finish adds nothing: don't wait for it. Judge each finding on its own merits, whatever viewpoint you or its reviewer reviewed from. Still don't change any files.
 
 End with one verdict for the whole review: CHANGES_REQUESTED if at least one confirmed finding needs fixing, otherwise APPROVED.
 

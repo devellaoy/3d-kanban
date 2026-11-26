@@ -229,7 +229,7 @@ const openTaskIn3d = (net: Net) => (id: number) => void import('./taskview').the
 /**
  * What upstream's window gets for a keyed card: its status and assignee actions (it has comments and
  * close of its own; a change made here fetches the issue again, so a reopen shows), and its comments
- * posted by the card's key, so they are signed and land on its task as the kanban's are. Nothing for a
+ * posted by the card's key, so they land on its task as the kanban's are. Nothing for a
  * card without a key: upstream's own issue keeps its window as it was.
  */
 function keyedExtras(net: Net, card: GhIssue, refetch?: Reload): IssueWindowExtras {

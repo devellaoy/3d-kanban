@@ -332,7 +332,7 @@ test('⚙️ Project overrides how the phases run, or leaves them to the office:
   cleanups.run();
 });
 
-/** The additional-reviewers rows: each row's Reviewer, Model and Effort controls, in order; and the buttons. */
+/** The additional-reviewers rows: each row’s Reviewer, Model, Effort and Focus controls, in order; and the buttons. */
 function reviewerRows(all: FakeEl[]) {
   const rows = all.filter((el) => el.className === 'kb-repo' && el.all().next() && [...el.all()].some((c) => c.getAttribute('aria-label') === 'Remove this reviewer'));
   const control = (row: FakeEl, label: string) => [...row.all()].find((c) => c.getAttribute('aria-label') === label)!;
@@ -422,5 +422,91 @@ test('⚙️ Project sends its own additional reviewers with its own review sett
   control(now.rows[0], 'Effort').value = 'medium';
   await click();
   assert.deepEqual(saved().review?.extra, [{ tool: 'codex', effort: 'medium' }]);
+  cleanups.run();
+});
+
+/** The main reviewer's Focus box (the one outside the additional reviewers' rows), and what a Focus box's datalist offers. */
+function focusBoxes(all: FakeEl[]) {
+  const inRows = new Set(reviewerRows(all).rows.flatMap((r) => [...r.all()]));
+  const main = all.find((el) => el.tagName === 'input' && el.getAttribute('aria-label') === 'Focus' && !inRows.has(el))!;
+  const offered = (input: FakeEl) => {
+    const list = all.find((el) => el.children.includes(input))!.children.find((c) => typeof c !== 'string' && c.tagName === 'datalist') as FakeEl;
+    assert.equal(input.getAttribute('list'), list.id || list.getAttribute('id'), 'the box reads its datalist');
+    return list.children.map((o) => (o as FakeEl).getAttribute('value'));
+  };
+  return { main, offered };
+}
+
+test('🗂️ Kanban gives every reviewer a Focus: suggested viewpoints, sent trimmed with Save, and no focus when left empty', async () => {
+  const { kstore } = await projectPaneFixture(true);
+  const { generalPane } = await import('../src/client/kanban/settings.js');
+  const { KANBAN_DEFAULTS } = await import('../src/client/kanban/defaults.js');
+  const { REVIEW_FOCUS_MAX } = await import('../src/shared/kanban/review.js');
+  kstore.me = { admin: true, name: 'me' };
+  const sent: { settings: { review: { focus?: unknown; extra: Record<string, unknown>[] } } }[] = [];
+  const api = { request: async (msg: never) => void sent.push(msg) };
+  const pane = generalPane(api as never, { ...KANBAN_DEFAULTS, projects: {} } as never, false) as unknown as FakeEl;
+  const first = [...pane.all()];
+  const save = first.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
+  reviewerRows(first).add.fire('click');
+  reviewerRows(first).add.fire('click');
+  const all = [...pane.all()];
+  const { rows, control } = reviewerRows(all);
+  const { main, offered } = focusBoxes(all);
+  assert.ok(all.some((el) => el.tagName === 'label' && el.textContent === 'Focus'), 'labelled Focus');
+  for (const box of [main, control(rows[0], 'Focus')]) {
+    assert.deepEqual(offered(box), ['Correctness', 'Simplicity', 'Security']);
+    assert.equal(box.value, '');
+    assert.equal(box.getAttribute('placeholder'), 'None');
+    assert.equal(box.getAttribute('maxlength'), String(REVIEW_FOCUS_MAX));
+  }
+  await click();
+  let review = sent.pop()!.settings.review;
+  assert.equal(review.focus, null, 'an empty main focus is null: the office has none');
+  assert.deepEqual(review.extra, [{ tool: 'claude' }, { tool: 'claude' }], 'an empty row focus adds no key');
+  main.value = ' Correctness ';
+  control(rows[0], 'Focus').value = '  Security ';
+  control(rows[1], 'Focus').value = '   ';
+  await click();
+  review = sent.pop()!.settings.review;
+  assert.equal(review.focus, 'Correctness');
+  assert.deepEqual(review.extra, [{ tool: 'claude', focus: 'Security' }, { tool: 'claude' }]);
+});
+
+test('the Focus boxes open on what is saved', async () => {
+  const { kstore } = await projectPaneFixture(true);
+  const { generalPane } = await import('../src/client/kanban/settings.js');
+  const { KANBAN_DEFAULTS } = await import('../src/client/kanban/defaults.js');
+  kstore.me = { admin: true, name: 'me' };
+  const settings = { ...KANBAN_DEFAULTS, review: { ...KANBAN_DEFAULTS.review, focus: 'Simplicity', extra: [{ tool: 'codex', focus: 'Accessibility' }] }, projects: {} };
+  const pane = generalPane({ request: async () => {} } as never, settings as never, false) as unknown as FakeEl;
+  const all = [...pane.all()];
+  const { rows, control } = reviewerRows(all);
+  assert.equal(focusBoxes(all).main.value, 'Simplicity');
+  assert.equal(control(rows[0], 'Focus').value, 'Accessibility', 'any text, not only the suggestions');
+});
+
+test('⚙️ Project sends its main reviewer’s focus as a string with its own review settings: an empty one stands over the office’s', async () => {
+  const { pane, all, sent, cleanups } = await projectPaneFixture(true);
+  const save = all.filter((el) => el.tagName === 'button' && el.textContent === 'Save').pop()!;
+  const click = () => (save.fire('click'), new Promise((r) => setTimeout(r, 0)));
+  const saved = () => (sent.pop() as { settings: { review: { focus?: unknown; extra?: unknown } | null } }).settings;
+  const own = all.find((el) => el.className === 'kb-check' && el.textContent === 'Its own review settings')!;
+  const box = [...own.all()].find((el) => el.tagName === 'input')!;
+  box.checked = true;
+  box.fire('change');
+  const { main, offered } = focusBoxes(all);
+  assert.deepEqual(offered(main), ['Correctness', 'Simplicity', 'Security']);
+  await click();
+  assert.equal(saved().review?.focus, '', 'empty: no focus here, whatever the office has');
+  main.value = ' Security ';
+  reviewerRows(all).add.fire('click');
+  const now = reviewerRows([...pane.all()]);
+  now.control(now.rows[0], 'Focus').value = 'Simplicity';
+  await click();
+  const review = saved().review;
+  assert.equal(review?.focus, 'Security');
+  assert.deepEqual(review?.extra, [{ tool: 'claude', focus: 'Simplicity' }]);
   cleanups.run();
 });

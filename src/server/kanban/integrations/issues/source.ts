@@ -20,19 +20,14 @@ export interface IssueSourceIo {
 
 /**
  * What an action on one issue (status, comment, assignee) needs besides the source's own: who gh runs as
- * (`env`: a person's own sign-in; none: the office's gh) and who is asking, for the attribution line
- * when the write goes out under an identity everyone shares (the Jira token, the office's gh).
+ * (`env`: a person's own sign-in; none: the office's gh) and whether that identity is one everyone
+ * shares (the Jira token, the office's gh). A comment goes out as written either way: nothing is added to it.
  */
 export interface IssueActIo extends IssueSourceIo {
   env?: Record<string, string>;
-  /** The asker's name in the office. */
-  who: string;
-  /** Whether the write is made under a shared identity: a comment is then signed `— <who> via Agent Office`. */
+  /** Whether the write is made under a shared identity, which "assign to me" can't use. */
   shared: boolean;
 }
-
-/** The line that signs a comment made under a shared identity. */
-export const attribution = (who: string) => `— ${who} via Agent Office`;
 
 export interface IssueSource {
   list(config: IssueSourceConfig, io: IssueSourceIo): Promise<NormalizedIssue[]>;

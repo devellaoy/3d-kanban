@@ -19,6 +19,7 @@ import type {
   SkillSelection,
   TaskOverrides,
 } from '../../shared/kanban/types.js';
+import { cleanFocus } from '../../shared/kanban/review.js';
 import { KANBAN_EFFORTS, KANBAN_TOOLS, MAX_EXTRA_REVIEWERS, SKILL_PHASES } from '../../shared/kanban/types.js';
 import { IMPLEMENT_PERMISSIONS, PLAN_PERMISSIONS } from '../../shared/kanban/permissions.js';
 import { GH_REPO_RE, MODEL_RE, PROJECT_ID_RE, type KanbanSettingsPatch } from '../../shared/kanban/protocol.js';
@@ -78,6 +79,8 @@ export function sanitizeExtraReviewers(raw: unknown): ReviewerSpec[] {
     if (m) spec.model = m;
     const e = optOneOf<KanbanEffort>(row.effort, KANBAN_EFFORTS);
     if (e) spec.effort = e;
+    const f = cleanFocus(row.focus);
+    if (f) spec.focus = f;
     out.push(spec);
     if (out.length === MAX_EXTRA_REVIEWERS) break;
   }
@@ -97,6 +100,8 @@ export function sanitizeReview(raw: unknown, base: ReviewSettings = DEFAULT_REVI
   if (m) out.model = m;
   const e = 'effort' in r ? optOneOf<KanbanEffort>(r.effort, KANBAN_EFFORTS) : base.effort;
   if (e) out.effort = e;
+  const f = 'focus' in r ? cleanFocus(r.focus) : base.focus;
+  if (f) out.focus = f;
   const extra = 'extra' in r ? sanitizeExtraReviewers(r.extra) : (base.extra ?? []);
   if (extra.length) out.extra = extra;
   return out;
@@ -115,6 +120,8 @@ export function sanitizePartialReview(raw: unknown): Partial<ReviewSettings> | u
   if (typeof raw.rounds === 'number' && Number.isFinite(raw.rounds)) out.rounds = int(raw.rounds, 1, 10, 1);
   if (typeof raw.reReviewLastFix === 'boolean') out.reReviewLastFix = raw.reReviewLastFix;
   if (typeof raw.sandbox === 'boolean') out.sandbox = raw.sandbox;
+  // An explicit focus, an empty one too, stands over the office's (every reader treats '' as no focus).
+  if (typeof raw.focus === 'string') out.focus = cleanFocus(raw.focus) ?? '';
   // An explicit list, an empty one too, stands: a project can say "no additional reviewers" over the office's.
   if (Array.isArray(raw.extra)) out.extra = sanitizeExtraReviewers(raw.extra);
   return Object.keys(out).length ? out : undefined;

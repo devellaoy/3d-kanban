@@ -1,5 +1,5 @@
 // Actions on one Jira issue, with the same site, e-mail and API token the issue source reads with
-// (the token is one for everybody, so a comment is signed with who wrote it): its transitions (the
+// (the token is one for everybody): its transitions (the
 // project's own workflow, whatever its statuses are called), its comments, and its assignee.
 // Every function throws an Error with a text a person can act on.
 
@@ -8,7 +8,7 @@ import type { JiraAt } from '../../../../shared/kanban/jira-connections.js';
 import { adfToText, jiraCategory } from './jira.js';
 import { JIRA_KEY_RE } from './browse/jql.js';
 import { jiraAuthHeader, pickJiraConnection } from './jira-auth.js';
-import { attribution, type IssueActIo } from './source.js';
+import type { IssueActIo } from './source.js';
 
 const TIMEOUT_MS = 30_000;
 /** How many comments one read brings (the newest). */
@@ -109,9 +109,9 @@ export async function jiraComments(io: IssueActIo, at: JiraAt, key: string): Pro
     .reverse();
 }
 
-/** Adds a comment, signed with who asked (the token is everybody's). */
+/** Adds a comment: the text as written, with nothing added to say who asked or where it came from. */
 export async function jiraComment(io: IssueActIo, at: JiraAt, key: string, text: string): Promise<void> {
-  const doc = textToAdf(`${text.trim()}\n\n${attribution(io.who)}`);
+  const doc = textToAdf(text.trim());
   await jiraCall(io, at, 'POST', `${issuePath(key)}/comment`, { body: doc });
 }
 

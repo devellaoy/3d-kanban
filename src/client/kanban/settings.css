@@ -35,7 +35,9 @@
 .kb-set .kb-perms > .kb-hint { margin: 0; }
 .kb-set .kb-two > .kb-check, .kb-set .kb-three > .kb-check { align-self: center; }
 .kb-set .kb-subfields { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; align-items: start; padding: 10px; border: var(--bw-sm) dashed var(--ink); border-radius: var(--radius-sm); background: var(--paper); }
-.kb-set .kb-subfields .kb-check, .kb-set .kb-subfields .kb-extra-reviewers { grid-column: 1 / -1; }
+.kb-set .kb-subfields .kb-check, .kb-set .kb-subfields .kb-extra-reviewers, .kb-set .kb-subfields .kb-rounds { grid-column: 1 / -1; }
+/* Rounds, on a row of its own under the main reviewer's four fields: its box stays as short as a column's */
+.kb-set .kb-subfields .kb-rounds input { max-width: 150px; }
 /* The additional reviewers (reviewers-field.ts): a heading as a field's label with its hint right under it, then
    rows like the Repositories', on the field colour since the box they sit in is paper already. */
 .kb-set .kb-extra-reviewers { display: flex; flex-direction: column; align-items: flex-start; gap: 8px; min-width: 0; }

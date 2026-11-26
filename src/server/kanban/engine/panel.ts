@@ -75,9 +75,9 @@ export class ReviewPanel {
     this.timers.clear();
   }
 
-  /** "Reviewer 2 (Codex)": the seat's name in the task's conversation and in the combine prompt. */
-  label(seat: number, tool: KanbanTool, model?: string): string {
-    return `Reviewer ${seat + 1} (${toolName(tool)}${model ? ` ${model}` : ''})`;
+  /** "Reviewer 2 (Codex, focus: Security)": the seat's name in the task's conversation and in the combine prompt. */
+  label(seat: number, tool: KanbanTool, model?: string, focus?: string): string {
+    return `Reviewer ${seat + 1} (${toolName(tool)}${model ? ` ${model}` : ''}${focus ? `, focus: ${focus}` : ''})`;
   }
 
   // --- The round's shape ------------------------------------------------------------------------
@@ -146,14 +146,14 @@ export class ReviewPanel {
     const seats = goingOn ? stored : (this.d.ctx.settings.effectiveReview(task.project, task.overrides).extra ?? []).map((spec, i) => {
       const old = stored.find((c) => c.seat === i + 1);
       const same = old?.tool === spec.tool;
-      return { seat: i + 1, tool: spec.tool, ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}), ...(old?.workerId && floor?.workers.get(old.workerId) ? { workerId: old.workerId } : {}), ...(same && old?.sessionId ? { sessionId: old.sessionId } : {}) };
+      return { seat: i + 1, tool: spec.tool, ...(spec.model ? { model: spec.model } : {}), ...(spec.effort ? { effort: spec.effort } : {}), ...(spec.focus ? { focus: spec.focus } : {}), ...(old?.workerId && floor?.workers.get(old.workerId) ? { workerId: old.workerId } : {}), ...(same && old?.sessionId ? { sessionId: old.sessionId } : {}) };
     });
     if (!goingOn) this.d.update(task.id, { coReviewers: seats.length ? seats : null });
     const kept = goingOn ? this.view(task.id)?.co : undefined;
-    for (const { seat, tool, model } of seats) {
+    for (const { seat, tool, model, focus } of seats) {
       const had = kept?.get(seat);
       if (had && (had.status === 'succeeded' || (had.status === 'running' && this.d.livesOf(task.id).some((l) => l.runId === had.id)))) continue;
-      const label = this.label(seat, tool, model);
+      const label = this.label(seat, tool, model, focus);
       const paused = this.d.ctx.hiringPaused?.();
       const err = paused ? `hiring is paused: ${paused}` : await this.d.launch(this.d.ctx.repo.getTask(task.id) ?? task, { type: 'run', phase: 'review', role: 'reviewer', prompt: (eff.round ?? 1) > 1 ? 'rereview' : 'review', ...(eff.round !== undefined ? { round: eff.round } : {}) }, { ...(via.who ? { who: via.who } : {}) }, seat, 'co');
       if (err) this.d.note(task, `${label} could not start: ${clip(typeof err === 'string' ? err : err.queued, 300)}`);
@@ -174,7 +174,7 @@ export class ReviewPanel {
     else if (o.asked) why = 'it asked a question, and there is nobody to answer it in a review panel';
     if (why) {
       this.d.finishRun(live.runId, task.project, { status: 'failed', error: why, ...(o.sessionId ? { sessionId: o.sessionId } : {}) });
-      this.d.note(task, `${this.label(seat, info.tool, info.model)} did not finish: ${why}`, live.runId);
+      this.d.note(task, `${this.label(seat, info.tool, info.model, info.focus)} did not finish: ${why}`, live.runId);
     } else this.d.finishRun(live.runId, task.project, { status: 'succeeded', summary: clip(text, SUMMARY_MAX), verdict: reviewVerdict(text), ...(o.sessionId ? { sessionId: o.sessionId } : {}) });
     await this.settle(task.id);
   }
@@ -187,7 +187,7 @@ export class ReviewPanel {
     this.d.finishRun(live.runId, live.floorId, { status, error: why });
     if (!task) return;
     const info = this.spec(task, live.seat ?? 0);
-    this.d.note(task, `${this.label(live.seat ?? 0, info.tool, info.model)} did not finish: ${why}`, live.runId);
+    this.d.note(task, `${this.label(live.seat ?? 0, info.tool, info.model, info.focus)} did not finish: ${why}`, live.runId);
     if (settle) await this.settle(task.id);
   }
 
@@ -299,7 +299,7 @@ export class ReviewPanel {
     const seats = [...new Set([...(task.coReviewers ?? []).map((c) => c.seat), ...round.co.keys()])].sort((a, b) => a - b);
     for (const seat of seats) {
       const row = round.co.get(seat), entry = task.coReviewers?.find((c) => c.seat === seat);
-      out.push(one(this.label(seat, row?.tool ?? entry?.tool ?? 'claude', row ? row.model : entry?.model), row, 'did not finish'));
+      out.push(one(this.label(seat, row?.tool ?? entry?.tool ?? 'claude', row ? row.model : entry?.model, entry?.focus), row, 'did not finish'));
     }
     return out.join('\n\n');
   }
@@ -338,9 +338,9 @@ export class ReviewPanel {
     }
   }
 
-  private spec(task: KanbanTask, seat: number): { tool: KanbanTool; model?: string } {
+  private spec(task: KanbanTask, seat: number): { tool: KanbanTool; model?: string; focus?: string } {
     const c = task.coReviewers?.find((x) => x.seat === seat);
-    return { tool: c?.tool ?? 'claude', ...(c?.model ? { model: c.model } : {}) };
+    return { tool: c?.tool ?? 'claude', ...(c?.model ? { model: c.model } : {}), ...(c?.focus ? { focus: c.focus } : {}) };
   }
 
   // --- Restart ----------------------------------------------------------------------------------

@@ -223,7 +223,15 @@ is long) and a line saying which meeting it came from.
    working then is left out too. When none of them has a result, the main reviewer's own review is the
    result and nothing is combined. If the combining cannot start, nothing is published: the task waits and
    *Retry* combines the reviews that were finished. The reviewers of a round are the ones it started with:
-   changing the list in the settings takes effect from the next round. The additional reviewers go home as the round's result is ready (the
+   changing the list in the settings takes effect from the next round. A reviewer can have a **focus**
+   (a viewpoint such as Correctness, Simplicity or Security, set for the main reviewer and each additional
+   one in the review settings): its own review is told to look hardest for what matters from that viewpoint,
+   and the focus is named in the combining's list ("Reviewer 2 (Codex, focus: Security)"). It is an
+   emphasis, not a limit: a serious problem outside it is still reported. The combining does not use a focus:
+   its prompt always tells the main reviewer to judge every finding on its own merits, whatever viewpoint it or
+   the finding's reviewer reviewed from. With no focus
+   the review is the ordinary one. A reviewer session that is carried on remembers a focus removed in the
+   middle of the task. Pull-request reviews do not use a focus. The additional reviewers go home as the round's result is ready (the
    worktree stays) and come back for the next round of the same review on their own sessions (a new review starts them afresh). The task counts as running
    from the first review to the result, including the moments between the main reviewer's review and the
    combining. Stopping the task, putting it on hold or moving it to Done ends the whole round; **Retry**
@@ -418,8 +426,8 @@ over it, and the task's own over both.
 | UI testing | Kanban → New tasks; Projects → Project; per task | on | Implementers save before and after screenshots of the UI they change (see [UI testing](#ui-testing)). A project chooses *Default*, *On* or *Off*; a task's own choice (the create form's tick box) goes over both, and a task without one follows its project. |
 | Plan phase runs | Kanban → New tasks; Projects | plan mode | How the plan phase runs. *Plan mode* (the default): Claude's own plan mode, which cannot change files. *Auto mode*: Claude runs in auto mode with its file editing tools (and the plan-mode tools) off, and the office blocks the end of a plan turn that left uncommitted changes in the worktree. Codex plans in a read-only sandbox either way. Antigravity plans in `--mode plan` either way, which is advisory, not read-only. |
 | Implementation runs | Kanban → New tasks; Projects | auto mode | How implement, fix, resume and PR phases run. *Auto mode*: Claude's auto mode, where a classifier reviews risky actions (Codex has no auto mode and runs without permission prompts, as *without permission prompts* does; neither has Antigravity, which always runs with `--dangerously-skip-permissions`). *Without permission prompts*: Claude's bypass mode; Codex with no approvals and no sandbox; Antigravity with all permissions. *In Codex's workspace sandbox* (`-s workspace-write -a never`) changes Codex; Claude then runs in bypass mode and Antigravity with all permissions. Reviews are not affected: they always run in bypass mode with the editing tools off. |
-| Reviewer: agent, model, effort | Kanban → Reviews; Projects; per task | Claude | Who reviews (the main reviewer). |
-| Additional reviewers | Kanban → Reviews; Projects | none | Up to 4 more reviewers, each with its own agent, model and effort (*Add a reviewer*). On a review round they all review at the same time and the main reviewer combines their results (see [The process](#the-process)). A project's own review settings replace the office's list, an empty list included; a task has no list of its own. |
+| Reviewer: agent, model, effort, focus | Kanban → Reviews; Projects; per task (not the focus) | Claude, no focus | Who reviews (the main reviewer). **Focus** is an optional viewpoint for its own review (suggestions: Correctness, Simplicity, Security; any text up to 40 characters); empty is an ordinary review. A project's own review settings with an empty Focus mean no focus, even if the office has one; a task has no focus of its own and inherits it. |
+| Additional reviewers | Kanban → Reviews; Projects | none | Up to 4 more reviewers, each with its own agent, model, effort and optional focus (*Add a reviewer*; empty focus = an ordinary review). On a review round they all review at the same time and the main reviewer combines their results (see [The process](#the-process)). A project's own review settings replace the office's list, an empty list included; a task has no list of its own. |
 | Rounds | Kanban → Reviews; Projects; per task | 2 | 1–10 review rounds. |
 | Review the last fix too | Kanban → Reviews; Projects; per task | off | One more review after the last round's fix. |
 | Keep the reviewer off the web | Kanban → Reviews; Projects | on | Claude reviewers get no WebFetch/WebSearch (Bash keeps the network, for `gh`). A Codex review round always runs in Codex's read-only sandbox (no network); a Codex multi-PR review in its workspace sandbox with the network on, for `gh`. An Antigravity review has no such restriction: it runs with all permissions in `--mode plan`, and the reviewer's contract is what keeps it read-only. |
@@ -800,8 +808,8 @@ its own comments and close) gets its **status** and **assignee** there.
   (completed)**, **Close (not planned)** or **Reopen** (which of them is read from GitHub: it is closed or open now). A pull request only has the board's Status.
   A project draft: its board's Status.
 - **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
-  Ctrl/⌘ + Enter sends). A comment written under an identity everyone shares ends with
-  `— <your name> via Agent Office`. A draft has no comments.
+  Ctrl/⌘ + Enter sends). A comment is posted exactly as you wrote it: the office adds no
+  signature or other text to it. A draft has no comments.
 - **Sub-tasks.** A Jira issue's window lists its child issues (its sub-tasks, or the issues of an epic) between the text and
   the comments: a status chip, the key linking to Jira, the title, the assignee, and **Task #N** when a kanban task was
   made from it (it opens that task). Up to 100, with *More in Jira* when there are more; the list is hidden when the issue
@@ -815,9 +823,8 @@ its own comments and close) gets its **status** and **assignee** there.
   it per site and **Assign to me** uses it. A draft can't be assigned: convert it to an issue on GitHub.
 
 Whose sign-in is used: **Jira** always the source's Jira connection in Settings → Kanban, so every Jira change
-(transitions, assignee, comments) is made as *that token's* Jira account, whoever clicked; only a comment
-carries the person's name (`— <name> via Agent Office`), the rest is told by the floor toast and the task
-line. Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
+(transitions, assignee, comments) is made as *that token's* Jira account, whoever clicked; who it was is told by the floor toast and the task
+line only (a comment goes out as written, without a name added). Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
 nothing, as taking a card does. Reading (statuses, comments, who can be assigned) falls back to the
 office's `gh` instead of refusing. **Assign to me** on GitHub needs your own sign-in, not the office's. Changing a GitHub project's Status needs `gh`'s
 `project` scope (reading only `read:project`): run `gh auth refresh -s project` on the machine whose

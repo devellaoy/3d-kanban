@@ -39,7 +39,7 @@ const fetchStub = (answer: (call: HttpCall) => { status?: number; body?: unknown
 };
 
 const JIRA_TOKEN = [{ id: 'jira', name: 'team.atlassian.net', site: 'team.atlassian.net', email: 'me@x.fi', token: 'tok' }];
-const act = (over: Partial<IssueActIo> = {}): IssueActIo => ({ gh: async () => '', fetch: (async () => new Response('{}')) as typeof fetch, cwd: '/tmp', projectRepos: [], jira: JIRA_TOKEN, who: 'Panu', shared: false, ...over });
+const act = (over: Partial<IssueActIo> = {}): IssueActIo => ({ gh: async () => '', fetch: (async () => new Response('{}')) as typeof fetch, cwd: '/tmp', projectRepos: [], jira: JIRA_TOKEN, shared: false, ...over });
 const SITE = 'team.atlassian.net';
 
 // --- Jira -----------------------------------------------------------------------------------------
@@ -89,7 +89,6 @@ test('Jira comments: read oldest first as text, written as rich text with the as
   assert.deepEqual(calls[1].body.body.content, [
     { type: 'paragraph', content: [{ type: 'text', text: 'First line' }, { type: 'hardBreak' }, { type: 'text', text: 'second line' }] },
     { type: 'paragraph', content: [{ type: 'text', text: 'New paragraph' }] },
-    { type: 'paragraph', content: [{ type: 'text', text: '— Panu via Agent Office' }] },
   ]);
   assert.equal(calls[1].body.body.version, 1);
   assert.deepEqual((textToAdf('a\r\n\r\n\r\nb') as { content: unknown[] }).content.length, 2, 'blank lines of any kind split paragraphs');
@@ -128,7 +127,7 @@ test('Jira calls: only to the token’s own site, with the 401 text of the sourc
 
 const ENV = { GH_CONFIG_DIR: '/home/maija/gh' };
 
-test('GitHub comments: the newest fifty by GraphQL, oldest first; a comment goes by -f, signed under the office’s gh only', async () => {
+test('GitHub comments: the newest fifty by GraphQL, oldest first; a comment goes by -f, as written under either identity', async () => {
   const nodes = Array.from({ length: 50 }, (_, i) => ({ id: `IC_${i + 11}`, author: { login: 'u' }, body: `c${i + 11}`, createdAt: '2026-09-01T00:00:00Z', url: `https://github.com/o/r/issues/5#issuecomment-${i + 11}` }));
   const { gh, calls } = ghStub(() => JSON.stringify({ data: { repository: { issueOrPullRequest: { comments: { nodes } } } } }));
   const got = await ghComments(act({ gh, env: ENV }), 'o/r', 5);
@@ -144,7 +143,7 @@ test('GitHub comments: the newest fifty by GraphQL, oldest first; a comment goes
   assert.deepEqual(calls[calls0], { args: ['api', '--method', 'POST', 'repos/o/r/issues/5/comments', '-f', 'body=@me is not a file\nsecond line'], env: ENV });
   await ghComment(act({ gh, shared: true }), 'o/r', 5, 'hi');
   assert.equal(calls[calls0 + 1].env, undefined, 'the office’s own gh');
-  assert.equal(calls[calls0 + 1].args.at(-1), 'body=hi\n\n— Panu via Agent Office');
+  assert.equal(calls[calls0 + 1].args.at(-1), 'body=hi', 'nothing is added to the text');
 });
 
 test('GitHub people: GitHub searches the repository’s assignable users', async () => {
@@ -457,7 +456,7 @@ test('closing, commenting and assigning say who did it; a closed repository issu
   assert.equal(issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.status, 'CLOSED');
   assert.equal(issues.wall('app')!.items[0].state, 'CLOSED', 'and the 3D card is a closed one');
   await ws['kanban.issue.comment']!(c, { t: 'kanban.issue.comment', project: 'app', issueKey: 'gh:o/r#5', text: 'Looks fine' });
-  assert.equal(calls.at(-1)!.args.at(-1), 'body=Looks fine\n\n— Tester via Agent Office', 'signed under the office’s gh');
+  assert.equal(calls.at(-1)!.args.at(-1), 'body=Looks fine', 'the text as written, under the office’s gh too');
   await ws['kanban.issue.assign']!(c, { t: 'kanban.issue.assign', project: 'app', issueKey: 'gh:o/r#5', to: { id: 'maija' } });
   assert.equal(issues.message('app').items.find((i) => i.key === 'gh:o/r#5')!.assignee, 'maija');
   assert.deepEqual(ctx.toasts.map((t) => t.text), ['🔀 Tester moved gh:o/r#5 → Closed (not planned)', '💬 Tester commented on gh:o/r#5', '👤 Tester assigned gh:o/r#5 to maija']);
@@ -526,7 +525,7 @@ test('a Jira key goes to Jira with the token’s identity, whoever asks', async 
   await issues.plugin.ws!['kanban.issue.comment']!(c, { t: 'kanban.issue.comment', project: 'app', issueKey: 'UYT-12', text: 'Done here' });
   const posted = http.calls.at(-1)!;
   assert.equal(posted.method, 'POST');
-  assert.match(JSON.stringify(posted.body), /Done here.*Tester via Agent Office/);
+  assert.deepEqual((posted.body as { body: { content: unknown } }).body.content, [{ type: 'paragraph', content: [{ type: 'text', text: 'Done here' }] }], 'the text as written, nothing added');
   assert.equal(gh.calls.length, 0, 'gh is never run for Jira');
   assert.equal(ctx.toasts.at(-1)!.text, '💬 Tester commented on UYT-12');
 });
@@ -619,7 +618,7 @@ test('a move on one board does not change the status another board’s copy show
   assert.equal(shown().status, 'Shipped');
 });
 
-test('a comment under the office’s gh is signed, and goes on the issue’s task as a status line', async () => {
+test('a comment under the office’s gh goes out as written, and goes on the issue’s task as a status line', async () => {
   const { ctx, issues, ws, calls } = setup({ ghAs: () => undefined });
   await issues.refresh('app');
   const c = client(true, 'acc1');
@@ -630,7 +629,7 @@ test('a comment under the office’s gh is signed, and goes on the issue’s tas
   assert.deepEqual(last(c, 'kanban.ok'), { t: 'kanban.ok', rid: 'c1' });
   const post = calls.at(-1)!;
   assert.equal(post.env, undefined, 'the office’s gh');
-  assert.ok(post.args.at(-1)!.endsWith('\n\n— Tester via Agent Office'));
+  assert.equal(post.args.at(-1), 'body=Looks fine');
   const lines = ctx.repo.listComments(taskId).comments.filter((x) => x.kind === 'status');
   assert.deepEqual(lines.map((x) => [x.authorKind, x.text]), [['system', 'Tester commented on gh:o/r#5']]);
   assert.ok(ctx.changed.includes(taskId));
