@@ -228,6 +228,11 @@ export function inOrder(url: string, work: () => Promise<void>): void {
   void next.then(() => { if (chains.get(url) === next) chains.delete(url); });
 }
 
+/** Resolves once every job queued so far (and any queued meanwhile) is done: checkClosing itself is fire and forget. */
+export async function closingsIdle(): Promise<void> {
+  while (chains.size) await Promise.allSettled([...chains.values()]);
+}
+
 /**
  * For each active task with a GitHub issue as its ticket: the pull request that is to close it
  * (closingPr among its open ones off the task's own branches, in the project's repositories) gets

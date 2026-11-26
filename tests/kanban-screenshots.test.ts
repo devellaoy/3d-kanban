@@ -7,6 +7,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, 
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { FALLBACK_WAIT_MS, assignShots, checkScreenshots, editTimeout, ensureScreenshots, imagesDigest, screenshotsBlock, withScreenshots, withoutScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
+import { closingsIdle } from '../src/server/kanban/integrations/pulls/closes.js';
 import { listUiImages } from '../src/server/kanban/engine/uitesting.js';
 
 const URL_ = 'https://github.com/acme/api/pull/3';
@@ -132,7 +133,8 @@ function board(opts: { runState?: string; flags?: Record<string, boolean>; url?:
   } as unknown as Parameters<typeof checkScreenshots>[0];
   return { ctx, dir, task, comments, links };
 }
-const settle = () => new Promise((r) => setTimeout(r, 40));
+// The jobs run on the same per-pull-request chains as the closing check: wait for them, not for a time.
+const settle = closingsIdle;
 
 test('every open GitHub pull request of the task gets the images, once for the same images', async () => {
   const { ctx } = board();

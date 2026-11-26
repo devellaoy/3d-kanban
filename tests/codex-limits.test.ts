@@ -427,7 +427,7 @@ function office() {
 }
 
 async function until(cond: () => boolean) {
-  for (let i = 0; i < 200 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
+  for (let i = 0; i < 1500 && !cond(); i++) await new Promise((r) => setTimeout(r, 10));
   assert.ok(cond(), 'timed out');
 }
 

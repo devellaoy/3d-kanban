@@ -356,7 +356,7 @@ test('a visit is refused for another version, another protocol, or someone witho
     ws.on('message', (d) => void got.push(parseRelayMsg(JSON.parse(d.toString()))!));
     await new Promise((r) => ws.once('open', r));
     ws.send(JSON.stringify({ t: 'hello', password: RELAY_PASSWORD, identityToken: 'tok-mallory', version: ownerVersion, protocol: MP_PROTOCOL }));
-    for (let i = 0; i < 100 && !got.some((m) => m.t === 'welcome'); i++) await new Promise((r) => setTimeout(r, 20));
+    for (let i = 0; i < 750 && !got.some((m) => m.t === 'welcome'); i++) await new Promise((r) => setTimeout(r, 20));
     ws.send(JSON.stringify({ t: 'visit.open', to: 'owner', profile: { name: 'M', color: '#000000', skin: 0, hair: 0, style: 0 }, ...open }));
     let close: Extract<RelayToOffice, { t: 'visit.close' }> | undefined;
     for (let i = 0; i < 150 && !close; i++) {

@@ -77,6 +77,8 @@ test('helper forwards only the bounded root event fields to the authenticated br
   const dir = mkdtempSync(path.join(tmpdir(), 'agent-office-muse-'));
   const received: { url?: string; authorization?: string; body?: unknown } = {};
   const server = createServer((req, res) => {
+    // A free port of the machine: the office's own port probe (a GET /) may knock on it. Only the helper's post counts.
+    if (req.method !== 'POST') return void res.writeHead(404).end();
     const chunks: Buffer[] = [];
     req.on('data', (chunk: Buffer) => chunks.push(chunk));
     req.on('end', () => {
