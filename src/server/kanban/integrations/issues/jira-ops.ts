@@ -95,18 +95,26 @@ export async function jiraTransition(io: IssueActIo, at: JiraAt, key: string, tr
   return t.to;
 }
 
-/** The newest comments, oldest first. */
-export async function jiraComments(io: IssueActIo, at: JiraAt, key: string): Promise<IssueCommentItem[]> {
+/** A comment with its body as Jira sent it (ADF), for a reader that renders it itself. */
+export type RawComment = Omit<IssueCommentItem, 'body'> & { adf: unknown };
+
+/** The newest comments, oldest first, bodies in ADF. */
+export async function jiraCommentsRaw(io: IssueActIo, at: JiraAt, key: string): Promise<RawComment[]> {
   const body = await jiraCall(io, at, 'GET', `${issuePath(key)}/comment?orderBy=-created&maxResults=${COMMENTS}`);
   return (body.comments ?? [])
-    .map((c: any): IssueCommentItem => ({
+    .map((c: any): RawComment => ({
       id: String(c.id),
       author: String(c.author?.displayName ?? 'Someone'),
-      body: adfToText(c.body),
+      adf: c.body,
       createdAt: String(c.created ?? ''),
       url: `https://${at.site}/browse/${encodeURIComponent(key)}?focusedCommentId=${encodeURIComponent(String(c.id))}`,
     }))
     .reverse();
+}
+
+/** The newest comments, oldest first. */
+export async function jiraComments(io: IssueActIo, at: JiraAt, key: string): Promise<IssueCommentItem[]> {
+  return (await jiraCommentsRaw(io, at, key)).map(({ adf, ...c }): IssueCommentItem => ({ ...c, body: adfToText(adf) }));
 }
 
 /** Adds a comment: the text as written, with nothing added to say who asked or where it came from. */

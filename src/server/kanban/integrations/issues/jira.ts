@@ -52,41 +52,50 @@ export function buildJql(c: Pick<JiraConfig, 'projectKeys' | 'filters'>, epicFie
  * Atlassian Document Format (the v3 API's rich text) as plain text: paragraphs and headings as
  * lines, lists as "- " / "1. ", code blocks fenced, mentions and links by their text.
  */
-export function adfToText(node: unknown): string {
+export function adfToText(node: unknown, media?: AdfMedia): string {
   if (typeof node === 'string') return node;
-  const out = block(node, 0).replace(/\n{3,}/g, '\n\n').trim();
+  const out = block(node, 0, media).replace(/\n{3,}/g, '\n\n').trim();
   return out;
 }
 
-function inline(nodes: unknown[] | undefined): string {
-  return (nodes ?? []).map((n) => block(n, 0)).join('');
+/** Names the file a media node stands for (`[image: name]`), or nothing when it can't be joined to one. */
+export type AdfMedia = (attrs: Record<string, unknown>) => string | undefined;
+
+function inline(nodes: unknown[] | undefined, media?: AdfMedia): string {
+  return (nodes ?? []).map((n) => block(n, 0, media)).join('');
 }
 
-function block(raw: unknown, depth: number): string {
+/** A media node with a resolver: its placeholder, on one line. */
+function mediaText(n: { attrs?: Record<string, any> }, media: AdfMedia): string {
+  const name = media(n.attrs ?? {});
+  return name ? `[image: ${name}]` : '[attachment]';
+}
+
+function block(raw: unknown, depth: number, media?: AdfMedia): string {
   if (!raw || typeof raw !== 'object') return '';
   const n = raw as { type?: string; text?: string; attrs?: Record<string, any>; content?: unknown[] };
   const kids = n.content ?? [];
   switch (n.type) {
     case 'doc':
-      return kids.map((k) => block(k, depth)).join('');
+      return kids.map((k) => block(k, depth, media)).join('');
     case 'text':
       return n.text ?? '';
     case 'hardBreak':
       return '\n';
     case 'paragraph':
-      return `${inline(kids)}\n\n`;
+      return `${inline(kids, media)}\n\n`;
     case 'heading':
-      return `${'#'.repeat(Math.min(6, Math.max(1, Number(n.attrs?.level) || 1)))} ${inline(kids)}\n\n`;
+      return `${'#'.repeat(Math.min(6, Math.max(1, Number(n.attrs?.level) || 1)))} ${inline(kids, media)}\n\n`;
     case 'blockquote':
-      return `${kids.map((k) => block(k, depth)).join('').trim().split('\n').map((l) => `> ${l}`).join('\n')}\n\n`;
+      return `${kids.map((k) => block(k, depth, media)).join('').trim().split('\n').map((l) => `> ${l}`).join('\n')}\n\n`;
     case 'codeBlock':
-      return `\`\`\`${n.attrs?.language ?? ''}\n${inline(kids)}\n\`\`\`\n\n`;
+      return `\`\`\`${n.attrs?.language ?? ''}\n${inline(kids, media)}\n\`\`\`\n\n`;
     case 'rule':
       return '---\n\n';
     case 'bulletList':
     case 'orderedList': {
       const lines = kids.map((item, i) => {
-        const body = ((item as { content?: unknown[] }).content ?? []).map((k) => block(k, depth + 1)).join('').trim();
+        const body = ((item as { content?: unknown[] }).content ?? []).map((k) => block(k, depth + 1, media)).join('').trim();
         const mark = n.type === 'orderedList' ? `${i + 1}.` : '-';
         return `${'  '.repeat(depth)}${mark} ${body.replace(/\n/g, `\n${'  '.repeat(depth + 1)}`)}`;
       });
@@ -106,12 +115,16 @@ function block(raw: unknown, depth: number): string {
       return `[${n.attrs?.text ?? ''}]`;
     case 'mediaSingle':
     case 'mediaGroup':
+      if (!media) return '[attachment]\n\n';
+      return `${kids.map((k) => ((k as { type?: string })?.type === 'media' ? mediaText(k as { attrs?: Record<string, any> }, media) : block(k, depth, media).trim())).join('\n')}\n\n`;
     case 'media':
-      return '[attachment]\n\n';
+      return media ? `${mediaText(n, media)}\n\n` : '[attachment]\n\n';
+    case 'mediaInline':
+      return media ? mediaText(n, media) : '';
     case 'table':
-      return `${kids.map((row) => ((row as { content?: unknown[] }).content ?? []).map((cell) => block(cell, depth).replace(/\s+/g, ' ').trim()).join(' | ')).join('\n')}\n\n`;
+      return `${kids.map((row) => ((row as { content?: unknown[] }).content ?? []).map((cell) => block(cell, depth, media).replace(/\s+/g, ' ').trim()).join(' | ')).join('\n')}\n\n`;
     default:
-      return kids.length ? kids.map((k) => block(k, depth)).join('') : (n.text ?? '');
+      return kids.length ? kids.map((k) => block(k, depth, media)).join('') : (n.text ?? '');
   }
 }
 
