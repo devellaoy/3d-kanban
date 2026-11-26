@@ -21,6 +21,7 @@ import { fail, ok } from '../util.js';
 import { forkTest, polledPulls } from './prfix.js';
 import { checkClosing, type ClosingMark } from './closes.js';
 import { reviewChecker, type ReviewTarget } from './reviews.js';
+import { postReview } from './postreview.js';
 import { checkScreenshots, type ScreenshotMark } from './screenshots.js';
 import { branchOwners, branchPrs, findBundle, findTaskPrs, sharedBranch, prOwners, prState, type BundleBy, type FoundList, type FoundPr, type RepoPulls } from './bundle.js';
 
@@ -50,7 +51,7 @@ function ghWhy(err: unknown): { missing: boolean; text: string } {
 }
 
 /** A PR as a review names it, with what its list says about it. */
-export type ReviewPr = PrRef & { title?: string; url?: string; branch?: string };
+export type ReviewPr = PrRef & { title?: string; url?: string; branch?: string; base?: string; fork?: boolean };
 
 export interface PullsOptions {
   gh?: GhRunner;
@@ -133,13 +134,13 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
       if (seen.has(key)) return `${r.remote}#${pr.number} is picked twice`;
       seen.add(key);
       if (!lists.has(r.id)) lists.set(r.id, await listPulls(req.project, r).catch(() => undefined));
-      let found = lists.get(r.id)?.pulls.find((p) => p.number === pr.number);
+      let found: (RepoPulls['pulls'][number] & Partial<Pick<GhPull, 'baseRefName' | 'isCrossRepository'>>) | undefined = lists.get(r.id)?.pulls.find((p) => p.number === pr.number);
       // Not in the list (it's capped, or couldn't be read): asked for on its own, as gh is below.
       const hosted = found ? undefined : hostedRepoOf(r.remote);
       if (hosted) {
         try {
           const v = await viewHosted(hosted, pr.number);
-          found = { number: v.number, title: v.title, url: v.url, state: v.state, isDraft: v.isDraft, headRefName: v.headRefName } as GhPull;
+          found = { number: v.number, title: v.title, url: v.url, state: v.state, isDraft: v.isDraft, headRefName: v.headRefName, baseRefName: v.baseRefName, isCrossRepository: v.isCrossRepository } as GhPull;
         } catch {
           return `${r.remote} has no pull request #${pr.number}`;
         }
@@ -151,7 +152,12 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
           return `${r.remote} has no pull request #${pr.number}`;
         }
       }
-      out.push({ repo: r.remote, number: pr.number, ...(found?.title ? { title: found.title } : {}), ...(found?.url ? { url: found.url } : {}), ...(found?.headRefName ? { branch: found.headRefName } : {}) });
+      // The board's list may not name the base branch or the fork: asked for on its own, as the head's fetch needs them (a failed question leaves them out).
+      if (found && (!found.baseRefName || typeof found.isCrossRepository !== 'boolean') && !hostedRepoOf(r.remote)) {
+        const more = await runGh(['pr', 'view', String(pr.number), '-R', r.remote, '--json', 'baseRefName,isCrossRepository'], ctx.dataDir, ASK_TIMEOUT_MS).then((o) => JSON.parse(o) as Partial<GhPull>, () => undefined);
+        if (more) found = { ...found, ...(more.baseRefName ? { baseRefName: more.baseRefName } : {}), ...(typeof more.isCrossRepository === 'boolean' ? { isCrossRepository: more.isCrossRepository } : {}) };
+      }
+      out.push({ repo: r.remote, number: pr.number, ...(found?.title ? { title: found.title } : {}), ...(found?.url ? { url: found.url } : {}), ...(found?.headRefName ? { branch: found.headRefName } : {}), ...(found?.baseRefName ? { base: found.baseRefName } : {}), ...(typeof found?.isCrossRepository === 'boolean' ? { fork: found.isCrossRepository } : {}) });
     }
     return { prs: out };
   };
@@ -466,6 +472,7 @@ export function createPullsParts(ctx: KanbanContext, opts: PullsOptions = {}) {
     },
     review,
     brief,
+    postReview: (project, prs, text, account) => postReview(ctx, project, prs, text, account),
   };
 
   const plugin: KanbanPlugin = {
