@@ -39,7 +39,7 @@ function withDescendants(pid: number): number[] {
 }
 
 /** Ends a shell and what it started: SIGHUP to its process group and every descendant, then SIGKILL after a grace period (at once with `now`). */
-function killGroup(proc: pty.IPty, now: boolean) {
+function killGroup(proc: pty.IPty, now: boolean, graceMs: number) {
   const pid = proc.pid;
   if (WIN || !pid) return void proc.kill();
   const pids = withDescendants(pid);
@@ -54,7 +54,7 @@ function killGroup(proc: pty.IPty, now: boolean) {
   };
   if (now) return send('SIGKILL');
   send('SIGHUP');
-  setTimeout(() => send('SIGKILL'), KILL_GRACE_MS).unref();
+  setTimeout(() => send('SIGKILL'), graceMs).unref();
 }
 
 /** What a shell needs to start, or why it can't. */
@@ -85,12 +85,16 @@ export class ShellTabs {
   private subs = new Map<string, Set<Client>>();
   private shell: string;
   private args: string[];
+  private killGraceMs: number;
+  private resyncMs: number;
   private resync?: NodeJS.Timeout;
 
   constructor(
     private deps: ShellDeps,
-    opts: { shell?: string; args?: string[] } = {},
+    opts: { shell?: string; args?: string[]; killGraceMs?: number; resyncMs?: number } = {},
   ) {
+    this.killGraceMs = opts.killGraceMs ?? KILL_GRACE_MS;
+    this.resyncMs = opts.resyncMs ?? RESYNC_MS;
     this.shell = opts.shell ?? defaultShell();
     this.args = opts.args ?? (WIN ? [] : ['-l']);
   }
@@ -180,7 +184,7 @@ export class ShellTabs {
       if (tab.stale.has(v)) continue;
       if (queued(v) > SLOW_CLIENT_BYTES) {
         tab.stale.add(v);
-        this.resync ??= setInterval(() => this.catchUp(), RESYNC_MS).unref();
+        this.resync ??= setInterval(() => this.catchUp(), this.resyncMs).unref();
       } else this.deps.send(v, { t: 'shelltab.data', tabId: tab.info.id, data });
     }
   }
@@ -205,7 +209,7 @@ export class ShellTabs {
     this.tabs.delete(tab.info.id);
     tab.viewers.clear();
     tab.stale.clear();
-    if (kill) killGroup(tab.proc, kill === 'now');
+    if (kill) killGroup(tab.proc, kill === 'now', this.killGraceMs);
     tab.term.dispose();
   }
 

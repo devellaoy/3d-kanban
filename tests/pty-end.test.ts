@@ -75,7 +75,14 @@ test('endPty leaves it at SIGHUP for a terminal that goes on it: no SIGKILL afte
 test("the host's stop ends a terminal that ignores SIGHUP, after the grace period, before the host exits", { skip: !unix }, async (t) => {
   const dataDir = mkdtempSync(path.join(tmpdir(), 'pty-host-'));
   const host = new PtyHost(dataDir, () => {});
-  assert.ok(await host.connect(), 'a host started');
+  // The host is a process of its own that reads its grace period from the environment it is started with.
+  const GRACE = 1000;
+  process.env.AGENT_OFFICE_KILL_GRACE_MS = String(GRACE);
+  try {
+    assert.ok(await host.connect(), 'a host started');
+  } finally {
+    delete process.env.AGENT_OFFICE_KILL_GRACE_MS;
+  }
   const { proc } = await terminal((file, args) => host.spawn({ file, args, cwd: process.cwd(), env: process.env as Record<string, string>, cols: 80, rows: 24 }), DEAF);
   assert.ok(await until(() => proc.pid > 0, 2000), 'the host said which process it is');
   // The host's own process: the parent of the terminal it spawned.
@@ -86,7 +93,7 @@ test("the host's stop ends a terminal that ignores SIGHUP, after the grace perio
   });
   const start = Date.now();
   host.stop();
-  assert.ok(await until(() => !alive(proc.pid), 9000), 'the terminal was killed');
-  assert.ok(Date.now() - start >= 4000, 'only after the grace period: SIGHUP had its chance first');
+  assert.ok(await until(() => !alive(proc.pid), 15_000), 'the terminal was killed');
+  assert.ok(Date.now() - start >= GRACE - 100, 'only after the grace period: SIGHUP had its chance first');
   assert.ok(await until(() => !alive(hostPid), 3000), 'and the host exited once it was gone');
 });

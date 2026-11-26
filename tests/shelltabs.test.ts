@@ -18,7 +18,7 @@ function setup() {
       send: (c, msg) => sent.push({ c, msg }),
       spec: (id) => (id === 'gone' ? 'That worker is no longer in the building' : { cwd: dir, env: { PATH: process.env.PATH ?? '/usr/bin:/bin', TERM: 'xterm-256color' } }),
     },
-    { shell: '/bin/sh', args: [] },
+    { shell: '/bin/sh', args: [], killGraceMs: 300, resyncMs: 100 },
   );
   const client = () => ({}) as Client;
   const last = (c: Client) => sent.filter((s) => s.c === c && s.msg.t === 'shelltab.tabs').map((s) => s.msg).at(-1) as Extract<ShellTabServerMsg, { t: 'shelltab.tabs' }>;
