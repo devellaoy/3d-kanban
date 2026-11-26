@@ -99,12 +99,12 @@ export function route(sources: IssueSourceConfig[], issue: NormalizedIssue, via?
 export function ghIoFor(ctx: KanbanContext, base: IssueSourceIo, caller: KanbanCaller): IssueActIo | string {
   const as = ctx.ghAs?.(caller.accountId);
   if (typeof as === 'string') return as;
-  return statusIoFor(base, caller.name, as?.env);
+  return statusIoFor(base, as?.env);
 }
 
 /** The io a Status move runs under: the person's own gh (`env`), else the office's, which is theirs on the shared password (`shared`). */
-export function statusIoFor(base: IssueSourceIo, who: string, env?: Record<string, string>): IssueActIo {
-  return { ...base, ...(env ? { env } : {}), who, shared: !env };
+export function statusIoFor(base: IssueSourceIo, env?: Record<string, string>): IssueActIo {
+  return { ...base, ...(env ? { env } : {}), shared: !env };
 }
 
 /** A write went through: show it (the cached issue, the floor toast) and say who did it on the issue's task. */
@@ -140,12 +140,12 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
       if (typeof target === 'string') return fail(c, m.rid, target);
       const base = deps.io(m.project);
       let io: IssueActIo;
-      if (target.kind === 'jira' || target.kind === 'azure') io = { ...base, who: c.name, shared: true };
+      if (target.kind === 'jira' || target.kind === 'azure') io = { ...base, shared: true };
       else {
         // GitHub runs as the person. A write without a sign-in of theirs says why not; a read goes by the office's gh.
         const own = ghIoFor(ctx, base, c);
         if (typeof own === 'string' && write) return fail(c, m.rid, own);
-        io = typeof own === 'string' ? { ...base, who: c.name, shared: true } : own;
+        io = typeof own === 'string' ? { ...base, shared: true } : own;
       }
       try {
         await go(c, m, { issue, target, io, boards: sources.filter((s): s is ProjectConfig => s.kind === 'github-project') });
@@ -260,7 +260,7 @@ export function issueActionHandlers(ctx: KanbanContext, deps: ActionDeps): NonNu
       if (target.kind === 'jira') await jiraComment(io, target, m.issueKey, m.text);
       else if (target.kind === 'azure') {
         const as = azureActAs(c.accountId, target.org);
-        await azureComment(io, as, target, m.text, as.key === 'office' ? c.name : undefined);
+        await azureComment(io, as, target, m.text);
       }
       else await ghComment(io, target.repo, target.number, m.text);
       wrote(c, m, issue, '💬', `${c.name} commented on ${m.issueKey}`);

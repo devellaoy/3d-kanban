@@ -800,8 +800,8 @@ its own comments and close) gets its **status** and **assignee** there.
   (completed)**, **Close (not planned)** or **Reopen** (which of them is read from GitHub: it is closed or open now). A pull request only has the board's Status.
   A project draft: its board's Status.
 - **Comments.** The newest 50, oldest first, and a box to add one (Enter makes a new line,
-  Ctrl/⌘ + Enter sends). A comment written under an identity everyone shares ends with
-  `— <your name> via Agent Office`. A draft has no comments.
+  Ctrl/⌘ + Enter sends). A comment is posted exactly as you wrote it: the office adds no
+  signature or other text to it. A draft has no comments.
 - **Sub-tasks.** A Jira issue's window lists its child issues (its sub-tasks, or the issues of an epic) between the text and
   the comments: a status chip, the key linking to Jira, the title, the assignee, and **Task #N** when a kanban task was
   made from it (it opens that task). Up to 100, with *More in Jira* when there are more; the list is hidden when the issue
@@ -815,9 +815,8 @@ its own comments and close) gets its **status** and **assignee** there.
   it per site and **Assign to me** uses it. A draft can't be assigned: convert it to an issue on GitHub.
 
 Whose sign-in is used: **Jira** always the source's Jira connection in Settings → Kanban, so every Jira change
-(transitions, assignee, comments) is made as *that token's* Jira account, whoever clicked; only a comment
-carries the person's name (`— <name> via Agent Office`), the rest is told by the floor toast and the task
-line. Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
+(transitions, assignee, comments) is made as *that token's* Jira account, whoever clicked; who it was is told by the floor toast and the task
+line only (a comment goes out as written, without a name added). Scope that token's permissions in Jira accordingly. **GitHub** writes use your own sign-in (☰ → Your sign-ins), or the office's `gh` when an admin chose that for you; with neither they say why and do
 nothing, as taking a card does. Reading (statuses, comments, who can be assigned) falls back to the
 office's `gh` instead of refusing. **Assign to me** on GitHub needs your own sign-in, not the office's. Changing a GitHub project's Status needs `gh`'s
 `project` scope (reading only `read:project`): run `gh auth refresh -s project` on the machine whose
