@@ -1,5 +1,6 @@
 // Which of the comments the office typed into a run its session log shows (docs/kanban-architecture.md §4, "Comments"). One log prompt
 // acknowledges at most one comment, the earliest not yet matched whose text it starts like, so two comments that begin alike are told apart.
+// Claude Code logs a prompt it was pasted wrapped in a `<pasted_content id="…">` tag: `unpasted` takes a wrapper around the whole prompt off before it is compared.
 
 /** A comment typed into the run, as the readers follow it. */
 export interface OfficePrompt {
@@ -32,4 +33,20 @@ export function officeReceipts(
   const fresh = order.filter((i) => matched.has(i) || (cutBefore !== undefined && prompts[i].at < cutBefore));
   for (const i of fresh) received.add(i);
   return { received, fresh };
+}
+
+const OPENING = /^\s*<pasted_content(?:\s[^>]*)?>\n?/;
+const CLOSING = '</pasted_content';
+
+/**
+ * A prompt without the `<pasted_content …>` wrapper Claude Code logs around a pasted one (and hands its prompt hook), when the wrapper is around the whole
+ * prompt: the text opens with the tag (after whitespace) and ends with the closing one (which carries the id too; ids are not compared). Typed text before
+ * or after the paste, or a wrapper left open, is a person's prompt and stays as it is, like any other text.
+ */
+export function unpasted(text: string): string {
+  const open = OPENING.exec(text);
+  const end = text.trimEnd();
+  const at = open && end.endsWith('>') ? end.lastIndexOf(CLOSING) : -1;
+  if (!open || at < open[0].length || !/^(\s[^<>]*)?$/.test(end.slice(at + CLOSING.length, -1))) return text;
+  return end.slice(open[0].length, at).replace(/\n$/, '');
 }

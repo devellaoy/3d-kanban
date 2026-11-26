@@ -5,6 +5,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { validateWorkerModel } from '../src/server/agents.js';
 import { backgroundLeft, claudeAdapter, claudeAlias, claudeInterruptedSince, readClaudeTurn, teammateTags } from '../src/server/kanban/engine/adapters/claude.js';
+import { unpasted } from '../src/server/kanban/engine/adapters/office.js';
 import { MODEL_RE } from '../src/shared/kanban/protocol.js';
 import { codexAdapter, readCodexTurn } from '../src/server/kanban/engine/adapters/codex.js';
 import { antigravityAdapter, readAntigravityTurn } from '../src/server/kanban/engine/adapters/antigravity.js';
@@ -864,4 +865,27 @@ test('antigravity transcript: the office\'s prompts not in the log yet are unhea
   assert.equal(antigravityAdapter.promptReceived?.(shown, comment.at, 'Comment from Grace'), true);
   assert.equal(antigravityAdapter.promptReceived?.(shown, comment.at, 'Another one'), false);
   assert.equal(antigravityAdapter.promptReceived?.(shown, now + 5000, ''), false);
+});
+
+test('unpasted takes a <pasted_content> wrapper around the whole prompt off, nothing else', () => {
+  assert.equal(unpasted('Plain prompt\nline two'), 'Plain prompt\nline two');
+  assert.equal(unpasted('\n\n<pasted_content id="a1b2">\nBody\nmore\n</pasted_content id="a1b2">\n'), 'Body\nmore');
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody\n</pasted_content>'), 'Body');
+  assert.equal(unpasted('\n\n\n  <pasted_content id="a1b2">\nBody\n</pasted_content>  \n'), 'Body');
+  assert.equal(unpasted('<pasted_content>\nBody\n</pasted_content>'), 'Body');
+  // Typed text before the paste is a person's prompt: unchanged.
+  const prefixed = 'Fix these:\n\n\n\n<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\n';
+  assert.equal(unpasted(prefixed), prefixed);
+  // So is typed text after it, and a wrapper left open.
+  const suffixed = '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\nDo not do that.';
+  assert.equal(unpasted(suffixed), suffixed);
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody'), '<pasted_content id="a1b2">\nBody');
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody </pasted_content and more >'), 'Body ');
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody </pasted_contents>'), '<pasted_content id="a1b2">\nBody </pasted_contents>');
+  // The body may quote the closing tag; Windows line ends.
+  assert.equal(unpasted('<pasted_content id="a1b2">\nSee </pasted_content> here\n</pasted_content id="a1b2">'), 'See </pasted_content> here');
+  assert.equal(unpasted('<pasted_content id="a1b2">\r\nBody\r\n</pasted_content id="a1b2">\r\n').trim(), 'Body');
+  // Ids that differ, an extra attribute.
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody\n</pasted_content id="zz99">'), 'Body');
+  assert.equal(unpasted('<pasted_content id="a1b2" lines="3">\nBody\n</pasted_content id="a1b2">'), 'Body');
 });

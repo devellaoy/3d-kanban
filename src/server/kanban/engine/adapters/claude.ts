@@ -5,7 +5,7 @@
 import { isClaudeModel, type ClaudeModel } from '../../../../shared/protocol.js';
 import type { KanbanEffort, RunPhase } from '../../../../shared/kanban/types.js';
 import { atOf, isRealPrompt, isTaskNotification, isTeammateMessage, messageText, teammateEvents, teammatesAtWork, teammatesBusy, toolResultText, transcriptBusy } from './claude-team.js';
-import { officeReceipts } from './office.js';
+import { officeReceipts, unpasted } from './office.js';
 import { isObj, OFFICE_PROMPT_WAIT_MS, readJsonLines, type LaunchOptions, type ReadOpts, type TaskAgentAdapter, type TurnResult } from './types.js';
 
 export { messagesSent, teammateEvents, teammateTags, teammatesBusy, type TeammateEvent } from './claude-team.js';
@@ -134,8 +134,8 @@ function noticeTest(lines: Record<string, unknown>[]): (line: Record<string, unk
   return (l) => isTeammateMessage(l) || (isTaskNotification(l) && (!origin || isObj(l.origin)));
 }
 
-/** A prompt's text with its whitespace collapsed, as the office's fingerprint of what it typed (`promptHead`) is compared. */
-const collapsed = (line: Record<string, unknown>) => messageText(line).replace(/\s+/g, ' ').trim();
+/** A prompt's text without the `<pasted_content>` wrapper Claude Code logs around a pasted prompt (`unpasted`), whitespace collapsed, as the office's fingerprint of what it typed (`promptHead`) is compared. */
+const collapsed = (line: Record<string, unknown>) => unpasted(messageText(line)).replace(/\s+/g, ' ').trim();
 
 /**
  * The index of the first real prompt, not a notification, logged at or after `at` (ms); with a `head` (the start of what the office

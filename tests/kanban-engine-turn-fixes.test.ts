@@ -279,6 +279,17 @@ test('a prompt hook hears only the comment it carries, or the oldest one waiting
   assert.deepEqual(q.map((x) => (x as { heard?: boolean }).heard), [true, true]);
 });
 
+test('a prompt hook hears a prompt logged wrapped in <pasted_content>, but not typed text before or after a paste', () => {
+  const body = 'Comment from Grace on task #3 while you work: A please';
+  const p = [{ head: 'Comment from Grace on task #3 while you work: A' }];
+  hearPrompt(p, `Fix these:\n\n\n\n<pasted_content id="ab12">\n${body}\n</pasted_content id="ab12">\n`);
+  assert.equal((p[0] as { heard?: boolean }).heard, undefined);
+  hearPrompt(p, `<pasted_content id="ab12">\n${body}\n</pasted_content id="ab12">\nDo not do that.`);
+  assert.equal((p[0] as { heard?: boolean }).heard, undefined, 'typed text after the paste: a person\'s');
+  hearPrompt(p, `\n\n<pasted_content id="ab12">\n${body}\n</pasted_content id="ab12">\n`);
+  assert.equal((p[0] as { heard?: boolean }).heard, true);
+});
+
 test('a Stop before the agent took a comment typed into it gives the comment back; Retry carries it', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());

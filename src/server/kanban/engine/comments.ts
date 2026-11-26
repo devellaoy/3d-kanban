@@ -14,6 +14,7 @@ import type { HoldBack, LastRun, MachineEvent, RunEffect } from './machine.js';
 import { askedQuestion } from './signals.js';
 import { runTyped, setRunTyped } from '../db/typed.js';
 import type { TurnResult } from './adapters/types.js';
+import { unpasted } from './adapters/office.js';
 import { promptHead, typeable, type HeldRun } from './turnhold.js';
 
 /** The most comments a task keeps queued for its next run (the ones carried from a hold, queueHeld, are never dropped). */
@@ -246,9 +247,9 @@ export class Comments<L extends CommentLive> {
   }
 }
 
-/** The agent's prompt hook heard a prompt: the typed comment it is marks heard (by the start of its text; a hook without the text hears the oldest one waiting). */
+/** The agent's prompt hook heard a prompt: the typed comment it is marks heard (by the start of its text, a `<pasted_content>` wrapper around the whole prompt taken off (`unpasted`); a hook without the text hears the oldest one waiting). */
 export function hearPrompt(prompts: { head: string; heard?: boolean }[] | undefined, text: unknown) {
-  const said = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim() : undefined;
+  const said = typeof text === 'string' ? unpasted(text).replace(/\s+/g, ' ').trim() : undefined;
   const p = said ? prompts?.find((x) => !x.heard && said.startsWith(x.head)) : prompts?.find((x) => !x.heard);
   if (p) p.heard = true;
 }
