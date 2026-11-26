@@ -123,7 +123,9 @@ What the office does for you:
   task's Pull requests tab has the agent list and judge every unresolved comment, from anyone; you then decide
   per comment (fix, don't fix, or your own instruction) and send the decisions back; the agent replies on each
   and resolves the threads it settled, the ones it only answered included.
-- **Multi-PR reviews, review panels and meetings** across repositories ([features](docs/features.md)).
+- **Multi-PR reviews, review panels and meetings** across repositories ([features](docs/features.md)). The PR window's **Review** is a
+  kanban task with the pull request's head checked out for the reviewers of the review settings, and can post the review on
+  the PRs and test the UI first ([docs/kanban.md](docs/kanban.md#pull-requests)); **Review panel** opens the meeting form.
 - **UI testing**: the implementer saves before and after screenshots, the reviewer looks at them, and they go
   into the pull request description ([docs/kanban.md](docs/kanban.md#ui-testing)).
 - **Languages**: the conversation language, the public language and the code comment language

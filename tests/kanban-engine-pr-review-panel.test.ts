@@ -166,6 +166,66 @@ test('without additional reviewers a pull-request review is one run, as before',
   assert.equal(fx.invocations().filter((i) => i.kind === 'codex').length, 0);
 });
 
+// --- An office restart in the middle of a round ----------------------------------------------------
+
+const coRunning = (fx: EngineFixture, id: number) => fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status === 'running');
+
+test('the office restarts between the main reviewer’s review and the combine: the seat cut off is dropped and the round is published from the main reviewer’s result', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([co(CO_FINDING, { delayMs: 30_000 }), MAIN(APPROVED)]);
+  const { id } = await review(fx);
+  await until('the main reviewer done and the additional reviewer working', () => prRuns(fx, id).some((r) => r.panel === 'solo' && r.status === 'succeeded') && coRunning(fx, id));
+  fx.setRules([MAIN(APPROVED)]);
+  await fx.restartOffice();
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.deepEqual(shape(prRuns(fx, id)), ['pr-review:0:solo:succeeded', 'pr-review:1:co:interrupted']);
+  assert.deepEqual(reviewComments(fx, id).map((c) => c.text), [APPROVED]);
+  await until('everyone is gone', () => fx.workers.list().length === 0, 15_000);
+});
+
+test('the office restarts while the combine runs: it carries on as the combine in the main reviewer’s own session, not as a round of its own', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([co(CO_FINDING), MAIN(APPROVED), COMBINE(COMBINED, { delayMs: 30_000 })]);
+  const { id } = await review(fx);
+  await until('the combine running', () => prRuns(fx, id).some((r) => r.panel === 'combine' && r.status === 'running') && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
+  fx.setRules([COMBINE(COMBINED)]);
+  await fx.restartOffice();
+  await fx.waitTask(id, inReview, 'the review column', 60_000);
+  const main = shape(prRuns(fx, id)).filter((x) => x.startsWith('pr-review:0'));
+  assert.equal(main.filter((x) => x.includes('combine')).length, 2, main.join(' '));
+  assert.equal(main.filter((x) => x.includes('solo')).length, 1, 'no round of its own');
+  assert.equal(prompts(fx).filter((p) => /Review these pull requests/.test(p.prompt)).length, 2, 'no new review prompt: the main reviewer and the additional one only');
+  assert.equal(prompts(fx).filter((p) => /Combine them into the review/.test(p.prompt)).length, 2, 'the combine, typed again into the same session');
+  assert.deepEqual(reviewComments(fx, id).map((c) => c.text), [COMBINED]);
+  assert.equal(fx.history(id).filter((s) => s.task.status === 'review' && s.task.runState === 'idle').filter((s, i, all) => i === 0 || all[i - 1].task.status !== 'review').length, 1);
+});
+
+test('the engine restarts in the gap with the additional reviewer’s terminal still there: it is followed again, and the round goes on to the combine', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([co(CO_FINDING, { delayMs: 1500 }), MAIN(APPROVED), COMBINE(COMBINED)]);
+  const { id } = await review(fx);
+  await until('the main reviewer done and the additional reviewer working', () => prRuns(fx, id).some((r) => r.panel === 'solo' && r.status === 'succeeded') && coRunning(fx, id) && coWorker(fx)?.status === 'working');
+  fx.restartEngine();
+  await fx.waitTask(id, inReview, 'the review column', 60_000);
+  assert.deepEqual(shape(prRuns(fx, id)), ['pr-review:0:solo:succeeded', 'pr-review:1:co:succeeded', 'pr-review:0:combine:succeeded']);
+  assert.deepEqual(reviewComments(fx, id).map((c) => c.text), [COMBINED]);
+});
+
+test('the office restarts during the main reviewer’s own review with the additional reviewer already done: its result is kept, not hired again, and the combine uses it', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([co(CO_FINDING), MAIN(APPROVED, { delayMs: 30_000 })]);
+  const { id } = await review(fx);
+  await until('the additional reviewer done, the main reviewer working', () => fx.repo.listRuns(id).some((r) => r.seat === 1 && r.status === 'succeeded') && fx.workers.get(fx.task(id).reviewerWorkerId ?? '')?.status === 'working');
+  fx.setRules([{ when: 'office was restarted', reply: APPROVED }, COMBINE(COMBINED)]);
+  await fx.restartOffice();
+  await fx.waitTask(id, inReview, 'the review column', 60_000);
+  assert.equal(fx.repo.listRuns(id).filter((r) => r.seat === 1).length, 1, 'the seat was not hired again');
+  assert.equal(prompts(fx).filter((p) => p.kind === 'codex').length, 1, 'one prompt to a codex agent');
+  assert.deepEqual(shape(prRuns(fx, id)).filter((x) => x.startsWith('pr-review:0')), ['pr-review:0:solo:interrupted', 'pr-review:0:solo:succeeded', 'pr-review:0:combine:succeeded']);
+  assert.match(prompts(fx).find((p) => /Combine them into the review/.test(p.prompt))!.prompt, /The cache of pull request 4 is never cleared\./);
+  assert.deepEqual(reviewComments(fx, id).map((c) => c.text), [COMBINED]);
+});
+
 // --- Posting ---------------------------------------------------------------------------------------
 
 interface Post {
