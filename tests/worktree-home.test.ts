@@ -1,9 +1,9 @@
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, readlinkSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import { test } from 'node:test';
+import { after, test } from 'node:test';
 import { workerReposText } from '../src/server/kanban/engine/compose.js';
 import { prune } from '../src/server/prune.js';
 import { ensureHome, linkNodeModules, linkNodeModulesAsync, officeOfWorktree, unbuiltWorkspaces, worktreeHomes, worktreesHome } from '../src/server/worktree-home.js';
@@ -14,16 +14,28 @@ import { Worktrees } from '../src/server/worktrees.js';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8' }).trim();
 
+/** A repository per .gitignore, made once (a handful of git processes) and copied for each test: it holds no path of its own. */
+const templates = new Map<string, string>();
+after(() => {
+  for (const dir of templates.values()) rmSync(dir, { recursive: true, force: true });
+});
+
 function repo(dir: string, gitignore = 'node_modules/\n'): string {
+  let template = templates.get(gitignore);
+  if (!template) {
+    template = mkdtempSync(path.join(tmpdir(), 'agent-office-home-template-'));
+    git(template, 'init', '-q', '-b', 'main');
+    git(template, 'config', 'user.email', 'test@example.com');
+    git(template, 'config', 'user.name', 'Test');
+    git(template, 'config', 'commit.gpgsign', 'false');
+    writeFileSync(path.join(template, '.gitignore'), gitignore);
+    writeFileSync(path.join(template, 'a.txt'), 'a\n');
+    git(template, 'add', '-A');
+    git(template, 'commit', '-q', '-m', 'first');
+    templates.set(gitignore, template);
+  }
   mkdirSync(dir, { recursive: true });
-  git(dir, 'init', '-q', '-b', 'main');
-  git(dir, 'config', 'user.email', 'test@example.com');
-  git(dir, 'config', 'user.name', 'Test');
-  git(dir, 'config', 'commit.gpgsign', 'false');
-  writeFileSync(path.join(dir, '.gitignore'), gitignore);
-  writeFileSync(path.join(dir, 'a.txt'), 'a\n');
-  git(dir, 'add', '-A');
-  git(dir, 'commit', '-q', '-m', 'first');
+  cpSync(template, dir, { recursive: true });
   return dir;
 }
 

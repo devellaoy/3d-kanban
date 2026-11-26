@@ -2,10 +2,11 @@
 // git repository in a temp folder: a base branch (main), a feature branch with two commits, and an
 // uncommitted edit plus a new file in the task's worktree.
 
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { mkdirSync, writeFileSync } from 'node:fs';
+import { cpSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createChangesPlugin } from '../src/server/kanban/integrations/changes/index.js';
@@ -17,11 +18,11 @@ import { def, makeCtx, WHO } from './kanban-integrations-ctx.js';
 
 const git = (cwd: string, ...args: string[]) => execFileSync('git', args, { cwd, encoding: 'utf8', env: { ...process.env, GIT_AUTHOR_NAME: 'T', GIT_AUTHOR_EMAIL: 't@x', GIT_COMMITTER_NAME: 'T', GIT_COMMITTER_EMAIL: 't@x' } }).trim();
 
-/** A project checkout on main with a feature branch of two commits, and a worktree of that branch with uncommitted work. */
-function setup() {
-  const ctx = makeCtx();
-  const dir = path.join(ctx.tmp, 'proj');
-  mkdirSync(dir);
+/** The repository of setup(), made once (a dozen git processes) and copied for each test: it holds no path of its own. */
+let template: string | undefined;
+after(() => template && rmSync(template, { recursive: true, force: true }));
+function makeTemplate(): string {
+  const dir = mkdtempSync(path.join(tmpdir(), 'office-changes-template-'));
   git(dir, 'init', '-q', '-b', 'main');
   writeFileSync(path.join(dir, 'a.txt'), 'one\n');
   git(dir, 'add', '.');
@@ -33,6 +34,14 @@ function setup() {
   git(dir, 'add', 'b.txt');
   git(dir, 'commit', '-q', '-m', 'second change');
   git(dir, 'checkout', '-q', 'main');
+  return dir;
+}
+
+/** A project checkout on main with a feature branch of two commits, and a worktree of that branch with uncommitted work. */
+function setup() {
+  const ctx = makeCtx();
+  const dir = path.join(ctx.tmp, 'proj');
+  cpSync((template ??= makeTemplate()), dir, { recursive: true });
   const floor = def('proj', dir);
   (ctx.projects as () => unknown[]) = () => [floor];
   ctx.project = (id: string) => (id === 'proj' ? floor : undefined);
@@ -219,7 +228,7 @@ test('the live Changes state names its HEAD, so an amend is noticed', async () =
   });
   try {
     const next = async (n: number) => {
-      for (let i = 0; i < 100 && states.length < n; i++) await new Promise((r) => setTimeout(r, 20));
+      for (let i = 0; i < 750 && states.length < n; i++) await new Promise((r) => setTimeout(r, 20));
       return states[n - 1];
     };
     changes.watch('w1', 'c1');

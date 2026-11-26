@@ -77,7 +77,7 @@ test('a full worker limit queues the start; a worker going home drains it as its
 test('no free desk queues a start and a phase hire; each starts as it was once a desk frees', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ ...IMPLEMENT, delayMs: 1500 }, { when: 'This is review round 1 of', reply: 'Good.\nREVIEW: APPROVED' }]);
+  fx.setRules([{ ...IMPLEMENT, delayMs: 1000 }, { when: 'This is review round 1 of', reply: 'Good.\nREVIEW: APPROVED' }]);
   const occupied = fx.workers.deskOccupied.bind(fx.workers);
   let full = true;
   fx.workers.deskOccupied = (id: string) => full || occupied(id);

@@ -1,7 +1,7 @@
-import test from 'node:test';
+import test, { after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, mkdtempSync, readFileSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { Changes } from '../src/server/changes.js';
@@ -37,6 +37,26 @@ function project(root: string, name: string): string {
   git(dir, 'push', '-q', 'origin', 'main');
   excludeFromGit(dir);
   return dir;
+}
+
+/**
+ * The three projects, made once (a dozen git processes each) and copied for every test: a copy only
+ * needs the path of its bare repositories, which the push redirect in each .git/config spells out, changed.
+ */
+let template: string | undefined;
+after(() => template && rmSync(template, { recursive: true, force: true }));
+function projectsIn(root: string): { web: string; api: string; admin: string } {
+  if (!template) {
+    template = realpathSync(mkdtempSync(path.join(tmpdir(), 'agent-office-repos-template-')));
+    for (const name of ['web', 'api', 'admin']) project(template, name);
+  }
+  for (const dir of ['projects', 'remotes']) cpSync(path.join(template, dir), path.join(root, dir), { recursive: true });
+  const dirs = { web: path.join(root, 'projects', 'web'), api: path.join(root, 'projects', 'api'), admin: path.join(root, 'projects', 'admin') };
+  for (const dir of Object.values(dirs)) {
+    const config = path.join(dir, '.git', 'config');
+    writeFileSync(config, readFileSync(config, 'utf8').split(template).join(root));
+  }
+  return dirs;
 }
 
 /** Records where it was started and whether git finds a repository there, then waits. */
@@ -108,11 +128,12 @@ function fixture(t: { after(fn: () => void): void }): Fixture {
     }
     rmSync(root, { recursive: true, force: true });
   });
+  const projects = projectsIn(root);
   return {
     root,
-    a: project(root, 'web'),
-    b: project(root, 'api'),
-    c: project(root, 'admin'),
+    a: projects.web,
+    b: projects.api,
+    c: projects.admin,
     log,
     agent,
     ghState,

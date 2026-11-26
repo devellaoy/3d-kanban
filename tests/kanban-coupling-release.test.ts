@@ -44,7 +44,7 @@ const pull = (branch: string, state: string): GhPull => ({ number: 42, url: 'htt
 test('leave-on-merge never picks a worker of a task in progress or with a run under way', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([{ ...IMPLEMENT, delayMs: 3000 }]);
+  fx.setRules([{ ...IMPLEMENT, delayMs: 1500 }]);
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
   const r = await fx.waitTask(task.id, (x) => x.runState === 'running' && !!x.workerId && !!x.workspace, 'running', 15_000);

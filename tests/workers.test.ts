@@ -60,6 +60,7 @@ function isolateProviderEnvironment(f: Fixture, t: { after(fn: () => void): void
     OPENCODE_CONFIG_DIR: process.env.OPENCODE_CONFIG_DIR,
     CODEX_HOME: process.env.CODEX_HOME,
     GROK_HOME: process.env.GROK_HOME,
+    FAKE_AGENT_EXIT_DIR: process.env.FAKE_AGENT_EXIT_DIR,
   };
   const home = path.join(f.root, 'home');
   const config = path.join(f.root, 'config');
@@ -77,6 +78,7 @@ function isolateProviderEnvironment(f: Fixture, t: { after(fn: () => void): void
   process.env.OPENCODE_CONFIG_DIR = path.join(config, 'opencode');
   process.env.CODEX_HOME = path.join(config, 'codex');
   process.env.GROK_HOME = path.join(home, '.grok');
+  process.env.FAKE_AGENT_EXIT_DIR = path.join(f.root, 'leave');
   // Delete by variable name only. Do not read or log any credential value.
   for (const key of Object.keys(process.env)) {
     // These are the office hook variables used by the in-process OpenCode
@@ -130,6 +132,9 @@ process.stdin.on('data', (chunk) => record({ stdin: chunk }));
 process.stdin.resume();
 const delay = Number(process.env.FAKE_AGENT_EXIT_MS || 0);
 if (delay > 0) setTimeout(() => process.exit(0), delay).unref();
+// Or on the test's word: a file named after the worker (see leave) ends it, when the test is ready for that.
+const leaveFile = process.env.FAKE_AGENT_EXIT_DIR && path.join(process.env.FAKE_AGENT_EXIT_DIR, String(process.env.AGENT_OFFICE_WORKER_ID));
+if (leaveFile) setInterval(() => { try { fs.unlinkSync(leaveFile); process.exit(0); } catch {} }, 10).unref();
 `;
 
 function fixture(): Fixture {
@@ -145,6 +150,7 @@ function fixture(): Fixture {
   const muse = path.join(bin, 'muse');
   mkdirSync(data, { recursive: true });
   mkdirSync(bin, { recursive: true });
+  mkdirSync(path.join(root, 'leave'), { recursive: true });
   writeFileSync(claude, fakeAgent, { mode: 0o700 });
   writeFileSync(opencode, fakeAgent, { mode: 0o700 });
   writeFileSync(custom, fakeAgent, { mode: 0o700 });
@@ -199,11 +205,16 @@ async function waitFor<T>(read: () => T, predicate: (value: T) => boolean, timeo
   const end = Date.now() + timeout;
   let value = read();
   while (!predicate(value) && Date.now() < end) {
-    await new Promise((resolve) => setTimeout(resolve, 25));
+    await new Promise((resolve) => setTimeout(resolve, 10));
     value = read();
   }
   assert.ok(predicate(value), 'timed out waiting for fake agent state');
   return value;
+}
+
+/** Has the fake agent of worker `id` end its process now (its status then reads `exited`), instead of after a time the test would have to sit through. */
+function leave(f: Fixture, id: string) {
+  writeFileSync(path.join(f.root, 'leave', id), '');
 }
 
 function hasPrompt(invocation: Invocation, prompt: string): boolean {
@@ -276,7 +287,6 @@ test('OpenCode workers use OpenCode-only hooks/config, never invoke Claude namin
   isolateProviderEnvironment(f, t);
   const previousExit = process.env.FAKE_AGENT_EXIT_MS;
   const previousLog = process.env.FAKE_AGENT_LOG;
-  process.env.FAKE_AGENT_EXIT_MS = '900';
   process.env.FAKE_AGENT_LOG = f.log;
   t.after(() => {
     if (previousExit === undefined) delete process.env.FAKE_AGENT_EXIT_MS;
@@ -333,6 +343,7 @@ test('OpenCode workers use OpenCode-only hooks/config, never invoke Claude namin
   assert.equal(workers.get(worker.id)?.usage, undefined, 'OpenCode must not run Claude transcript usage parsing');
   assert.equal(workers.handleOpenCodeHook(worker.id, firstWorker.env.hookToken!, { type: 'session', sessionId: 'oc-child', status: 'done' }), true);
 
+  leave(f, worker.id);
   await waitFor(() => workers.get(worker.id)?.status, (status) => status === 'exited');
   assert.equal(workers.resume(worker.id), undefined);
   const resumed = await waitFor(() => f.read(), (records) => records.filter((r) => r.kind === 'opencode').length >= 2);
@@ -830,7 +841,6 @@ test('Muse workers isolate XDG, follow authenticated hooks, resume by uuid, and 
   assert.equal(worker.usage, undefined);
   assert.equal(book.state().total.calls, 0);
   workers.shutdown();
-  process.env.FAKE_AGENT_EXIT_MS = '1500';
   const restored = manager(f, f.claude, [], []);
   t.after(() => restored.shutdown());
   await restored.start();
@@ -848,8 +858,8 @@ test('Muse workers isolate XDG, follow authenticated hooks, resume by uuid, and 
   assert.equal(restored.handleMuseHook(worker.id, token, 'Stop', { session_id: sessionId }), false);
   assert.equal(restored.handleMuseHook(worker.id, next.env.hookToken!, 'SessionStart', { session_id: sessionId, source: 'resume' }), true);
   assert.equal(restored.get(worker.id)?.status, 'idle');
+  leave(f, worker.id);
   await waitFor(() => restored.get(worker.id)?.status, (status) => status === 'exited');
-  delete process.env.FAKE_AGENT_EXIT_MS;
   assert.equal(restored.resume(worker.id, 'follow-up from the queue'), undefined);
   const pastedLaunch = await waitFor(f.read, x => x.filter(r => r.kind === 'muse' && !r.stdin).length >= 3);
   const launched = pastedLaunch.filter(r => r.kind === 'muse' && !r.stdin).at(-1)!;
@@ -920,7 +930,6 @@ test('a board agent is hired with its brief on the first prompt, then prompted, 
   isolateProviderEnvironment(f, t);
   const previousExit = process.env.FAKE_AGENT_EXIT_MS;
   const previousLog = process.env.FAKE_AGENT_LOG;
-  process.env.FAKE_AGENT_EXIT_MS = '600';
   process.env.FAKE_AGENT_LOG = f.log;
   t.after(() => {
     if (previousExit === undefined) delete process.env.FAKE_AGENT_EXIT_MS;
@@ -972,6 +981,7 @@ test('a board agent is hired with its brief on the first prompt, then prompted, 
   assert.equal(workers.authenticate(id, ''), undefined);
 
   // Asleep, a request wakes it up carrying on its session, without the brief again.
+  leave(f, id);
   await waitFor(() => workers.get(id)?.status, (s) => s === 'exited');
   assert.equal(workers.authenticate(id, first.env.hookToken!), undefined);
   const woken = workers.station('station-issues', 'Ada', 'Close the duplicates');
@@ -1023,7 +1033,6 @@ test('the queue agent is launched without file-editing tools, and board agents g
   isolateProviderEnvironment(f, t);
   const previousExit = process.env.FAKE_AGENT_EXIT_MS;
   const previousLog = process.env.FAKE_AGENT_LOG;
-  process.env.FAKE_AGENT_EXIT_MS = '600';
   process.env.FAKE_AGENT_LOG = f.log;
   t.after(() => {
     if (previousExit === undefined) delete process.env.FAKE_AGENT_EXIT_MS;
@@ -1058,6 +1067,7 @@ test('the queue agent is launched without file-editing tools, and board agents g
 
   // Woken up carrying on its session, it's still without them.
   assert.equal(workers.handleHook(id, first.env.hookToken!, 'SessionStart', { session_id: 'queue-session' }), true);
+  leave(f, id);
   await waitFor(() => workers.get(id)?.status, (s) => s === 'exited');
   workers.station('station-queue', 'Grace', 'Also bump the version');
   const [, second] = await waitFor(() => launches(id), (l) => l.length === 2);
@@ -1248,6 +1258,8 @@ test('a restart that takes a mid-turn worker down resumes it with continue; a fi
   await new Promise((resolve) => setTimeout(resolve, 200));
 
   const after = manager(f, f.claude, []);
+  // Two workers carry on here: the gap between them is not what this tests (the next test is).
+  after.carryOnStaggerMs = 50;
   t.after(() => after.shutdown());
   await after.start();
   const resumed = (await waitFor(() => launches(f), (x) => x.length >= 6)).slice(3);
@@ -1624,7 +1636,6 @@ test('a new agent’s first prompt ends with the language rule; a resume, a shel
   isolateProviderEnvironment(f, t);
   const previousExit = process.env.FAKE_AGENT_EXIT_MS;
   const previousLog = process.env.FAKE_AGENT_LOG;
-  process.env.FAKE_AGENT_EXIT_MS = '600';
   process.env.FAKE_AGENT_LOG = f.log;
   t.after(() => {
     if (previousExit === undefined) delete process.env.FAKE_AGENT_EXIT_MS;
@@ -1662,6 +1673,7 @@ test('a new agent’s first prompt ends with the language rule; a resume, a shel
   assert.equal(workers.get(plain.id)?.activity, 'Fix the cat');
   assert.ok(!JSON.stringify(workers.get(plain.id)?.task ?? '').includes('Finnish'));
   // Carrying on its session: the rule is already in it.
+  leave(f, plain.id);
   await waitFor(() => workers.get(plain.id)?.status, (s) => s === 'exited');
   assert.equal(workers.resume(plain.id, 'And the bird'), undefined);
   const [, again] = await waitFor(() => launches(plain.id), (l) => l.length === 2);
@@ -1674,6 +1686,7 @@ test('a new agent’s first prompt ends with the language rule; a resume, a shel
   if (typeof fish === 'string') return;
   const [fish1] = await waitFor(() => launches(fish.id), (l) => l.length === 1);
   assert.equal(workers.handleHook(fish.id, fish1.env.hookToken!, 'UserPromptSubmit', { prompt: fish1.args.at(-1) }), true);
+  leave(f, fish.id);
   await waitFor(() => workers.get(fish.id)?.status, (s) => s === 'exited');
   assert.equal(workers.resume(fish.id, 'And the bird'), undefined);
   const [, fish2] = await waitFor(() => launches(fish.id), (l) => l.length === 2);
@@ -1689,6 +1702,7 @@ test('a new agent’s first prompt ends with the language rule; a resume, a shel
   assert.ok(board.args.at(-1)!.startsWith(stationBrief('issues', prompts)));
   assert.ok(board.args.at(-1)!.endsWith(`File one about the dog\n\n${RULE}`));
   // Woken with no session to carry on (it never reported one): it starts over, brief and rule again.
+  leave(f, hired.info.id);
   await waitFor(() => workers.get(hired.info.id)?.status, (s) => s === 'exited');
   const woken = workers.station('station-issues', 'Ada', 'Close the duplicates');
   assert.equal(typeof woken === 'object' && woken.hired, false);

@@ -357,7 +357,7 @@ for (const reason of ['agent_asking', 'usage_limit', 'stopped'] as const) {
     assert.equal(held.retryAt, undefined);
     const mark = fx.invocations().length;
     assert.equal(await fx.engine.unhold!(w.id, ADA), undefined);
-    await new Promise((res) => setTimeout(res, 800)); // well past the sweep and the old retry time
+    await new Promise((res) => setTimeout(res, 400)); // eight sweeps (sweepMs 50) and the old retry time (300 ms from the waiting) are past
     const back = fx.task(w.id);
     assert.equal(back.status, 'waiting');
     assert.equal(back.runState, 'idle');
@@ -580,7 +580,7 @@ test('a PR review\'s Retry gives its reviewer only its own answer: a change requ
 test('never held: a change request typed during a PR review stays for the implementer when the review is stopped and retried', async (t) => {
   const fx = await engineFixture();
   t.after(() => fx.close());
-  fx.setRules([IMPLEMENT, { when: 'Review these pull requests', reply: 'Looks fine.\n\nREVIEW: APPROVED', delayMs: 5000 }]);
+  fx.setRules([IMPLEMENT, { when: 'Review these pull requests', reply: 'Looks fine.\n\nREVIEW: APPROVED', delayMs: 2500 }]);
   const r = await inReview(fx, { ticket: 'UYT-3' });
   const got = await fx.engine.reviewPrs({ project: 'proj', prs: [{ repo: 'acme/proj', number: 5, branch: r.branch } as never], taskId: r.id }, ADA);
   assert.ok(typeof got !== 'string', String(got));

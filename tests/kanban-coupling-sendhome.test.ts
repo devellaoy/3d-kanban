@@ -6,7 +6,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
-import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
+import { ADA, engineFixture, midTurn, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
 import type { WorkerInfo } from '../src/shared/protocol.js';
 import type { DepartureIntent } from '../src/shared/kanban/types.js';
 
@@ -115,7 +115,7 @@ test('an implementer sent home mid-run: the run is stopped, the task waits with 
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
   const r = await fx.waitTask(task.id, (x) => x.runState === 'running' && !!x.workerId && !!x.workspace, 'running', 15_000);
-  await sleep(500);
+  await midTurn(fx, r.workerId!);
   const wt = worktreeOf(fx, r);
   await fx.workers.kill(r.workerId!, 'all', undefined, undefined, SENT);
   const a = await fx.waitTask(task.id, (x) => x.status === 'waiting', 'waiting', 5000);
@@ -141,7 +141,7 @@ test('an implementer sent home mid-run with done: the run stops and the task is 
   const task = fx.newTask({ usePlan: false, useReview: false });
   await fx.engine.start(task.id, ADA);
   const r = await fx.waitTask(task.id, (x) => x.runState === 'running' && !!x.workerId, 'running', 15_000);
-  await sleep(500);
+  await midTurn(fx, r.workerId!);
   await fx.workers.kill(r.workerId!, 'keep', undefined, undefined, { ...SENT, done: true });
   const a = await fx.waitTask(task.id, (x) => x.status === 'done', 'done', 5000);
   assert.equal(a.runState, 'idle');
@@ -156,7 +156,7 @@ test('a reviewer sent home mid-review: the round is dropped and the task goes to
   const task = fx.newTask({ usePlan: false });
   await fx.engine.start(task.id, ADA);
   const r = await fx.waitTask(task.id, (x) => x.phase === 'review' && x.runState === 'running' && !!x.reviewerWorkerId, 'reviewing', 30_000);
-  await sleep(500);
+  await midTurn(fx, r.reviewerWorkerId!);
   await fx.workers.kill(r.reviewerWorkerId!, 'all', undefined, undefined, SENT);
   const a = await fx.waitTask(task.id, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 5000);
   assert.equal(a.reviewerWorkerId, undefined);
@@ -193,7 +193,7 @@ test('an implementer at rest sent home with cleanup all while its reviewer works
   t.after(() => fx.close());
   fx.setRules([
     IMPLEMENT,
-    { when: 'review round 1 of', reply: '1. a bug\n\nREVIEW: CHANGES_REQUESTED', delayMs: 3000 },
+    { when: 'review round 1 of', reply: '1. a bug\n\nREVIEW: CHANGES_REQUESTED', delayMs: 1500 },
     { when: 'asks for changes', reply: 'Fixed.', commit: 'fix' },
     { when: 'round 2 of', reply: 'ok\n\nREVIEW: APPROVED' },
   ]);

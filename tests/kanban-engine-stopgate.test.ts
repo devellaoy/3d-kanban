@@ -567,7 +567,8 @@ test('route and engine: a Stop a new prompt overtook while the gate judged it is
   // Someone types into the terminal while the gate still looks: the agent has a new turn.
   fx.workers.handleHook(w, hookToken(fx, w), 'UserPromptSubmit', { prompt: 'One more thing' });
   assert.deepEqual(await posting, { status: 200, body: {} }, 'nothing is blocked');
-  await new Promise((r) => setTimeout(r, 1500));
+  // Outwaits the gate's pause (readPauseMs 300) and its re-read, which is where a Stop that is not dropped would get through.
+  await new Promise((r) => setTimeout(r, 1000));
   assert.equal(fx.workers.get(w)?.status, 'working', 'the Stop was not passed on: the worker still works on its new turn');
   assert.equal(fx.task(task.id).status, 'in_progress');
   assert.equal(fx.repo.listRuns(task.id).at(-1)?.status, 'running', 'the old answer ended nothing');
