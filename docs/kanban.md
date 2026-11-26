@@ -1086,7 +1086,7 @@ A task's prompt carries the ticket's id and link, and a copy of its description 
 the ticket (comments, child issues, its status in Jira now, later edits) a worker reads itself, through the office:
 
 - **`office-tasks issue`** prints the Jira ticket linked to the worker's own task as it is in Jira now: title, status, type,
-  assignee, labels, parent, description, comments (oldest first) and child issues. `office-tasks issue UYT-1416` reads another
+  assignee, labels, parent, description, comments (oldest first), child issues and the pictures attached to the ticket. `office-tasks issue UYT-1416` reads another
   Jira key inside the project's Jira sources, `office-tasks issue 14` the ticket of another task of the same project, and
   `--json` prints the raw answer. The MCP tool **`get_issue`** (optional `ref`) does the same and is pre-approved for a kanban
   task's Claude worker, also in the plan phase. Codex's sandboxes block the CLI, so Codex uses the MCP tool; Antigravity can use the MCP tool as well.
@@ -1095,6 +1095,20 @@ the ticket (comments, child issues, its status in Jira now, later edits) a worke
   in all) and 50 child issues, with titles, labels, names and notes cut short too, and says so when it cut something.
   If the ticket was read but its comments or child issues could not be, the text says so at the top and in that section (so it
   is not mistaken for "none"), the CLI prints the reason on stderr and exits 1 (with `--json` too), and the MCP tool says the same in its text.
+- **Sub-tasks are read one by one.** A Jira story's real content is often in its sub-tasks' descriptions and in pictures attached to them, but the answer lists a
+  child issue only by key, title, status and type. The text says so under "Child issues", and the task prompt tells the worker to read each child by
+  its key (`office-tasks issue <KEY>`, or `get_issue` with `ref`) before planning, implementing or reviewing. A child the office would refuse to read by key (a project
+  whose Jira source names no project keys and doesn't know it) is marked "not readable through the office".
+- **Pictures.** Every read also saves the ticket's image attachments (PNG, JPEG, GIF, WEBP; at most 10 per ticket, 5 MB each, 20 MB per ticket
+  and 150 MB per task) as files in the task's own folder, `jira-images/<KEY>/` under the task's attachment folder, and lists their paths under "## Images". The type is
+  decided from the file's first bytes, not from Jira's word. What was left out (not an image, too big, over a limit, the folder full, a failed download)
+  is listed with its reason, at most 20 of them. A picture shown in the description or a comment reads `[image: <file>]` there, with the file name that is on disk;
+  one the office couldn't tie to its file stays `[attachment]` (the pictures are listed anyway). A download that fails (not a limit) makes the read partial:
+  the text says the pictures could not be read, which is not "none", and the CLI exits 1; everything else in the answer stands. A file already on disk
+  is not downloaded again, and nothing is removed during a read, so a path given once keeps working. The files are removed when the task is moved to Done or the
+  archive in the board, by the office's hourly tidy-up for a task that became done any other way, and when it is deleted (a reopened task gets them again on the next read).
+  A worker with no task, or whose task is done or archived, gets no pictures (a note says so). Reads run at once, also several of one task. Workers launched without the task's folder (a
+  pull-request reviewer given no text, Antigravity) get the paths too but may need permission to open them. The pictures are data from Jira, like the text.
 - What it returns is framed as data written by other people in Jira, not instructions, at its start and its end.
 - **Refused**: a Jira key outside the Jira sources of the worker's project (a source with project keys covers those; a source with none only an issue the office already knows from Jira on the source's site, such as one on the project's issue list or one someone just opened, or a task's own ticket the office itself once had from Jira (it was made from that Jira issue, or the office listed, showed or read it for the task; this is stored per task and stays after the issue leaves the list, and a changed ticket needs a new read); a task's typed `ticket` field alone widens nothing, so an admin names the Jira project keys on the source in Settings → Projects → Issue sources to let agents read a project's tickets), a ticket whose link is on a Jira site the project has no source for, a task of another project, a task with no ticket,
   and a project with no Jira connection for the site. GitHub issues are not read here (use `gh issue view <n> -R <owner/repo> --comments`),
