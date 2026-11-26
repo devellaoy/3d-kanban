@@ -77,7 +77,8 @@ Your workspace, a fresh worktree of each repository on its base branch, so the a
 
 For each pull request that changes what a user sees in the app's UI (a page, a dialog, a component, its layout or its styles):
 1. In your workspace, on the base branch as it is, start the app and take a picture of each view the pull request changes.
-2. Check the pull request's head out detached in a worktree of its own, inside your workspace folder, and leave the branch of your workspace as it is: git worktree add --detach ./pr-<number> <the ref named on its line above>. If that ref is missing, git fetch origin pull/<number>/head and use FETCH_HEAD in its place (gh pr checkout <number> --detach works too). Install what the app needs there, start it, and take a picture of the same views in the same state and size.
+2. Put the pull request's head in a worktree of its own, inside your workspace folder, with HEAD detached at it: git worktree add --detach ./pr-<number> <the ref named on its line above>. That is allowed here; it is the only checkout you make. If that ref is missing, git fetch origin pull/<number>/head and use FETCH_HEAD in its place. Never create, move or delete a branch, never commit, and leave the branch of your workspace as it is. Install what the app needs there, start it, and take a picture of the same views in the same state and size.
+A pull request that its line says is from a fork is not tested: don't check it out or run it.
 3. Save the pictures in {{imagesDir}} (it exists; make it if it does not).
 ${NAMING}
 The pictures stay with this task, under its Images tab: they are not added to any pull request.

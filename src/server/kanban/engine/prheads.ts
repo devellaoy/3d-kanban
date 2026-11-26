@@ -57,8 +57,10 @@ const repoOf = (def: FloorDef, p: PrRef): ProjectRepo | undefined => projectRepo
  * name, for a pull request from the same repository) and its base branch, into `repo`'s checkout. Undefined when it can't be fetched.
  */
 export async function fetchHead(repo: ProjectRepo, p: HeadPr, git: GitRunner): Promise<FetchedHead | undefined> {
+  // A fork's pull request is never checked out, on any host: it is an outsider's code (and its agent configuration), read with gh pr diff only.
+  if (p.fork) return undefined;
   const github = hostOf(repo.remote) === 'github';
-  if (!github && (!p.branch || p.fork)) return undefined;
+  if (!github && !p.branch) return undefined;
   const ref = github ? `office-pr/${p.number}` : p.branch!;
   const specs = [`+${github ? `refs/pull/${p.number}/head` : `refs/heads/${p.branch}`}:refs/remotes/origin/${ref}`];
   const base = p.base && p.base !== ref ? p.base : undefined;
@@ -99,10 +101,12 @@ export async function fetchPrHeads(def: FloorDef, prs: HeadPr[], git: GitRunner 
 /** How a pull request's line in the review prompt says it is to be read. */
 export function readingNote(p: HeadPr, heads: PrHeads, def: FloorDef): string {
   const got = heads.fetched.get(prKey(p));
+  const from = p.fork ? 'From a fork, so not checked out (the office never checks out a fork\'s code)' : 'Not checked out (your worktree of its repository is on the base branch)';
   const github = !!repoOf(def, p) && hostOf(repoOf(def, p)!.remote) === 'github';
   if (got && heads.checkedOut.has(prKey(p))) {
     const diff = got.base ? `git diff origin/${got.base}...HEAD` : undefined;
     return `Checked out in your worktree of ${got.repo.name}: read its change there${diff ? ` with \`${diff}\`` : github ? ` with \`gh pr diff ${p.number} -R ${p.repo}\`` : ''}.`;
   }
-  return github ? `Not checked out (your worktree of its repository is on the base branch): read it with \`gh pr diff ${p.number} -R ${p.repo}\`.` : 'Not checked out (your worktree of its repository is on the base branch): read it with office-pr, as the note about repositories below says.';
+  const why = p.fork ? "From a fork, so not checked out (the office never checks out a fork's code)" : 'Not checked out (your worktree of its repository is on the base branch)';
+  return github ? `${why}: read it with \`gh pr diff ${p.number} -R ${p.repo}\`.` : `${why}: read it with office-pr, as the note about repositories below says.`;
 }

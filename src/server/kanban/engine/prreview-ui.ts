@@ -54,11 +54,17 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
   }
 
   // Every head, fetched: the tester checks each pull request out itself, in a worktree of its own (the ref its line names).
-  const heads = await fetchPrHeads(def, req.prs as HeadPr[], d.git, true);
-  const prs = (req.prs as HeadPr[]).map((p) => {
-    const got = heads.fetched.get(prKey(p));
-    return `${prLine(p)} — ${got ? `its head is fetched as origin/${got.ref}` : `its head is not fetched: git fetch origin pull/${p.number}/head, then FETCH_HEAD is its head`}`;
-  });
+  // A fork's pull request is never checked out or run: it is left out of the test, and the prompt says so.
+  const all = req.prs as HeadPr[], testable = all.filter((p) => !p.fork);
+  if (!testable.length) return fail('Every pull request is from a fork, which the office never checks out or runs: there is no UI to test');
+  const heads = await fetchPrHeads(def, testable, d.git, true);
+  const prs = [
+    ...testable.map((p) => {
+      const got = heads.fetched.get(prKey(p));
+      return `${prLine(p)} — ${got ? `its head is fetched as origin/${got.ref}` : `its head is not fetched: git fetch origin pull/${p.number}/head, then FETCH_HEAD is its head`}`;
+    }),
+    ...all.filter((p) => p.fork).map((p) => `${prLine(p)} — from a fork: not checked out, not run and not tested`),
+  ];
   const x: ComposeExtra = {
     phase: 'implement', // the tester ends its turn like an implementer: the work-done line
     prs: prs.join('\n'),
