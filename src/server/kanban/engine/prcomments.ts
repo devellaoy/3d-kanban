@@ -21,6 +21,8 @@ export interface PrCommentsStore {
   fetchedAt?: number;
   items: PrCommentItem[];
   dropped: number;
+  /** How many repeated remarks were left out as duplicates (absent in an older store: 0). */
+  duplicates?: number;
   /** Why the fetch failed: no list then. */
   error?: string;
   /** What the agent changed in the checkouts during the fetch, though it is read-only. */
@@ -95,17 +97,18 @@ export function readAgentFile(filesDir: string, taskId: number): { raw: unknown 
 
 /** What the Pull requests tab shows: `running` while a fetch is under way, else what the store holds. */
 export function prCommentsState(filesDir: string, task: Pick<KanbanTask, 'id' | 'phase' | 'runState'> & Partial<Pick<KanbanTask, 'status' | 'waitingText' | 'waitingReason'>>): PrCommentsState {
-  if (task.phase === 'pr-comments' && task.runState !== 'idle') return { status: 'running', items: [], dropped: 0 };
+  if (task.phase === 'pr-comments' && task.runState !== 'idle') return { status: 'running', items: [], dropped: 0, duplicates: 0 };
   // Parked (a usage limit, a question of the agent's, a stop that Retry carries on): the fetch is not over, and the task says why it waits.
-  if (task.phase === 'pr-comments' && task.status === 'waiting') return { status: 'running', items: [], dropped: 0, waiting: task.waitingText || task.waitingReason || 'waiting' };
+  if (task.phase === 'pr-comments' && task.status === 'waiting') return { status: 'running', items: [], dropped: 0, duplicates: 0, waiting: task.waitingText || task.waitingReason || 'waiting' };
   const s = readPrComments(filesDir, task.id);
-  if (!s || (s.fetchedAt === undefined && !s.error)) return { status: 'none', items: [], dropped: 0 };
+  if (!s || (s.fetchedAt === undefined && !s.error)) return { status: 'none', items: [], dropped: 0, duplicates: 0 };
   const sent = s.sent ?? (pendingLive(task) ? s.pending : undefined);
   return {
     status: s.error ? 'failed' : 'ready',
     ...(s.fetchedAt !== undefined ? { fetchedAt: s.fetchedAt } : {}),
     items: s.items,
     dropped: s.dropped,
+    duplicates: s.duplicates ?? 0,
     ...(s.error ? { error: s.error } : {}),
     ...(s.warning ? { warning: s.warning } : {}),
     ...(sent ? { sent: { answers: sent.answers, at: sent.at } } : {}),
@@ -140,12 +143,13 @@ export class PrCommentsRuns {
    */
   collect(task: Pick<KanbanTask, 'id' | 'prs'>, warning?: string): string {
     const got = readAgentFile(this.ctx.filesDir, task.id);
-    const parsed = 'error' in got ? { items: [], dropped: 0, error: got.error } : parsePrComments(got.raw, task.prs.map((p) => p.url));
+    const parsed = 'error' in got ? { items: [], dropped: 0, duplicates: 0, error: got.error } : parsePrComments(got.raw, task.prs.map((p) => p.url));
     const origin = readPrComments(this.ctx.filesDir, task.id)?.origin;
-    writePrComments(this.ctx.filesDir, task.id, { fetchedAt: this.now(), items: parsed.items, dropped: parsed.dropped, ...(parsed.error ? { error: parsed.error } : {}), ...(origin ? { origin } : {}), ...(warning ? { warning } : {}) });
+    writePrComments(this.ctx.filesDir, task.id, { fetchedAt: this.now(), items: parsed.items, dropped: parsed.dropped, duplicates: parsed.duplicates, ...(parsed.error ? { error: parsed.error } : {}), ...(origin ? { origin } : {}), ...(warning ? { warning } : {}) });
     dropAgentFile(this.ctx.filesDir, task.id);
     if (parsed.error) return `The review comments couldn't be read: ${parsed.error}`;
-    return `Fetched ${parsed.items.length} unresolved review comment${parsed.items.length === 1 ? '' : 's'}${parsed.dropped ? ` (${parsed.dropped} left out as unusable)` : ''}: they are on the Pull requests tab.`;
+    const left = [...(parsed.duplicates ? [`${parsed.duplicates} duplicate${parsed.duplicates === 1 ? '' : 's'} left out`] : []), ...(parsed.dropped ? [`${parsed.dropped} left out as unusable`] : [])];
+    return `Fetched ${parsed.items.length} unresolved review comment${parsed.items.length === 1 ? '' : 's'}${left.length ? ` (${left.join(', ')})` : ''}: they are on the Pull requests tab.`;
   }
 
   /**
