@@ -26,7 +26,7 @@ import {
   orderedProjects,
   projectGroups,
 } from '../src/client/kanban/model.js';
-import { briefPreset, briefRequest, goLabel, goTitle, postLabel, POST_KEY, readFlag, reviewRequest, reviewToast, writeFlag } from '../src/client/kanban/prpickmodel.js';
+import { briefPreset, briefRequest, goLabel, goTitle, postLabel, POST_KEY, readFlag, reviewRequest, reviewFailure, reviewToast, REVIEW_WAIT_MS, writeFlag } from '../src/client/kanban/prpickmodel.js';
 import { checkMove, moveTargets } from '../src/shared/kanban/moves.js';
 import { BOARD_COLUMNS, RUN_STATES, TASK_STATUSES, type KanbanProjectInfo, type KanbanTaskCard, type NormalizedIssue, type ProjectSettings } from '../src/shared/kanban/types.js';
 
@@ -260,6 +260,9 @@ test("the PR picker's words: its button, its tick and its toast follow the numbe
   assert.equal(postLabel(1), 'Post the review on the pull request when it is done');
   assert.equal(postLabel(0), 'Post the review on the pull request when it is done');
   assert.equal(postLabel(2), 'Post the review on the pull requests when it is done');
+  assert.match(reviewFailure('The office didn’t answer'), /may still be starting\. Look at the board before you try again/);
+  assert.equal(reviewFailure('No desk is free'), 'No desk is free');
+  assert.ok(REVIEW_WAIT_MS > 30_000, 'longer than the office’s ordinary wait');
   assert.equal(reviewToast(1, { taskId: 7, workerId: 'w1' }), 'The review of the PR is kanban task #7');
   assert.equal(reviewToast(3, { taskId: 7, workerId: 'w1' }), 'The review of the 3 PRs is kanban task #7');
   assert.equal(reviewToast(2, { taskId: 7 }), 'The review of the 2 PRs is queued: task #7 starts when the office has room');

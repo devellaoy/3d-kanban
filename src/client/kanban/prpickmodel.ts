@@ -71,6 +71,14 @@ export function reviewToast(n: number, ok: { taskId?: number; workerId?: string 
   return ok.workerId ? `The review of ${what} is kanban task #${ok.taskId}` : `The review of ${what} is queued: task #${ok.taskId} starts when the office has room`;
 }
 
+/** How long the picker waits for the answer to a review request: the office's own bound on starting it is well under this. */
+export const REVIEW_WAIT_MS = 45_000;
+
+/** What the picker says when a review request failed: a request that got no answer may still be starting, so it is not to be sent blindly again. */
+export function reviewFailure(message: string): string {
+  return /didn.t answer/i.test(message) ? 'The office is slow to answer: the review may still be starting. Look at the board before you try again.' : message;
+}
+
 // --- The ticks a browser remembers -----------------------------------------------------------------
 
 export const POST_KEY = 'kanban.prReview.post';

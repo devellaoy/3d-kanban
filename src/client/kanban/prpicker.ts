@@ -14,7 +14,7 @@ import { PR_REVIEW_MAX, type KanbanPrBundleItem, type PrRef } from '../../shared
 import { kanbanApi, type KanbanOk } from './api';
 import { repoOfItem } from './boardrepos';
 import { pickerRows, refKey } from './model';
-import { briefPreset, briefRequest, goLabel, goTitle, POST_KEY, postLabel, readFlag, reviewRequest, reviewToast, UI_TEST_KEY, UI_TEST_LABEL, writeFlag, type PickerMode } from './prpickmodel';
+import { briefPreset, briefRequest, goLabel, goTitle, POST_KEY, postLabel, readFlag, reviewRequest, reviewFailure, reviewToast, REVIEW_WAIT_MS, UI_TEST_KEY, UI_TEST_LABEL, writeFlag, type PickerMode } from './prpickmodel';
 import type { MeetingPreset } from '../ui/meeting';
 import { btn, checkLine } from '../ui/kit';
 import { modalShell, openShell } from '../ui/shell';
@@ -113,7 +113,7 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: PickerMode, singl
   /** The kanban's review of the PRs `keys` names: a kanban task (one task's PRs keep their task). */
   const review = async (keys: Set<string>, button: HTMLButtonElement) => {
     const req = reviewRequest(project, keys, [self, ...bundle, ...others()], bundle, { post: post.box.checked, uiTest: uiTest.box.checked });
-    const ok = await run(() => api.request<KanbanOk>(req), button);
+    const ok = await run(() => api.request<KanbanOk>(req, REVIEW_WAIT_MS).catch((err: Error) => Promise.reject(new Error(reviewFailure(err.message)))), button);
     if (!ok) return;
     modal.close();
     toast(reviewToast(req.prs.length, ok));
