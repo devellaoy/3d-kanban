@@ -116,7 +116,7 @@ function block(raw: unknown, depth: number, media?: AdfMedia): string {
     case 'mediaSingle':
     case 'mediaGroup':
       if (!media) return '[attachment]\n\n';
-      return `${kids.map((k) => ((k as { type?: string })?.type === 'media' ? mediaText(k as { attrs?: Record<string, any> }, media) : block(k, depth, media).trim())).join('\n')}\n\n`;
+      return `${kids.map((k) => block(k, depth, media).trim()).join('\n')}\n\n`;
     case 'media':
       return media ? `${mediaText(n, media)}\n\n` : '[attachment]\n\n';
     case 'mediaInline':

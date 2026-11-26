@@ -2,7 +2,7 @@
 // Jira connection into the asking task's grant folder, named in the text where a media node can be joined to one.
 import { test, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, readFileSync, readdirSync, rmSync, statSync, truncateSync, writeFileSync, mkdirSync, symlinkSync, chmodSync, lstatSync } from 'node:fs';
+import { existsSync, readFileSync, readdirSync, rmSync, statSync, truncateSync, writeFileSync, mkdirSync, symlinkSync, chmodSync, lstatSync, renameSync } from 'node:fs';
 import path from 'node:path';
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { createIssues } from '../src/server/kanban/integrations/issues/index.js';
@@ -473,4 +473,50 @@ test('a disk error on write is the office’s own words, not Jira’s blame; nam
   assert.match(r.body.notes[0], /couldn't be saved/);
   assert.ok(!/Jira/.test(r.body.notes[0].replace("the ticket's", '')), r.body.notes[0]);
   assert.ok(r.body.imagesSkipped.some((x: Json) => x.name === 'x y z w.pdf'));
+});
+
+test('a folder swapped for a link while the picture downloads: nothing is written outside, the rest of the answer stays', async () => {
+  for (const which of ['root', 'key']) {
+    const s = setup({ attachments: [att('2700', 'a.png')], files: { '2700': PNG() }, delay: 150 });
+    const t = s.task();
+    const outside = path.join(s.ctx.tmp, `swap-${which}`);
+    mkdirSync(outside, { mode: 0o755 });
+    chmodSync(outside, 0o755);
+    const grant = grantDir(s.ctx.filesDir, t.id);
+    mkdirSync(s.folder(t.id), { recursive: true });
+    const swap = which === 'root' ? path.join(grant, 'jira-images') : s.folder(t.id);
+    // The worker's swap, during the download: the real folder moves aside and a link to an outside folder takes its place.
+    setTimeout(() => {
+      renameSync(swap, `${swap}.aside`);
+      symlinkSync(outside, swap);
+    }, 50);
+    const r = await s.call({ taskId: t.id });
+    assert.equal(r.status, 200);
+    assert.equal(r.body.partial, true);
+    assert.deepEqual(r.body.failed, ['images']);
+    assert.deepEqual(r.body.images, []);
+    assert.deepEqual(readdirSync(outside), []);
+    assert.equal(statSync(outside).mode & 0o777, 0o755);
+    assert.equal(s.downloads().length, 1);
+    assert.equal(r.body.issue.body, 'The description');
+  }
+});
+
+test('links planted in other folders of jira-images are not followed or counted by the task cap', async () => {
+  const MB = 1024 * 1024;
+  const s = setup({ attachments: [att('2800', 'a.png', { size: 2 * MB })], files: { '2800': PNG() } });
+  const t = s.task();
+  const outside = path.join(s.ctx.tmp, 'outside-big');
+  mkdirSync(outside);
+  const big = path.join(outside, 'big.bin');
+  writeFileSync(big, '');
+  truncateSync(big, 400 * MB);
+  mkdirSync(s.folder(t.id, 'OLD-1'), { recursive: true });
+  symlinkSync(outside, path.join(grantDir(s.ctx.filesDir, t.id), 'jira-images', 'LINK-1'));
+  symlinkSync(outside, path.join(s.folder(t.id, 'OLD-1'), 'sub'));
+  symlinkSync(big, path.join(s.folder(t.id, 'OLD-1'), 'big.png'));
+  const r = await s.call({ taskId: t.id });
+  assert.equal(r.body.partial, undefined);
+  assert.equal(r.body.images.length, 1);
+  assert.equal(s.downloads().length, 1);
 });

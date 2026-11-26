@@ -4,7 +4,7 @@
 // from Jira's `content` / `thumbnail` links, so the sign-in header can't go to another host. Nothing is deleted during a
 // read (a path given earlier stays good); the folder goes when the task is done or archived (removeIssueImages).
 
-import { mkdirSync, readdirSync, renameSync, rmSync, statSync, lstatSync, realpathSync, writeFileSync, chmodSync, openSync, readSync, closeSync, constants } from 'node:fs';
+import { mkdirSync, readdirSync, renameSync, rmSync, lstatSync, realpathSync, writeFileSync, chmodSync, openSync, readSync, closeSync, constants } from 'node:fs';
 import { randomBytes } from 'node:crypto';
 import path from 'node:path';
 import type { JiraAt } from '../../../../shared/kanban/jira-connections.js';
@@ -27,6 +27,7 @@ const SUBDIR = 'jira-images';
 const MEDIA_TYPES = new Set(['image/png', 'image/jpeg', 'image/gif', 'image/webp']);
 const UUID_RE = /\/file\/([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})(?:[/?#]|$)/i;
 const UUID_MAX = 2000;
+const KEPT_NAME_RE = /^\d{1,20}-[\w.-]{1,100}\.(png|jpg|gif|webp)$/;
 
 export interface IssueImage { name: string; file: string; path: string; bytes: number; type: string }
 export interface SkippedImage { name: string; reason: string }
@@ -91,7 +92,10 @@ class TooBig extends Error {}
 /** The body of a response with a hard byte cap (Jira's `size` isn't trusted). */
 async function readCapped(res: Response, cap: number): Promise<Uint8Array> {
   const len = Number(res.headers.get('content-length'));
-  if (len > cap) throw new TooBig();
+  if (len > cap) {
+    void res.body?.cancel().catch(() => {});
+    throw new TooBig();
+  }
   const reader = res.body?.getReader();
   if (!reader) {
     const buf = new Uint8Array(await res.arrayBuffer());
@@ -113,7 +117,7 @@ async function readCapped(res: Response, cap: number): Promise<Uint8Array> {
   return Buffer.concat(chunks);
 }
 
-/** The folder's size in bytes (files under it, one level of keys). */
+/** The folder's size in bytes (regular files under real folders only: a link planted by the worker is never followed). */
 function folderBytes(dir: string): number {
   let sum = 0;
   const walk = (d: string, depth: number) => {
@@ -126,10 +130,10 @@ function folderBytes(dir: string): number {
     for (const n of names) {
       const p = path.join(d, n);
       try {
-        const st = statSync(p);
+        const st = lstatSync(p);
         if (st.isDirectory()) {
           if (depth < 3) walk(p, depth + 1);
-        } else sum += st.size;
+        } else if (st.isFile()) sum += st.size;
       } catch {
         /* gone meanwhile */
       }
@@ -149,7 +153,8 @@ function kept(dir: string, id: string, size: number | undefined): { file: string
     return undefined;
   }
   for (const file of names) {
-    if (!file.startsWith(`${id}-`)) continue;
+    // Only a name of the shape the office writes itself: it goes into the answer and the `[image: …]` placeholder.
+    if (!file.startsWith(`${id}-`) || !KEPT_NAME_RE.test(file)) continue;
     const t = TYPES[path.extname(file).slice(1)];
     if (!t) continue;
     try {
@@ -361,13 +366,23 @@ export async function issueImages(io: IssueActIo, at: JiraAt, a: ImageArgs): Pro
           const stem = storedName(att.filename).replace(/\.[^.]*$/, '') || 'image';
           const file = `${att.id}-${stem}.${kind.ext}`;
           const tmp = path.join(dir, `.${file}.${process.pid}.${randomBytes(6).toString('hex')}.tmp`);
+          const final = path.join(dir, file);
+          let renamed = false;
           try {
-            // `wx` never writes through a link at the temporary name; the rename replaces a link at the final name itself.
+            // The folders are checked again, and the file written, renamed and verified, in one synchronous stretch (the worker
+            // can swap a folder for a link during the download). Without openat a swap between two consecutive syscalls can't
+            // be ruled out; checking before and verifying after closes everything wider than that. `wx` never writes through a
+            // link at the temporary name; the rename replaces a link at the final name itself.
+            if (!realDirs(grant, root, dir, false)) throw new ImageStepError(NOT_PLAIN);
             writeFileSync(tmp, bytes, { mode: 0o600, flag: 'wx' });
-            renameSync(tmp, path.join(dir, file));
-          } catch {
+            renameSync(tmp, final);
+            renamed = true;
+            const st = lstatSync(final);
+            if (!st.isFile() || realpathSync(final) !== path.join(realpathSync(grant), SUBDIR, a.key.toUpperCase(), file)) throw new ImageStepError(NOT_PLAIN);
+          } catch (err) {
             rmSync(tmp, { force: true });
-            throw new ImageStepError("the file couldn't be saved");
+            if (renamed) rmSync(final, { force: true });
+            throw err instanceof ImageStepError ? err : new ImageStepError("the file couldn't be saved");
           }
           total += bytes.length;
           settled.add(att);
@@ -466,10 +481,11 @@ export function sweepIssueImages(filesDir: string, statusOf: (taskId: number) =>
     } catch {
       continue;
     }
-    const status = statusOf(Number(id));
+    const taskId = Number(id);
+    const status = statusOf(taskId);
     if (status !== 'done' && status !== 'archived') continue;
-    removeIssueImages(filesDir, Number(id));
-    out.push(Number(id));
+    removeIssueImages(filesDir, taskId);
+    out.push(taskId);
   }
   return out;
 }
