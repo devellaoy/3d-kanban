@@ -3,7 +3,7 @@
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { PR_COMMENTS_MAX, answersComplete, normalisedBody, parsePrComments, prUrlKey, renderAnswers, type PrCommentItem } from '../src/shared/kanban/prcomments.js';
+import { PR_COMMENTS_MAX, PR_COMMENT_ALSO_MAX, PR_COMMENT_ID_MAX, answersComplete, normalisedBody, parsePrComments, prUrlKey, renderAnswers, type PrCommentItem } from '../src/shared/kanban/prcomments.js';
 
 const PR = 'https://github.com/acme/web/pull/7';
 const raw = (over: Record<string, unknown> = {}) => ({
@@ -164,10 +164,66 @@ test('parsePrComments: the same words in another pull request are not a repeat, 
   assert.deepEqual([marks.items.length, marks.duplicates], [2, 0]);
 });
 
-test('normalisedBody: case, a leading list marker, punctuation and spacing don’t tell remarks apart; the words do', () => {
-  const same = ['This leaks the handle.', '3. this leaks the handle', '(3) This  leaks\nthe handle!', '- This leaks the handle', '* `This` leaks the handle'];
+test('normalisedBody: case, a leading list marker, the closing mark and spacing don’t tell remarks apart; the words and the code do', () => {
+  const same = ['This leaks the handle.', '3. this leaks the handle', '(3) This  leaks\nthe handle!', '- This leaks the handle', '* This leaks the handle?!…'];
   for (const b of same) assert.equal(normalisedBody(b), 'this leaks the handle', b);
   assert.notEqual(normalisedBody('This leaks the socket'), normalisedBody(same[0]!));
   assert.equal(normalisedBody('Käyttöoikeus puuttuu'), 'käyttöoikeus puuttuu', 'letters of any alphabet are kept');
   assert.equal(normalisedBody(' ?! '), '');
+  // Operators and other marks inside a remark are what it says: these are different remarks.
+  for (const [a, b] of [['Use === instead of ==', 'Use !== instead of !='], ['a < b', 'a > b'], ['Return x + 1', 'Return x - 1'], ['Call foo()', 'Call foo'], ['Use `a.b`', 'Use `a?.b`']]) assert.notEqual(normalisedBody(a!), normalisedBody(b!), `${a} / ${b}`);
+});
+
+test('parsePrComments: remarks that differ only in their code are both kept, at the same place by the same author', () => {
+  const r = parsePrComments({ items: [raw({ body: 'Use === instead of ==' }), raw({ id: 'thread:12', body: 'Use !== instead of !=' })] }, [PR]);
+  assert.deepEqual([r.items.map((i) => i.id), r.duplicates], [['thread:11', 'thread:12'], 0]);
+});
+
+test('parsePrComments: a repeat left out stays as a source of the item that is kept, and reaches the answers', () => {
+  const noPlace = { path: undefined, line: undefined };
+  const u = (n: number) => `${PR}#discussion_r${n}`;
+  // Two threads at one place say the same; a review's summary repeats it; the kept one is the first.
+  const r = parsePrComments({ items: [raw(), raw({ id: 'thread:12', url: u(12) }), raw({ id: 'review:9#1', kind: 'review', url: `${PR}#pullrequestreview-9`, ...noPlace })] }, [PR]);
+  assert.deepEqual(r.items.map((i) => i.id), ['thread:11']);
+  assert.equal(r.duplicates, 2);
+  assert.deepEqual(r.items[0]!.also, [{ id: 'thread:12', url: u(12), path: 'src/a.ts', line: 12 }, { id: 'review:9#1', url: `${PR}#pullrequestreview-9` }]);
+  const text = renderAnswers(r.items, [{ id: 'thread:11', decision: 'fix' }]);
+  assert.match(text, /Also raised at: https:\/\/github\.com\/acme\/web\/pull\/7#discussion_r12 \(Id: thread:12, src\/a\.ts:12\)/);
+  assert.match(text, /Also raised at: https:\/\/github\.com\/acme\/web\/pull\/7#pullrequestreview-9 \(Id: review:9#1\)/);
+  // A line comment that replaces a review's remark keeps where the review said it, and what that one had kept.
+  const swapped = parsePrComments({ items: [raw({ id: 'review:9#1', kind: 'review', url: `${PR}#pullrequestreview-9`, ...noPlace }), raw({ id: 'comment:3', kind: 'conversation', url: `${PR}#issuecomment-3`, ...noPlace }), raw()] }, [PR]);
+  assert.deepEqual(swapped.items.map((i) => [i.id, i.also?.map((x) => x.id)]), [['thread:11', ['review:9#1', 'comment:3']]]);
+  // The very same item twice names no other place.
+  assert.equal(parsePrComments({ items: [raw(), raw()] }, [PR]).items[0]!.also, undefined);
+  assert.doesNotMatch(renderAnswers(parsePrComments({ items: [raw()] }, [PR]).items, []), /Also raised at/);
+});
+
+test('parsePrComments: the other places the agent names are kept when sound, capped, and never the reason an item is left out', () => {
+  const also = [{ id: 'thread:20', url: `${PR}#discussion_r20`, path: 'src/b.ts', line: '4' }, { id: 'thread:21', url: 'https://evil.example/x' }, { id: '', url: `${PR}#r` }, 'junk', { id: 'x'.repeat(PR_COMMENT_ID_MAX + 1), url: `${PR}#r` }, { id: 'thread:20', url: `${PR}#discussion_r20` }];
+  const r = parsePrComments({ items: [raw({ also })] }, [PR]);
+  assert.deepEqual([r.dropped, r.items[0]!.also], [0, [{ id: 'thread:20', url: `${PR}#discussion_r20`, path: 'src/b.ts', line: 4 }]]);
+  assert.equal(parsePrComments({ items: [raw({ also: 'nope' })] }, [PR]).items[0]!.also, undefined);
+  const many = Array.from({ length: PR_COMMENT_ALSO_MAX + 9 }, (_, i) => raw({ id: `thread:${100 + i}`, url: `${PR}#discussion_r${100 + i}` }));
+  assert.equal(parsePrComments({ items: [raw(), ...many] }, [PR]).items[0]!.also!.length, PR_COMMENT_ALSO_MAX);
+});
+
+test('parsePrComments: an id the office makes stays within the cap the answers are checked against, and unique', () => {
+  const long = `review:${'9'.repeat(PR_COMMENT_ID_MAX - 7)}`;
+  assert.equal(long.length, PR_COMMENT_ID_MAX);
+  const r = parsePrComments({ items: ['one', 'two', 'three'].map((body) => raw({ id: long, body })) }, [PR]);
+  const ids = r.items.map((i) => i.id);
+  assert.equal(new Set(ids).size, 3);
+  assert.ok(ids.every((id) => id.length <= PR_COMMENT_ID_MAX), ids.map((id) => id.length).join());
+  assert.deepEqual(ids.slice(1).map((id) => id.slice(-2)), ['#2', '#3']);
+  // An id over the cap is no id: the item is left out rather than cut to another comment's.
+  assert.deepEqual([parsePrComments({ items: [raw({ id: `${long}0` })] }, [PR]).items.length, parsePrComments({ items: [raw({ id: `${long}0` })] }, [PR]).dropped], [0, 1]);
+});
+
+test('parsePrComments: repeats take no number, so thousands of them cost nothing and leave no gap', () => {
+  const repeats = Array.from({ length: 20000 }, () => raw());
+  const started = Date.now();
+  const r = parsePrComments({ items: [raw(), ...repeats, raw({ body: 'A second remark' }), ...repeats, raw({ body: 'A third remark' })] }, [PR]);
+  assert.deepEqual(r.items.map((i) => i.id), ['thread:11', 'thread:11#2', 'thread:11#3']);
+  assert.deepEqual([r.dropped, r.duplicates], [0, 40000]);
+  assert.ok(Date.now() - started < 5000, 'linear in the list');
 });

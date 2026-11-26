@@ -116,7 +116,7 @@ Leave out what is handled already: a resolved thread, and a comment that has bee
 
 One item per remark, not per comment. A comment, a thread's comment or a review summary that makes several separate remarks (a numbered or bulleted list, findings under headings, several unrelated points) becomes one item for each remark, and each is judged on its own: its own meaning, valid, causedByTask, recommend and reasons. A comment with a single remark stays one item. An introduction, a summary or praise with nothing to decide ("No blocking problems found") is not an item.
 
-List each remark once. When the same remark is made in more than one place (a review summary repeating its own line comments, the same review or bot comment posted twice, two reviewers pointing at the same thing in the same place), keep one item: the one on a line (a thread) rather than the review or conversation text, else the newest, and say in its meaning where else it was raised. Remarks that only look alike but are about different places in the code are not duplicates.
+List each remark once. When the same remark is made in more than one place (a review summary repeating its own line comments, the same review or bot comment posted twice, two reviewers pointing at the same thing in the same place), keep one item: the one on a line (a thread) rather than the review or conversation text, else the newest, and name every other place it was raised in that item's also (the id and url of each comment left out, in the forms of id and url below): the user's decision is carried out there too. Remarks that only look alike but are about different places in the code are not duplicates.
 
 Then judge each remark that is left against the code and against what this task changed (git diff of the pull request's branch against its base; the branch of each pull request is checked out for you): what it means, whether it is right (valid: yes, partly or no), whether this task's own changes caused what it points at (causedByTask: yes, no or unknown), and whether it is worth fixing (recommend: fix or skip). Give a reason for each judgement.
 
@@ -139,11 +139,12 @@ Write the result as JSON into {{file}} (create the file, overwrite it if it exis
       "causedByTask": "yes | no | unknown",
       "causedWhy": "<why>",
       "recommend": "fix | skip",
-      "recommendWhy": "<why>"
+      "recommendWhy": "<why>",
+      "also": [{ "id": "<the id of another comment that makes this same remark>", "url": "<that comment's own URL>" }]
     }
   ]
 }
-A comment with one remark keeps the plain id (thread:<id>, comment:<id>, review:<id>). The remarks of a comment with several get the comment's id followed by #<n>: review:<id>#3. <n> is the remark's own number when the comment numbers its remarks, else its place in the comment counting from 1. The body of such an item is that remark's own text only, as written; its url is the comment's own, and path and line are the comment's as before.
+A comment with one remark keeps the plain id (thread:<id>, comment:<id>, review:<id>). The remarks of a comment with several get the comment's id followed by #<n>: review:<id>#3. <n> is the remark's own number when the comment numbers its remarks, else its place in the comment counting from 1. The body of such an item is that remark's own text only, as written; its url is the comment's own, and path and line are the comment's as before. Leave also out of an item whose remark is made nowhere else.
 
 Write {"items": []} when nothing is left to answer. The analysis text (meaning and the three reasons) is shown to the user in the office and is posted nowhere: write it in the language you talk to the user in (the conversation language below), never in the language of what leaves the office or of the comment itself. Leave the comment's own text (body) as it was written, and keep the fixed values (kind, valid, causedByTask, recommend) exactly as spelled above.
 
@@ -175,7 +176,7 @@ The comments, each with the analysis made earlier and the user's decision:
 
 {{items}}
 
-An Id ending in #<n> (thread:<number>#3) is remark n of a comment that makes several remarks, so several listed items can belong to one comment and share its address; each has its own decision. Do exactly what the decisions say, and only for the comments and remarks listed:
+An Id ending in #<n> (thread:<number>#3) is remark n of a comment that makes several remarks, so several listed items can belong to one comment and share its address; each has its own decision. An item's "Also raised at" lines are other comments that make the same remark: its decision covers them too, so reply on each of them as well, and resolve their threads by the same rule as the item's own. Do exactly what the decisions say, and only for the comments and remarks listed:
 - "Fix it": fix what the comment is right about in the code of that pull request's branch.
 - "Do what the user's text says": do that, as the user wrote it.
 - "Don't change the code": change nothing for that comment.

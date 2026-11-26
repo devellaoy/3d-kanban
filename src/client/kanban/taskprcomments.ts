@@ -124,7 +124,7 @@ export class PrComments {
       return h(
         'div.kb-prc-group',
         {},
-        h('div.kb-prc-pr', {}, icon('git-pull-request', { size: 14 }), g.repo ? h('b', {}, g.repo) : null, link, h('small.kb-muted', {}, `${g.items.length} ${g.items.length === 1 ? 'comment' : 'comments'}`)),
+        h('div.kb-prc-pr', {}, icon('git-pull-request', { size: 14 }), g.repo ? h('b', {}, g.repo) : null, link, h('small.kb-muted', {}, `${g.items.length} ${g.items.length === 1 ? 'remark' : 'remarks'}`)),
         h('ul.kb-prc-items', {}, ...g.items.map((i) => this.item(i, sent ? { answer: sent.answers.find((a) => a.id === i.id) } : { drafts: mine, sync })),
         ),
       );

@@ -11,7 +11,7 @@ import { next, type Effect, type MachineEvent, type MachineState, type MachineTa
 import { FAILED_START, PrCommentsRuns, prCommentsFile, prCommentsGrantFile, prCommentsState, readPrComments, removePrComments, writePrComments } from '../src/server/kanban/engine/prcomments.js';
 import { createPrCommentsPlugin } from '../src/server/kanban/integrations/prcomments/index.js';
 import { KANBAN_CONTRACTS, PROMPT_CONTRACT } from '../src/shared/kanban/prompts.js';
-import { PR_COMMENTS_FILE_MAX, type PrCommentAnswer, type PrCommentItem } from '../src/shared/kanban/prcomments.js';
+import { PR_COMMENTS_FILE_MAX, renderAnswers, type PrCommentAnswer, type PrCommentItem } from '../src/shared/kanban/prcomments.js';
 import { PR_MODES } from '../src/shared/kanban/prs.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 import { visitorPath } from '../src/server/multiplayer/paths.js';
@@ -122,6 +122,20 @@ function store() {
   return { filesDir, runs, grant, done: () => rmSync(filesDir, { recursive: true, force: true }) };
 }
 const taskOf = (id = 5) => ({ id, prs: [{ url: PR }] }) as unknown as Parameters<PrCommentsRuns['collect']>[0];
+
+test('collect: where a repeat was is kept in the store and listed for the answers run', (t) => {
+  const s = store();
+  t.after(s.done);
+  writeFileSync(s.grant(5), JSON.stringify({ items: [item(), item({ id: 'thread:2', url: 'https://github.com/acme/web/pull/7#r2' })] }));
+  s.runs.collect(taskOf());
+  const kept = readPrComments(s.filesDir, 5)!.items;
+  assert.deepEqual(kept.map((i) => [i.id, i.also]), [['thread:1', [{ id: 'thread:2', url: 'https://github.com/acme/web/pull/7#r2', path: 'a.ts', line: 3 }]]]);
+  // The decisions are sent with the items as they were: the run's prompt names the other thread.
+  const answers = [{ id: 'thread:1', decision: 'fix' as const }];
+  writePrComments(s.filesDir, 5, { ...readPrComments(s.filesDir, 5)!, pending: { items: kept, answers, at: 2 } });
+  const got = s.runs.answersFor(5)!;
+  assert.match(renderAnswers(got.items, got.answers), /Also raised at: https:\/\/github\.com\/acme\/web\/pull\/7#r2 \(Id: thread:2, a\.ts:3\)/);
+});
 
 test('collect: duplicates are stored and told, an old store without the field reads as none', (t) => {
   const s = store();
@@ -364,6 +378,8 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   assert.match(comments, /followed by #<n>[\s\S]*review:<id>#3/);
   assert.doesNotMatch(comments, /"duplicates"/, 'the office counts the repeats itself');
   assert.match(comments, /List each remark once/);
+  assert.match(comments, /name every other place it was raised in that item's also/);
+  assert.match(comments, /"also": \[\{ "id"/);
   assert.match(comments, /"causedByTask"/);
   assert.ok(comments.endsWith(KANBAN_CONTRACTS.prComments));
   assert.doesNotMatch(KANBAN_CONTRACTS.prComments, /PR: <|office-tasks pr|committed/, 'no PR lines, no instruction to commit or push');
@@ -392,6 +408,7 @@ test('the two prompts: the fetch reads, writes one file and ends with the work-d
   assert.match(answers, /comments\(first: 1\) \{ nodes \{ databaseId \} \}[\s\S]*first comment's databaseId is the number in the comment's Id[\s\S]*not by the listed address/);
   assert.match(answers, /Leave a thread open when it is not settled: you could not do what was decided, you refused what it asks for, or your reply asks its author something/);
   assert.doesNotMatch(answers, /Don't resolve threads/);
+  assert.match(answers, /"Also raised at" lines are other comments that make the same remark: its decision covers them too/);
   assert.match(answers, /An Id ending in #<n>[\s\S]*several listed items can belong to one comment/);
   assert.match(answers, /reply once on each comment, not once on each remark[\s\S]*remark by remark/);
   assert.match(answers, /only when every one of them is settled/);
