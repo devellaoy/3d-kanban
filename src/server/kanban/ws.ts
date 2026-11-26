@@ -21,6 +21,7 @@ import { wallChanged, wallSourcesChanged } from './integrations/issues/wall.js';
 import { chmodSync, existsSync } from 'node:fs';
 import { firstLinkingComments, linkedAttachmentIds } from './engine/inlinefiles.js';
 import { removePrComments } from './engine/prcomments.js';
+import { removeIssueImages, sweepIssueImages } from './integrations/issues/agent-read-images.js';
 import { ORPHAN_MAX_AGE_MS, removeAttachmentFiles, removeGrant, sweepOrphanUploads, uploadsDir, uploadRoutes } from './uploads.js';
 
 const DAY_MS = 24 * 60 * 60_000;
@@ -108,6 +109,7 @@ export function archiveOldTasks(ctx: KanbanContext, now = Date.now()): number[] 
     if ((t.doneAt ?? t.updatedAt) > cutoff) continue;
     ctx.repo.updateTask(t.id, { status: 'archived', archivedAt: now, ...(t.runState === 'queued' ? { runState: 'idle' as const, queuedRun: null } : {}) });
     ctx.repo.appendEvent(t.id, 'archived', { auto: true, afterDays: days }, now);
+    removeIssueImages(ctx.filesDir, t.id);
     ctx.taskChanged(t.id);
     moved.push(t.id);
     // Its workers still at their desks go home, worktree kept (docs/kanban-coupling.md).
@@ -298,6 +300,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
       ctx.repo.appendEvent(task.id, 'moved', { by: c.name, from: task.status, to: m.to, ...(check.action === 'reset' ? { reset: true } : {}) });
       ctx.taskChanged(task.id);
       ok(c, m.rid, { taskId: task.id });
+      if (m.to === 'done' || m.to === 'archived') removeIssueImages(ctx.filesDir, task.id); // the ticket's pictures were for the work
       // Done with: its workers at rest go home, worktree kept (docs/kanban-coupling.md).
       if (m.to === 'done' || m.to === 'archived') await ctx.engine.releaseIdle?.(task.id, c).catch((err: Error) => console.error(`agent-office: the kanban couldn't send task #${task.id}'s workers home: ${err.message}`));
     },
@@ -437,6 +440,7 @@ export function createCorePlugin(ctx: KanbanContext, subs: KanbanSubscriptions):
   const sweep = () => {
     try {
       archiveOldTasks(ctx);
+      sweepIssueImages(ctx.filesDir, (id) => ctx.repo.getTask(id)?.status); // a task that became done without a move in the board
       sweepOrphanUploads(ctx, Date.now() - ORPHAN_MAX_AGE_MS);
     } catch (err) {
       console.error(`agent-office: the kanban's hourly tidy-up failed: ${(err as Error).message}`);

@@ -116,11 +116,12 @@ test('without a ref the caller’s own ticket is read: exactly three Jira calls,
       { author: 'Person 2', createdAt: '2026-09-01T10:02:00.000+0000', body: 'second' },
     ],
     children: [{ key: 'UYT-8', title: 'Child', status: 'To Do', issueType: 'Sub-task' }],
+    images: [],
     notes: [],
   });
   assert.equal(calls.length, 3);
   assert.ok(calls.every((c) => c.url.startsWith(`https://${SITE}/rest/api/3/`) && !c.url.includes('/field')));
-  assert.equal(calls[0].url, `https://${SITE}/rest/api/3/issue/UYT-7?fields=summary,description,assignee,labels,status,parent,project,updated,issuetype`);
+  assert.equal(calls[0].url, `https://${SITE}/rest/api/3/issue/UYT-7?fields=summary,description,assignee,labels,status,parent,project,updated,issuetype,attachment`);
   assert.equal(calls[0].auth, `Basic ${Buffer.from('me@x.fi:tok-secret-1').toString('base64')}`);
 });
 
@@ -538,12 +539,15 @@ test('children and parent of an allowed issue: an open source covers all of them
   await a.prime();
   const r = (await a.call('HR-1')).body;
   assert.deepEqual(r.children.map((c: Json) => c.key), ['ZZ-5', 'YY-6']);
+  // An open source doesn't know them, so the CLI mustn't promise a read that would be refused.
+  assert.deepEqual(r.children.map((c: Json) => c.readable), [false, false]);
   assert.deepEqual(r.issue.parent, { key: 'ZZ-1', title: 'Epic title', status: 'Open' });
   // A key asked for by ref stays strict: not cached, refused.
   assert.equal((await a.call('ZZ-5')).status, 403);
   const b = setup({ sources: [jira(['UYT'])], children: [{ key: 'UYT-8', fields: { summary: 'Mine' } }, { key: 'OTH-1', fields: { summary: 'Other project' } }], issue: issueJson('UYT-7', { parent }) });
   const rb = (await b.call('UYT-7')).body;
   assert.deepEqual(rb.children.map((c: Json) => c.key), ['UYT-8']);
+  assert.equal(rb.children[0].readable, undefined);
   assert.deepEqual(rb.issue.parent, { key: 'ZZ-1' });
 });
 
