@@ -275,6 +275,13 @@ const wrappedComments = (t: { after(fn: () => void): void }) => {
   assert.equal(r?.waiting, undefined);
   assert.ok(r?.text?.endsWith('WORK DONE'));
   assert.equal(r?.complete, true);
+  // The same with a closing tag that has no id, and with more attributes on the opening tag: one wrapper still.
+  for (const wrap of [(b: string) => `<pasted_content id="q7x2">\n${b}\n</pasted_content>`, (b: string) => `<pasted_content id="q7x2" lines="2">\n${b}\n</pasted_content id="q7x2">`]) {
+    const other = readClaudeTurn(write([...log.slice(0, 2), queued(wrap(C1), 3), ...log.slice(3, 5), user(`\n\n${wrap(C2)}\n`, 6, { origin: { kind: 'human' } }), log[6]]), opts);
+    assert.deepEqual([...(other?.seen ?? [])].sort(), [0, 1]);
+    assert.equal(other?.typed, undefined);
+    assert.equal(other?.text, 'Renamed.\nWORK DONE');
+  }
   return r;
 };
 

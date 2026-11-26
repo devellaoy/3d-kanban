@@ -875,17 +875,23 @@ test('unpasted takes a <pasted_content> wrapper around the whole prompt off, not
   assert.equal(unpasted('<pasted_content>\nBody\n</pasted_content>'), 'Body');
   assert.equal(unpasted('<pasted_content id="a1b2">\n \n</pasted_content id="a1b2">'), ' ');
   assert.equal(unpasted('<pasted_content id="a1b2">\r\nBody\r\n</pasted_content id="a1b2">\r\n').trim(), 'Body');
-  // The body may quote a closing tag that is not its own.
+  // The closing tag with the id or without, another id, more attributes on either: one wrapper all the same.
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody\n</pasted_content>'), 'Body');
+  assert.equal(unpasted('<pasted_content id="a1b2" lines="3">\nBody\n</pasted_content id="a1b2">'), 'Body');
+  assert.equal(unpasted('<pasted_content id="a1b2">\nBody\n</pasted_content id="zz99">'), 'Body');
+  assert.equal(unpasted('<pasted_content>\nBody\n</pasted_content id="a1b2">'), 'Body');
+  // The body may quote a closing tag.
+  assert.equal(unpasted('<pasted_content id="a1b2">\nSee </pasted_content id="a1b2"> here\n</pasted_content id="a1b2">'), 'See </pasted_content id="a1b2"> here');
   assert.equal(unpasted('<pasted_content id="a1b2">\nSee </pasted_content> here\n</pasted_content id="a1b2">'), 'See </pasted_content> here');
-  // Anything else is a person's prompt, unchanged: typed text before or after the paste, several pastes (whatever their ids), a wrapper left open or closed by another's tag.
+  // Anything else is a person's prompt, unchanged: typed text before or after the paste, several pastes (whatever their ids), a wrapper left open.
   for (const same of [
     'Fix these:\n\n\n\n<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\n',
     '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\nDo not do that.',
     '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\nDo this instead:\n<pasted_content id="cd34">\nOther\n</pasted_content id="cd34">',
     '<pasted_content id="ab12">\nBody\n</pasted_content id="ab12">\n<pasted_content id="ab12">\nOther\n</pasted_content id="ab12">',
     '<pasted_content id="a1b2">\nBody',
-    '<pasted_content id="a1b2">\nBody\n</pasted_content id="zz99">',
-    '<pasted_content id="a1b2">\nBody\n</pasted_content>',
+    '<pasted_content id="ab12">\nBody\n</pasted_content>\n<pasted_content id="ab12">\nOther\n</pasted_content>',
+    '<pasted_content id="a1b2">\nBody\n</pasted_content id="a1b2',
     '<pasted_content id="a1b2">\nBody </pasted_contents>',
   ]) assert.equal(unpasted(same), same, same);
 });

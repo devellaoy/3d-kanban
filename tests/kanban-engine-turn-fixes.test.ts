@@ -290,6 +290,11 @@ test('a prompt hook hears a prompt logged wrapped in <pasted_content>, but not t
   hearPrompt(p, '\n\n<pasted_content id="ab12">\n   \n</pasted_content id="ab12">\n');
   hearPrompt(p, '<pasted_content id="ab12">\n</pasted_content id="ab12">');
   assert.equal((p[0] as { heard?: boolean }).heard, undefined, 'an empty paste hears nothing');
+  hearPrompt(p, `<pasted_content id="ab12">\n${body}\n</pasted_content id="ab12">\nNo:\n<pasted_content id="ab12">\nOther\n</pasted_content id="ab12">`);
+  assert.equal((p[0] as { heard?: boolean }).heard, undefined, 'two pastes: a person\'s');
+  const bare = [{ head: p[0].head }];
+  hearPrompt(bare, `<pasted_content id="ab12" lines="2">\n${body}\n</pasted_content>`);
+  assert.equal((bare[0] as { heard?: boolean }).heard, true, 'a closing tag without the id, more attributes on the opening one');
   hearPrompt(p, `\n\n<pasted_content id="ab12">\n${body}\n</pasted_content id="ab12">\n`);
   assert.equal((p[0] as { heard?: boolean }).heard, true);
 });

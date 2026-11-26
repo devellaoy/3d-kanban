@@ -35,18 +35,21 @@ export function officeReceipts(
   return { received, fresh };
 }
 
-const OPENING = /^\s*<pasted_content(\s[^>]*)?>\n?/;
+const OPENING = /^\s*<pasted_content(?:\s[^>]*)?>\n?/;
+const CLOSING = '</pasted_content';
 
 /**
  * A prompt without the `<pasted_content …>` wrapper Claude Code logs around a pasted one (and hands its prompt hook), when one wrapper is around the whole
- * prompt: the text opens with the tag (after whitespace), and the first closing tag of its own (it repeats the opening's attributes, the id) is what the
- * text ends with. Typed text before or after the paste, several pastes, or a wrapper left open, is a person's prompt and stays as it is, like any other text.
+ * prompt: the text opens with the tag (after whitespace) and ends with a closing one (with the id or without, whatever attributes either carries), and no
+ * closing tag inside is followed by another opening one (two pastes, whatever their ids). Typed text before or after the paste, several pastes, or a wrapper
+ * left open, is a person's prompt and stays as it is, like any other text.
  */
 export function unpasted(text: string): string {
   const open = OPENING.exec(text);
-  if (!open) return text;
-  const close = `</pasted_content${open[1] ?? ''}>`;
   const end = text.trimEnd();
-  const at = end.indexOf(close, open[0].length);
-  return at >= 0 && at + close.length === end.length ? end.slice(open[0].length, at).replace(/\n$/, '') : text;
+  const at = open && end.endsWith('>') ? end.lastIndexOf(CLOSING) : -1;
+  if (!open || at < open[0].length || !/^(\s[^<>]*)?$/.test(end.slice(at + CLOSING.length, -1))) return text;
+  const inner = end.slice(open[0].length, at);
+  const closed = inner.indexOf(CLOSING);
+  return closed >= 0 && /<pasted_content[\s>]/.test(inner.slice(closed)) ? text : inner.replace(/\n$/, '');
 }
