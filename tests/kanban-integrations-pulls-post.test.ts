@@ -27,6 +27,12 @@ test('the body: a header with the verdict, the list of the pull requests when th
   assert.match(reviewBody([PRS[0]], 'REVIEW: APPROVED'), /\(The reviewer gave no findings\.\)$/);
 });
 
+test('the verdict is the run’s own when it is given, and a review the office kept only the start of says so', () => {
+  assert.match(reviewBody([PRS[0]], 'The start of a long review, cut here', { verdict: 'approved', cut: true }), /^\*\*Review by Agent Office: approved\*\*\n\nThe start of a long review, cut here\n\n\(The text of the review was cut here: the office kept only its first part\.\)$/);
+  assert.match(reviewBody([PRS[0]], 'No verdict line left.', { verdict: 'changes_requested' }), /changes requested/);
+  assert.match(reviewBody([PRS[0]], 'Text.\nREVIEW: APPROVED', { verdict: 'changes_requested' }), /changes requested/, 'what is given wins over the text');
+});
+
 test('a very long review is cut under GitHub’s limit, and says so', () => {
   const body = reviewBody(PRS, `${'finding. '.repeat(20_000)}\nREVIEW: APPROVED`);
   assert.ok(body.length <= POST_MAX, `${body.length} characters`);

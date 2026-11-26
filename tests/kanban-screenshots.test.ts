@@ -109,7 +109,7 @@ test('a gh that fails (no --attach, no access) is a warning and the file is stil
 
 const run = { id: 1 };
 
-function board(opts: { runState?: string; flags?: Record<string, boolean>; url?: string; state?: string; files?: Record<string, string>; webState?: string | null; apiState?: string | null } = {}) {
+function board(opts: { runState?: string; flags?: Record<string, boolean>; url?: string; state?: string; files?: Record<string, string>; webState?: string | null; apiState?: string | null; events?: { kind: string; data: unknown }[] } = {}) {
   const root = mkdtempSync(path.join(tmpdir(), 'kanban-shots-ctx-'));
   const dir = path.join(root, 'grants', 'task-1', 'ui');
   mkdirSync(dir, { recursive: true });
@@ -124,11 +124,12 @@ function board(opts: { runState?: string; flags?: Record<string, boolean>; url?:
     { taskId: 1, repoId: 'web', repo: 'acme/web', number: 4, url: WEB_, state: opts.webState ?? 'OPEN', branch: 'b' },
   ].filter((l) => (l.repoId === 'web' ? opts.webState !== null : opts.apiState !== null));
   const comments: string[] = [];
+  const events: { kind: string; data: unknown }[] = opts.events ?? [];
   const ctx = {
     dataDir: root,
     filesDir: root,
     repos: () => [{ id: 'api', name: 'API', primary: true, remote: 'acme/api' }, { id: 'web', name: 'Web', primary: false, remote: 'acme/web' }],
-    repo: { prLinksOfProject: () => links, listTasks: () => [task], repoBranches: () => ({}), latestRunId: () => run.id, addComment: (c: { text: string }) => void comments.push(c.text) },
+    repo: { listEvents: () => events, prLinksOfProject: () => links, listTasks: () => [task], repoBranches: () => ({}), latestRunId: () => run.id, addComment: (c: { text: string }) => void comments.push(c.text) },
     taskChanged() {},
   } as unknown as Parameters<typeof checkScreenshots>[0];
   return { ctx, dir, task, comments, links };
@@ -151,6 +152,17 @@ test('every open GitHub pull request of the task gets the images, once for the s
   }
   assert.equal(edits().length, 2, 'no more calls for the same images');
   assert.equal(calls.length, 2 * 3, 'a read, a re-read and the edit per pull request, once');
+});
+
+test('a task whose latest pull-request review tested the UI never has its pictures attached, even with the prRequested flag', async () => {
+  const review = (uiTest: boolean) => ({ kind: 'pr.review', data: { request: { project: 'api', prs: [], ...(uiTest ? { uiTest: true } : {}) } } });
+  for (const [events, edits] of [[[review(true)], 0], [[review(true), review(false)], 2], [[], 2]] as const) {
+    const { ctx } = board({ events: [...events] });
+    const calls: { args: string[] }[] = [];
+    checkScreenshots(ctx, 'api', new Map(), { run: fakeGh(() => ({ body: '', updatedAt: 't' }), calls) });
+    await settle();
+    assert.equal(calls.filter((c) => c.args[1] === 'edit').length, edits, JSON.stringify(events));
+  }
 });
 
 test('a lone after picture counts', async () => {

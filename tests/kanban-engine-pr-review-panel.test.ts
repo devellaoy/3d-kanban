@@ -9,6 +9,7 @@ import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { GitRunner } from '../src/server/kanban/engine/prheads.js';
 import { PR_POSTED } from '../src/shared/kanban/prompts.js';
+import { reviewBody } from '../src/server/kanban/integrations/pulls/postreview.js';
 import type { KanbanRun, KanbanTask } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
 
@@ -28,8 +29,8 @@ const CO_FINDING = 'The cache of pull request 4 is never cleared.\nREVIEW: CHANG
 const COMBINED = 'One confirmed finding: the cache is never cleared.\nREVIEW: CHANGES_REQUESTED';
 const pr = (n: number) => ({ repo: 'acme/proj', number: n, title: `PR ${n}`, base: 'main' }) as never;
 
-async function setup(t: { after(fn: () => unknown): void }, extra: { tool: 'claude' | 'codex'; focus?: string }[] = [{ tool: 'codex' }]) {
-  const fx = await engineFixture({ engine: { panelWaitMs: 20_000, prGit: noFetch } });
+async function setup(t: { after(fn: () => unknown): void }, extra: { tool: 'claude' | 'codex'; focus?: string }[] = [{ tool: 'codex' }], engine: object = {}) {
+  const fx = await engineFixture({ engine: { panelWaitMs: 20_000, prGit: noFetch, ...engine } });
   t.after(() => fx.close());
   fx.settings.setProject('proj', { review: { tool: 'claude', rounds: 1, reReviewLastFix: false, ...(extra.length ? { extra } : {}) } });
   return fx;
@@ -233,13 +234,14 @@ interface Post {
   prs: { repo: string; number: number }[];
   text: string;
   account?: string;
+  opts?: { verdict?: string; cut?: boolean };
 }
 
 /** A postReview that records its calls, and answers each pull request with a URL (or with an error when `fail` is set). */
 function poster(fx: EngineFixture, fail?: 'error' | 'throw') {
   const calls: Post[] = [];
-  (fx.ctx.pulls as { postReview?: unknown }).postReview = async (project: string, prs: Post['prs'], text: string, account?: string) => {
-    calls.push({ project, prs, text, ...(account ? { account } : {}) });
+  (fx.ctx.pulls as { postReview?: unknown }).postReview = async (project: string, prs: Post['prs'], text: string, account?: string, opts?: Post['opts']) => {
+    calls.push({ project, prs, text, ...(account ? { account } : {}), ...(opts ? { opts } : {}) });
     if (fail === 'throw') throw new Error('gh fell over');
     return prs.map((p) => (fail ? { repo: p.repo, number: p.number, error: 'Resource not accessible by integration' } : { repo: p.repo, number: p.number, url: `https://github.com/${p.repo}/pull/${p.number}#pullrequestreview-9` }));
   };
@@ -323,4 +325,46 @@ test('post: a stopped run posts nothing, and its Retry keeps the choice and post
   assert.equal(calls[0].text, 'Fine after all.\nREVIEW: APPROVED');
   await sleep(200);
   assert.equal(calls.length, 1, 'once');
+});
+
+test('post: with additional reviewers that never deliver, a long approving review is posted whole with the verdict it ended with', async (t) => {
+  const fx = await setup(t, [{ tool: 'codex' }], { panelWaitMs: 800 });
+  const calls = poster(fx);
+  const findings = Array.from({ length: 2000 }, (_, i) => `Finding ${i}: a note.`).join('\n');
+  const long = `${findings}\nREVIEW: APPROVED`;
+  assert.ok(long.length > 40_000);
+  fx.setRules([co('never', { delayMs: 60_000 }), MAIN(long)]);
+  const { id } = await review(fx, { post: true });
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  await until('the posting', () => calls.length === 1);
+  assert.equal(calls[0].opts?.verdict, 'approved', 'the run’s own verdict, not one read from a cut text');
+  assert.equal(calls[0].opts?.cut, false);
+  assert.equal(calls[0].text, long, 'the whole text, not the run’s clipped summary');
+  assert.ok(fx.repo.listRuns(id)[0].summary!.length < long.length, 'the run row keeps only the start');
+  const body = reviewBody([pr(3), pr(4)], calls[0].text, calls[0].opts as never);
+  assert.match(body, /^\*\*Review by Agent Office: approved\*\*/);
+  assert.ok(body.includes('Finding 1999: a note.') && !/REVIEW: APPROVED/.test(body) && !/cut/.test(body));
+});
+
+test('post: the review is posted as the account that asked, not the task’s creator, and a Retry keeps it', async (t) => {
+  const fx = await setup(t, []);
+  const calls = poster(fx);
+  fx.setRules([MAIN('Fine.\nREVIEW: APPROVED', { delayMs: 3000 })]);
+  const task = fx.newTask({ usePlan: false, useReview: false, createdByAccount: 'acc-creator' } as never);
+  fx.repo.updateTask(task.id, { status: 'review', runState: 'idle' });
+  fx.repo.upsertPrLink(task.id, { repoId: 'proj', repo: 'acme/proj', number: 3, url: 'https://github.com/acme/proj/pull/3', state: 'OPEN' });
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [pr(3)], taskId: task.id, tool: 'claude', post: true }, { name: 'Bea', admin: true, accountId: 'acc-asker' });
+  assert.ok(typeof got !== 'string', String(got));
+  if (typeof got === 'string') return;
+  assert.equal(got.taskId, task.id, 'on the task that owns the pull request');
+  assert.equal((fx.repo.listEvents(task.id).find((e) => e.kind === 'pr.review')!.data as { account?: string }).account, 'acc-asker');
+  await until('the reviewer to work', () => fx.workers.get(got.workerId!)?.status === 'working');
+  assert.equal(await fx.engine.stop(task.id, ADA), undefined);
+  await fx.waitTask(task.id, (x) => x.status === 'waiting' && x.waitingReason === 'stopped', 'the stop', 20_000);
+  await until('the stopped reviewer to rest', () => ['idle', 'done'].includes(fx.workers.get(got.workerId!)?.status ?? ''));
+  fx.setRules([MAIN('Fine.\nREVIEW: APPROVED')]);
+  assert.equal(await fx.engine.retry(task.id, { name: 'Cy', admin: true, accountId: 'acc-other' }), undefined);
+  await fx.waitTask(task.id, inReview, 'the review column', 30_000);
+  await until('the posting', () => calls.length === 1);
+  assert.equal(calls[0].account, 'acc-asker');
 });

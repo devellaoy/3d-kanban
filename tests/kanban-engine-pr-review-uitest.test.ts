@@ -135,11 +135,11 @@ test('uiTest: a task of its own even when one is named, the tester first (an imp
   await closingsIdle();
   assert.deepEqual(calls, [], 'nothing is attached to the pull requests');
   assert.equal(marks.size, 0);
-  // The same task with the flag a task whose pull requests the office opened has would have them attached: the flag is the whole difference.
+  // And even with the flag a task whose pull requests the office opened has, its latest review having tested the UI keeps the pictures out of them.
   fx.repo.updateTask(id, { flags: { ...fx.task(id).flags, prRequested: true } });
   checkScreenshots(fx.ctx, 'proj', marks, io);
   await closingsIdle();
-  assert.ok(calls.some((a) => a[1] === 'edit'), 'control: with the flag the images would have been added');
+  assert.deepEqual(calls, [], 'still nothing: the review request’s uiTest is what keeps them out');
 });
 
 test('uiTest: without a named task it is a review task of its own as any review is, and the review keeps `post`', async (t) => {
@@ -207,4 +207,35 @@ test('uiTest: an office restart during the UI test starts it again, and the revi
   assert.equal(prompts(fx, /Review these pull requests/).length, 1, 'the review started once');
   assert.equal(fx.repo.listComments(id).comments.filter((c) => c.kind === 'review').length, 1);
   assert.equal(fx.workers.list().length, 0, 'the tester and its worktree are gone');
+});
+
+test('uiTest: a fork’s pull request is left out of the test and named as such; with only forks no tester is hired and the review starts directly', async (t) => {
+  const calls: string[][] = [];
+  const fx = await setup(t, { prGit: async (_d: string, args: string[]) => void calls.push(args) });
+  fx.setRules([TESTER('Nothing to photograph.', { delayMs: 800 }), MAIN(APPROVED)]);
+  const mixed = await fx.engine.reviewPrs({ project: 'proj', prs: [{ ...(pr(3) as object), fork: true }, pr(4)] as never, tool: 'claude', uiTest: true }, ADA);
+  assert.ok(typeof mixed !== 'string', String(mixed));
+  if (typeof mixed === 'string') return;
+  const start = await (async () => {
+    for (let i = 0; i < 200; i++) {
+      const f = prompts(fx, /Test the UI of these pull requests/)[0];
+      if (f) return f;
+      await sleep(25);
+    }
+    throw new Error('the tester never started');
+  })();
+  assert.match(start.prompt!, /- acme\/proj#3 .* — from a fork: not checked out, not run and not tested/);
+  assert.match(start.prompt!, /- acme\/proj#4 .* — its head is not fetched|its head is fetched as origin\/office-pr\/4/);
+  assert.ok(calls.every((a) => !a.some((x) => /pull\/3\//.test(x))), 'the fork’s head is never fetched');
+  await fx.waitTask(mixed.taskId, inReview, 'the review column', 40_000);
+
+  const before = prompts(fx, /Test the UI of these pull requests/).length;
+  const only = await fx.engine.reviewPrs({ project: 'proj', prs: [{ ...(pr(5) as object), fork: true }] as never, tool: 'claude', uiTest: true }, ADA);
+  assert.ok(typeof only !== 'string', String(only));
+  if (typeof only === 'string') return;
+  assert.equal(fx.task(only.taskId).workerId, undefined, 'no tester');
+  await fx.waitTask(only.taskId, inReview, 'the review column', 40_000);
+  assert.deepEqual(prRuns(fx, only.taskId).map((r) => `${r.role}/${r.status}`), ['reviewer/succeeded']);
+  assert.equal(prompts(fx, /Test the UI of these pull requests/).length, before, 'no tester prompt');
+  assert.ok(notes(fx, only.taskId).some((n) => /from a fork.*no UI to test: the review starts without it/.test(n)), notes(fx, only.taskId).join(' | '));
 });

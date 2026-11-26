@@ -153,3 +153,53 @@ test('the real git fetches the pull request’s ref and its base branch into the
   assert.equal(missing.checkedOut.size, 0);
   assert.deepEqual(missing.bases, {});
 });
+
+test('a fork’s pull request is never checked out, on any host: no fetch, no worktree base, and its line says so', async () => {
+  const g = fake();
+  const def = { id: 'p', name: 'P', dir: '/tmp/f-main', palette: 0, addedBy: 'x', addedAt: 0, repo: 'acme/main', repos: [{ id: 'main', name: 'Main', dir: '/tmp/f-main', primary: true, kind: 'git', remote: 'acme/main' }, { id: 'api', name: 'Api', dir: '/tmp/f-api', kind: 'git', remote: 'azure:org/proj/api' }] } as unknown as FloorDef;
+  const prs = [{ repo: 'acme/main', number: 1, base: 'main', fork: true }, { repo: 'acme/main', number: 2, base: 'main', fork: false }, { repo: 'azure:org/proj/api', number: 7, branch: 'x', fork: true }];
+  const heads = await fetchPrHeads(def, prs, g.run, true);
+  assert.deepEqual([...heads.fetched.keys()], ['acme/main#2']);
+  assert.deepEqual(Object.keys(heads.bases), [], 'the first PR of the repository is a fork’s: the worktree stays on the base');
+  assert.deepEqual(g.calls.map((c) => c.args.join(' ')).filter((a) => /pull\/1\//.test(a) || /heads\/x/.test(a)), []);
+  assert.match(readingNote(prs[0], heads, def), /^From a fork, so not checked out .*`gh pr diff 1 -R acme\/main`\.$/);
+  assert.match(readingNote(prs[2], heads, def), /^From a fork, so not checked out .*office-pr/);
+});
+
+test('a fork’s pull request in a review: nothing is fetched or checked out, and the prompt reads it with gh pr diff', async (t) => {
+  const g = fake();
+  const fx = await engineFixture({ engine: { prGit: g.run } });
+  t.after(() => fx.close());
+  const main = git(fx.dir, 'rev-parse', 'HEAD');
+  fx.setRules([{ when: 'Review these pull requests', reply: 'Fine.\n\nREVIEW: APPROVED', delayMs: 1500 }]);
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [pr(3, { fork: true })], tool: 'claude' }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  if (typeof got === 'string') return;
+  assert.equal(git(wtOf(fx, got.workerId!), 'rev-parse', 'HEAD'), main);
+  assert.equal(g.calls.length, 0, 'no git fetch of a fork’s code');
+  assert.match(await reviewPrompt(fx), /From a fork, so not checked out .*`gh pr diff 3 -R acme\/proj`/);
+  await fx.waitTask(got.taskId, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
+});
+
+test('end to end: the reviewer’s worktree is cut from the pull request’s ref in a real origin, by the real git', async (t) => {
+  const fx = await engineFixture(); // no prGit: the real one
+  t.after(() => fx.close());
+  const origin = path.join(fx.root, 'origin.git');
+  mkdirSync(origin);
+  git(origin, 'init', '-q', '--bare', '-b', 'main');
+  git(fx.dir, 'remote', 'add', 'origin', origin);
+  git(fx.dir, 'push', '-q', 'origin', 'main');
+  const tip = prBranch(fx.dir, 3);
+  git(fx.dir, 'push', '-q', 'origin', `${tip}:refs/pull/3/head`); // where GitHub keeps every pull request's head, a fork's too
+  git(fx.dir, 'branch', '-q', '-D', 'office-pr/3'); // the local copy of the test helper must not be what the worktree is cut from
+  fx.setRules([{ when: 'Review these pull requests', reply: 'Fine.\n\nREVIEW: APPROVED', delayMs: 1500 }]);
+  const got = await fx.engine.reviewPrs({ project: 'proj', prs: [pr(3)], tool: 'claude' }, ADA);
+  assert.ok(typeof got !== 'string', String(got));
+  if (typeof got === 'string') return;
+  const wt = wtOf(fx, got.workerId!);
+  assert.equal(git(wt, 'rev-parse', 'HEAD'), tip, 'cut from refs/remotes/origin/office-pr/3, fetched from refs/pull/3/head');
+  assert.ok(existsSync(path.join(wt, 'pr3.txt')));
+  assert.equal(git(fx.dir, 'rev-parse', 'refs/remotes/origin/office-pr/3'), tip);
+  assert.match(await reviewPrompt(fx), /Checked out in your worktree of .*`git diff origin\/main\.\.\.HEAD`/);
+  await fx.waitTask(got.taskId, (x) => x.status === 'review' && x.runState === 'idle', 'the review column', 20_000);
+});

@@ -950,8 +950,8 @@ reads its own. A kanban task made from a card keeps the description as its own, 
     the additional reviewers, with their models, efforts and focuses). A reviewer is hired in a worktree of its own
     (never the floor's checkout, never the task's) with the **head of the first PR of each repository checked out**
     (the office fetches `refs/pull/<n>/head` and the PR's base branch first; on Azure DevOps and Bitbucket the head branch by name),
-    so it reads the change in place with `git diff origin/<base>...HEAD`. Any other PR of that repository, and
-    any PR whose fetch failed, is read with `gh pr diff`, and the prompt says which is which; a fetch that fails never fails the
+    so it reads the change in place with `git diff origin/<base>...HEAD`. Any other PR of that repository,
+    any PR whose fetch failed, and **any PR from a fork (never checked out, on any host: it is an outsider's code)** is read with `gh pr diff`, and the prompt says which is which; a fetch that fails never fails the
     review. The reviewer still changes nothing: no checkout of another branch, commit, push or `gh pr review`. With additional
     reviewers in the settings, each reviews in the same worktree at the same time and the main reviewer combines
     their findings into the review's one result, as in a review round of a task. The worktree is the main reviewer's and
@@ -967,8 +967,8 @@ reads its own. A kanban task made from a card keeps the description as its own, 
   - Two ticks under the list, both off until you tick them (the browser remembers them):
     - **Post the review on the pull request(s) when it is done**: when the review is finished, the office posts it
       on every PR as a *comment* review on GitHub (never an approval or a change request) and as a comment on the
-      conversation on Azure DevOps and Bitbucket, as your own sign-in when you have one: a line *Review by Agent Office: approved* (or
-      *changes requested*), for several PRs the list of the PRs it covers, then the review without its verdict line.
+      conversation on Azure DevOps and Bitbucket, as the account of whoever pressed Review (their own sign-in when they have one, kept with the request, so a Retry posts as them too): a line *Review by Agent Office: approved* (or
+      *changes requested*), for several PRs the list of the PRs it covers, then the review without its verdict line. The header's verdict is the review's own, never read again from the text; the text is the whole review (after an office restart in the middle of a round only its stored first 20,000 characters may be left, and the post then ends with a line saying the text was cut there).
       The reviewers are told to write it in English, for a reader outside the office, without a word of the task, rounds or other
       reviewers (a rewritten prompt gets that too). The task says in its conversation where it was posted, or why not; a posting that
       fails changes nothing else, and a run that failed or was stopped posts nothing. Retry reviews again and posts again.
@@ -977,7 +977,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
       in a worktree of its own), saves them as `<subject>-before.png` and `<subject>-after.png` in the task's folder, and ends; then the review starts by itself and
       its reviewers read the pictures like a reviewer of a task does (a wrong UI is a finding, missing pictures are not). The pictures stay with the task, on its **Images** tab (see
       [UI testing](#ui-testing)); **they are not added to any pull request** and not to the posted review. A review that tests the UI is always a task of its own, even from a task's PRs tab,
-      so the task's pull requests are left alone. The tester never commits or pushes and stops everything it started; with no UI change in the PRs, or an app that
+      so the task's pull requests are left alone. A PR from a fork is never checked out or run by the tester: it is left out of the test and named as such, and when every picked PR is from a fork no tester is hired, the task says why, and the review starts directly. The tester never commits or pushes, creates no branch and stops everything it started; with no UI change in the PRs, or an app that
       won't start, it says so and the review goes on without pictures. If its run fails or is stopped the task fails or stops
       like any run, no review starts, and Retry starts again from the UI test.
   - **Review panel** with **Just this PR** (or only the PR you opened the window on ticked) calls the floor's meeting room with the meeting form, as upstream does. On several PRs it opens the same form
