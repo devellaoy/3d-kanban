@@ -35,7 +35,7 @@ export function jiraConnectionHandlers(ctx: KanbanContext, doFetch: typeof fetch
       const conn = ctx.secrets.jiraConnections().find((x) => x.id === m.id);
       if (!conn) return fail(c, m.rid, 'No such Jira connection');
       try {
-        const me = await jiraCall({ gh: async () => '', fetch: doFetch, cwd: ctx.dataDir, jira: [conn], projectRepos: [], who: c.name, shared: false }, { site: conn.site, connection: conn.id }, 'GET', '/rest/api/3/myself');
+        const me = await jiraCall({ gh: async () => '', fetch: doFetch, cwd: ctx.dataDir, jira: [conn], projectRepos: [], shared: false }, { site: conn.site, connection: conn.id }, 'GET', '/rest/api/3/myself');
         c.send({ t: 'kanban.secrets.jiraTested', ...(m.rid ? { rid: m.rid } : {}), id: conn.id, name: String(me?.displayName ?? conn.email), ...(me?.accountId ? { accountId: String(me.accountId) } : {}) });
       } catch (err) {
         fail(c, m.rid, (err as Error).message);

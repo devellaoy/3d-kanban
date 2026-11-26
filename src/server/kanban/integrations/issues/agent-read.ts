@@ -133,7 +133,7 @@ export async function readIssueFor(ctx: KanbanContext, deps: AgentReadDeps, who:
 
 async function fetchIssue(ctx: KanbanContext, deps: AgentReadDeps, project: string, jiraSources: JiraSource[], source: JiraSource, key: string, known: KnownIssue, bound: Bound): Promise<Answer> {
   // Shared: the office's own connection, whoever asks. Never a browse cache: one read is exactly three Jira calls.
-  const io: IssueActIo = { ...deps.io(project), who: 'Agent Office', shared: true };
+  const io: IssueActIo = { ...deps.io(project), shared: true };
   const at = { site: source.site, ...(source.connection ? { connection: source.connection } : {}) };
   let issue;
   try {

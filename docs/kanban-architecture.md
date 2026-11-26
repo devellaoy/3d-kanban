@@ -692,8 +692,8 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
       `ghp:…` to the board's Status, `gh:owner/repo#N` to GitHub for comments and assignees and, for its status, to the Status
       options of the project's `github-project` sources that hold it (`projectItems`) plus GitHub's close / reopen.
     - Identity: Jira always uses the source's Jira connection (below); GitHub runs as `KanbanContext.ghAs(accountId)` (wired from
-      `signins.ghAs`): `{env}` is the person, `undefined` the office's gh, a string refuses with it. Under a shared identity a
-      comment is signed `— <name> via Agent Office`.
+      `signins.ghAs`): `{env}` is the person, `undefined` the office's gh, a string refuses with it. A comment is posted
+      as written under either identity: nothing is appended to it.
     - A write patches the cached issue (an **overlay** per key: status, assignee), pushes `kanban.issues`, tells the
       3D board (`wallChanged`, then a debounced `refreshWall`), toasts the floor and adds a status comment to the issue's task.
       The overlay is dropped when a fetch that started 10 s or more after the write completes without source errors, or after
