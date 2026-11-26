@@ -8,15 +8,16 @@
 .kb-prs-h { margin: 4px 0 -4px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--text-2); }
 .kb-prs-error { margin: 0; padding: 8px 10px; border: var(--bw-sm) solid var(--bad); border-radius: var(--radius-md); background: var(--bad-wash); }
 .kb-prs-list { overflow: hidden; }
+/* The review picker's window: its lists scroll in a pane of their own (never less than a couple of
+   rows high; in a window too low for that the whole window scrolls), and what the review also does
+   stays under the pane, in sight however long the lists are. A pane that ends above the ticks also
+   brings a row the keyboard lands on into view. The window's padding moves onto the two parts, so
+   the scrollbar sits at the window's edge; a narrow window keeps the same layout. */
+.kb-prs-pick.shell > .shell-body { flex-direction: row; overflow: hidden; }
+.kb-prs-pick.shell > .shell-body > .shell-main { flex: 1; min-height: 0; display: flex; flex-direction: column; padding: 0; overflow: auto; }
+.kb-prs-scroll { flex: 1 1 auto; min-height: 120px; overflow: auto; padding: 18px 20px; }
 /* What a review also does: the picker's ticks under its lists. Their words may run to a second line, so the box sits by the first. */
-.kb-prs-opts { display: flex; flex-direction: column; gap: 8px; padding-top: 12px; border-top: var(--bw-sm) solid var(--rule-soft); }
-/* They stay in sight at the bottom of the window while a long list scrolls under them. They sit
-   over the window's own bottom padding (18px, .shell-main) with the same padding of their own, so
-   no row shows beneath them and the space under them is the same at the list's end. Not in a
-   window too low to show a list above them. */
-@media (min-height: 560px) {
-  .kb-prs-opts { position: sticky; bottom: -18px; z-index: 1; margin-bottom: -18px; padding-bottom: 18px; background: var(--paper); }
-}
+.kb-prs-opts { flex: none; display: flex; flex-direction: column; gap: 8px; margin: 0 20px; padding: 12px 0 18px; border-top: var(--bw-sm) solid var(--rule-soft); }
 .kb-prs-opts > label.check-line { display: flex; align-items: flex-start; }
 .kb-prs-opts > .check-line > input { margin-top: 0.2em; }
 .kb-prs-row { cursor: pointer; }
