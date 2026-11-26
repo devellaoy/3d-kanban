@@ -254,6 +254,7 @@ export const CLIENT_MSG_CLASS = {
   'kanban.secrets.jira.remove': 'deny',
   'kanban.secrets.jira.test': 'deny',
   'kanban.pr.review': 'deny',
+  'kanban.pr.brief': 'deny',
   'kanban.pr.find': 'deny',
   'kanban.pr.link': 'deny',
   'kanban.pr.unlink': 'deny',

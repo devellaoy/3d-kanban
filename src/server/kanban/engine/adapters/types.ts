@@ -13,6 +13,8 @@ export interface LaunchOptions {
   sandbox: boolean;
   /** An investigation: read-only work that writes its report into `addDirs`. */
   investigate?: boolean;
+  /** The run needs the network and may start servers (a UI test): Codex's workspace sandbox gets network access, as the pull-request phases' do. */
+  network?: boolean;
   /** Folders outside the workspace the agent reads (or, investigating, writes its report in). */
   addDirs?: string[];
   /** Folders the agent only reads (the project's instructions files). */

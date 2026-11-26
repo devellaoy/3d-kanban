@@ -140,6 +140,7 @@ test('good messages come through rebuilt, without anything the validator did not
   assert.deepEqual(good({ t: 'kanban.secrets.jira.remove', id: 'jc-1' }), { t: 'kanban.secrets.jira.remove', id: 'jc-1' });
   assert.deepEqual(good({ t: 'kanban.secrets.jira.test', id: 'jira' }), { t: 'kanban.secrets.jira.test', id: 'jira' });
   assert.deepEqual(good({ t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'ACME/web', number: 1 }, { repo: 'acme/api', number: 2 }] }), { t: 'kanban.pr.review', project: 'web', prs: [{ repo: 'acme/web', number: 1 }, { repo: 'acme/api', number: 2 }] });
+  assert.deepEqual(good({ t: 'kanban.pr.brief', project: 'web', prs: [{ repo: 'acme/web', number: 1 }], taskId: 3 }), { t: 'kanban.pr.brief', project: 'web', prs: [{ repo: 'acme/web', number: 1 }], taskId: 3 });
   assert.deepEqual(good({ t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' }), { t: 'kanban.pr.bundle', project: 'web', branch: 'gh-1/x' });
   assert.deepEqual(good({ t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 }), { t: 'kanban.pr.owner', project: 'web', repo: 'acme/web', number: 7 });
   // Repositories on Azure DevOps and Bitbucket go by the office's qualified names.
@@ -184,7 +185,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.create', task, once }, /once must be a request key/);
     refused({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once }, /once must be a request key/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 63);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 64);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {

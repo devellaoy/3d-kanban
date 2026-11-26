@@ -362,6 +362,29 @@ test('a pull-request review: its own run, then the review column; comments meanw
   assert.equal(runOf(drive([{ type: 'retry', last: { phase: 'pr-review', role: 'reviewer' } }], {}, {}, cut.state).last.effects)?.phase, 'pr-review');
 });
 
+test('a pull-request review that tests the UI first: the tester (an implementer) runs in the pr-review phase, its end starts the review, a Retry of the tester starts the UI test again', () => {
+  const r = drive([{ type: 'prReview', ui: true }]);
+  assert.deepEqual(runOf(r.last.effects), { type: 'run', phase: 'pr-review', role: 'implementer', prompt: 'pr.uitest' });
+  assert.equal(r.state.status, 'in_progress');
+  assert.equal(r.state.phase, 'pr-review');
+  const tested = drive([{ type: 'prUiTested' }], {}, {}, r.state);
+  assert.deepEqual(runOf(tested.last.effects), { type: 'run', phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' });
+  assert.equal(tested.state.phase, 'pr-review');
+  assert.equal(tested.state.runState, 'starting');
+  const done = drive([{ type: 'prReviewed' }], {}, {}, tested.state);
+  assert.equal(done.state.status, 'review');
+  // A task the user moved on meanwhile keeps its column: the end of the UI test starts nothing.
+  const moved = next({ ...r.state, status: 'done' }, { type: 'prUiTested' }, TASK, CFG);
+  assert.ok(!('error' in moved) && !runOf(moved.effects), 'no review for a task that is Done');
+  // Retry: a tester that never started goes again with its own prompt, one that did with "carry on" (which the engine turns into a fresh UI test); either is the tester's run, not the reviewer's.
+  const cut = drive([{ type: 'prReview', ui: true }, { type: 'interrupted' }]);
+  assert.deepEqual(runOf(drive([{ type: 'retry', last: { phase: 'pr-review', role: 'implementer', fresh: true } }], {}, {}, cut.state).last.effects), { type: 'run', phase: 'pr-review', role: 'implementer', prompt: 'pr.uitest' });
+  assert.deepEqual(runOf(drive([{ type: 'retry', last: { phase: 'pr-review', role: 'implementer' } }], {}, {}, cut.state).last.effects), { type: 'run', phase: 'pr-review', role: 'implementer', prompt: 'continue' });
+  assert.deepEqual(runOf(drive([{ type: 'retry', last: { phase: 'pr-review', role: 'reviewer', fresh: true } }], {}, {}, cut.state).last.effects), { type: 'run', phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' });
+  // A request without the option is the review alone.
+  assert.equal(runOf(drive([{ type: 'prReview' }]).last.effects)?.role, 'reviewer');
+});
+
 test('a comment on a plan run that ended without a plan carries on planning; after an accepted plan it resumes the work', () => {
   const planning = drive([{ type: 'start', slot: true }]).state;
   for (const event of [{ type: 'failed', error: 'boom' }, { type: 'stopped' }, { type: 'interrupted' }] as MachineEvent[]) {

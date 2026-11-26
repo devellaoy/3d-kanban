@@ -407,6 +407,9 @@ or a comment asks for UI testing or screenshots. Investigations take none.
 The images may end up in a pull request, so the agents are told to use test data and test accounts.
 Look at the Images tab before pressing **Create PRs** if that matters.
 
+The PR window's **Review** can test the UI too (the *Also test the UI* tick, see [Reviewing pull requests](#pull-requests)): one implementer takes the pictures first, in a task of its own, and they are
+not added to any pull request.
+
 ### Settings
 
 The kanban's settings are part of the office's Settings (from the ☰ menu in the 3D office, or from the
@@ -613,7 +616,7 @@ Every action button of the task window and of a pull request's window says what 
 - **Issues** (the top bar, or **Select issue** in the new-task form): a filter row (search and chips for source, status, label and assignee), **Refresh**, **Browse all**, then a row per issue with **Task #N** (opens the task made from it) or **Create task**; the footer counts the issues. A Jira row shows its type (Story, Bug, Sub-task) before the key, and a sub-task sits indented under its parent. When the parent is not in the list (someone else's, done, or filtered out), a low dimmed line with its type, key and title stands in for it above its sub-tasks; it is not counted. The search also matches an issue's type and its parent's key and title, so "bug" lists the bugs and a story's key or title finds its sub-tasks. Rows of other sources stay flat. Picking an issue for a new task shows **Select** instead.
 - **An issue's window**: its key, status and the quiet **Refresh** in the header, the description and comments in the body, **Status** and **Assignee** in the rail beside it (and **Epic** when the issue is in one, or **Parent** when it has a parent that is not an epic, such as a sub-task's story), and in the footer **Open in Jira** / **Open on GitHub** (or Azure Boards) on the left and, on the right, a link to the task made from it (once there is one), **Create task** and **Create and start**.
 - **Find / Link PRs**: a list of pull requests to tick, *N of M selected* in the footer, **Cancel** and **Link selected**.
-- **A pull request's window** (the PR board): its title, state and review on top, the tabs **Conversation** and **Files changed**, the details rail (task, worker, review, changes, labels, updated) with *Hand it to a worker* (**Review**, **Review panel**, **Fix comments and merge**, **Fix via task #N**, **Ask a worker**), and in the footer **Open on GitHub** on the left and **Close pull request** and **Merge** on the right.
+- **A pull request's window** (the PR board): its title, state and review on top, the tabs **Conversation** and **Files changed**, the details rail (task, worker, review, changes, labels, updated) with *Hand it to a worker* (**Review**, a kanban task with the PR checked out and two ticks, to post the review on the PR and to test the UI too; **Review panel**, the meeting form; **Fix comments and merge**, **Fix via task #N**, **Ask a worker**), and in the footer **Open on GitHub** on the left and **Close pull request** and **Merge** on the right.
 - **Changes**: the repositories as tabs, the modes (**All changes**, **Per commit**, **Uncommitted**) and **Refresh**, the files and the diff, and in the footer **Discard all**, **Commit…** and **Open PR…**.
 - **Settings**: a window with the categories down the side (**You**, **Sound & voice**, **Notifications**, **Building**, **Workers**, **Kanban**, **Projects**, **Multiplayer**); the kanban's two are described under [Settings](#settings).
 
@@ -938,13 +941,22 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 - **Fix via task #N** (PR window, opened from the PR board, the lite view or the palette): when a task owns the PR (the newest one not archived, if several), the window's rail
   (*Hand it to a worker*) has this button after *Fix comments and merge*. It does the same as the task's own Fix PRs, on all of that task's open PRs, and is greyed out with the reason when the task can't be sent now.
   No button when no task owns the PR.
-- **Reviewing several PRs together**: **Review** or **Review panel** in a PR window first asks
+- **Reviewing pull requests** (**Review** and **Review panel** in a PR window, and the PRs tab's **Review these N PRs together**): the PR window first asks
   which PRs go with it. PRs on the same branch in the project's other repositories, or of the same task,
-  come ticked; any other open PR of the project can be added (at most 20). **Just this PR** keeps
-  upstream's single-PR flow. The PRs tab's **Review these N PRs together** does the same for a task's
-  open PRs.
-  - with several PRs: a reviewer is hired in a worktree of its own (never the floor's checkout, never
-    the task's) and reads them with `gh pr view` / `gh pr diff`. With no free desk, or the office at its
+  come ticked; any other open PR of the project can be added (at most 20). **Review this PR** with just the
+  one ticked, **Just this PR** and **Review N PRs together** are the same thing: a review is always a kanban task. Upstream's single-PR flow
+  (its *Review* prompt, `pull.review`) is only for a floor with no kanban project, or a PR the kanban can't place.
+  - **Review** is a kanban task done by the reviewers of the kanban's review settings (the main reviewer and
+    the additional reviewers, with their models, efforts and focuses). A reviewer is hired in a worktree of its own
+    (never the floor's checkout, never the task's) with the **head of the first PR of each repository checked out**
+    (the office fetches `refs/pull/<n>/head` and the PR's base branch first; on Azure DevOps and Bitbucket the head branch by name),
+    so it reads the change in place with `git diff origin/<base>...HEAD`. Any other PR of that repository,
+    any PR whose fetch failed, and **any PR not confirmed to be from the repository itself (a fork's, or one whose fork flag could not be read: never checked out, on any host, since it is an outsider's code)** is read with `gh pr diff`, and the prompt says which is which; a fetch that fails never fails the
+    review. The reviewer still changes nothing: no checkout of another branch, commit, push or `gh pr review`. With additional
+    reviewers in the settings, each reviews in the same worktree at the same time and the main reviewer combines
+    their findings into the review's one result, as in a review round of a task. The worktree is the main reviewer's and
+    goes home with it, whoever leaves first.
+    With no free desk, or the office at its
     worker limit, the review's task is queued like any other hire and starts by itself when there's
     room (Stop, or moving the task to Done, takes it out of the queue; a queued run stopped that way is
     listed as stopped before it started, and Retry runs that one, the PR review or review round). The review is written into the task
@@ -952,15 +964,33 @@ reads its own. A kanban task made from a card keeps the description as its own, 
     PRs of different tasks, or of no task (one of the *other open PRs*, say), get a new **investigate**
     task *PR review: owner/repo#1, …* (with the ticket they share, if any, and a line naming the tasks
     involved), which goes to Review with the reviewer's findings and verdict. Retry reviews them again.
-  - with several PRs: one of the floor's meeting rooms (the first free one; if all are busy the panel says so and doesn't start) reviews them as one change set; the brief (the
-    *Review panel of several pull requests* prompt) lists every PR. The combined review is posted on
-    one of them, which must be in the project's primary repository. A review panel has no token limit (the panel doesn't set a budget).
+  - Two ticks under the list, both off until you tick them (the browser remembers them):
+    - **Post the review on the pull request(s) when it is done**: when the review is finished, the office posts it
+      on every PR as a *comment* review on GitHub (never an approval or a change request) and as a comment on the
+      conversation on Azure DevOps and Bitbucket, as the account of whoever pressed Review (their own sign-in when they have one, kept with the request, so a Retry posts as them too): a line *Review by Agent Office: approved* (or
+      *changes requested*), for several PRs the list of the PRs it covers, then the review without its verdict line. The header's verdict is the review's own, never read again from the text; the text is the whole review (after an office restart in the middle of a round only its stored first 20,000 characters may be left, and the post then ends with a line saying the text was cut there).
+      The reviewers are told to write it in English, for a reader outside the office, without a word of the task, rounds or other
+      reviewers (a rewritten prompt gets that too). The task says in its conversation where it was posted, or why not; a posting that
+      fails changes nothing else, and a run that failed or was stopped posts nothing. Retry reviews again and posts again.
+    - **Also test the UI**: before the review, one agent (an implementer, with the implementer's permissions) starts the app in a fresh worktree on the
+      base branch and, for each PR that changes what a user sees, takes pictures of the affected views before and after the PR (the PR's head checked out
+      in a worktree of its own), saves them as `<subject>-before.png` and `<subject>-after.png` in the task's folder, and ends; then the review starts by itself and
+      its reviewers read the pictures like a reviewer of a task does (a wrong UI is a finding, missing pictures are not). The pictures stay with the task, on its **Images** tab (see
+      [UI testing](#ui-testing)); **they are not added to any pull request** and not to the posted review. A review that tests the UI is always a task of its own, even from a task's PRs tab,
+      so the task's pull requests are left alone. The tester's worktree of each repository starts from the **target branch of the first PR tested there** (fetched first; the configured base branch only when the PR's target is unknown or can't be fetched, which its line says), so the "before" pictures are the PR's own comparison; another PR of the repository with a different target gets its "before" pictures from a detached worktree of its own target, which the tester makes with the command its line gives (`git worktree add --detach ./base-<n> origin/<target>`; the target is fetched with the heads). A PR that is a fork's, or not confirmed not to be, is never checked out or run by the tester: it is left out of the test and named as such, and when no picked PR is confirmed no tester is hired, the task says why, and the review starts directly. The tester never commits or pushes, creates no branch and stops everything it started; with no UI change in the PRs, or an app that
+      won't start, it says so and the review goes on without pictures. If its run fails or is stopped the task fails or stops
+      like any run, no review starts, and Retry starts again from the UI test.
+  - **Review panel** with **Just this PR** (or only the PR you opened the window on ticked) calls the floor's meeting room with the meeting form, as upstream does. On several PRs it opens the same form
+    with the office's brief (the *Review panel of several pull requests* prompt, listing every PR) filled in: roles, number of workers, rounds, the token limit
+    (empty means none, the default for a review panel) and the model are yours to set, and the meeting starts when you press the form's button. The brief is
+    only a preset, so the task gets no "called a review panel" note. The combined review is posted on
+    one PR, which must be in the project's primary repository, and one of the picked ones must be there.
 
 ## Prompts
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs together, the review panel of several PRs, carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
+criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs together (and its combine, the UI test before it and the pictures it lists to the reviewers), the review panel of several PRs (the meeting form's brief), carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line and its note on reading a Jira ticket, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan (as a file reference, and as text), the reviewer's conversation (as a file reference, and as text) and the implementer's summary, what the task did, and the handoff's summary and comments). Each lists
@@ -1249,6 +1279,6 @@ Verified against `agy` 1.5.17 ([docs/fork.md](fork.md#antigravity-cli-spike)).
   office's worker limit.
 - Folder projects (no git, see [Projects and repositories](#projects-and-repositories)) have no worktrees, change checks or PRs; a folder repository in a git
   project has no worktree of its own.
-- A review panel of several PRs posts its review on a PR of the project's primary repository.
+- A review panel of several PRs posts its review on a PR of the project's primary repository. **Review** (the kanban task) has no such limit: its posting goes to every PR picked, in any of the project's repositories.
 - GitHub Projects need `gh`'s `read:project` scope; Jira takes one site's token per office.
 - On Azure DevOps and Bitbucket the office doesn't merge, close or label pull requests; Bitbucket Server is not supported yet ([hosting](hosting.md#limitations)).

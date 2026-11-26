@@ -1,8 +1,9 @@
 // Before a pull request is reviewed (Review or Review panel in upstream's PR window): which PRs
 // the review takes. The ones that belong with it — the same branch in the project's other
 // repositories, or the same task — come picked (kanban.pr.bundle); any other open PR of the project
-// can be added. Several go to one reviewer together (kanban.pr.review). Just this one keeps
-// upstream's own single-PR flow.
+// can be added. A review is always a kanban task (kanban.pr.review), of one PR or of several
+// together; a panel on several opens the meeting form with the office's brief (kanban.pr.brief), and
+// on just this one keeps upstream's own form.
 
 import { h, toast } from '../ui/dom';
 import type { Net } from '../net';
@@ -11,21 +12,25 @@ import type { GhPull } from '../../shared/protocol';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import { PR_REVIEW_MAX, type KanbanPrBundleItem, type PrRef } from '../../shared/kanban/types.js';
 import { kanbanApi, type KanbanOk } from './api';
-import { hostOfUrl } from '../../shared/hosting/remote';
 import { repoOfItem } from './boardrepos';
-import { pickerRows, refKey, reviewTaskOf } from './model';
-import { btn } from '../ui/kit';
+import { pickerRows, refKey } from './model';
+import { briefPreset, briefRequest, goLabel, goTitle, POST_KEY, postLabel, readFlag, reviewRequest, reviewFailure, reviewToast, REVIEW_WAIT_MS, UI_TEST_KEY, UI_TEST_LABEL, writeFlag, type PickerMode } from './prpickmodel';
+import type { MeetingPreset } from '../ui/meeting';
+import { btn, checkLine } from '../ui/kit';
 import { modalShell, openShell } from '../ui/shell';
 import { prPickRow } from './prfind';
 import { run } from './ui';
 
 type BundleMsg = Extract<KanbanServerMsg, { t: 'kanban.pr.bundle' }>;
+type BriefMsg = Extract<KanbanServerMsg, { t: 'kanban.pr.brief' }>;
 
 /**
- * Opens the picker for `pull` on the floor you're on. `single` is upstream's review of just this PR
- * (the Review prompt, or the meeting room's panel), for when that's all that's wanted.
+ * Opens the picker for `pull` on the floor you're on. `single` is upstream's own flow for just this
+ * PR: the Review prompt where the kanban can't take the review (no project on the floor, or a PR it
+ * can't place), and the meeting room's form for a panel on this PR alone. `meeting` opens the
+ * meeting form with a preset, for a panel on several.
  */
-export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel', single: () => void) {
+export function openReviewPicker(net: Net, pull: GhPull, mode: PickerMode, single: () => void, meeting?: (preset: MeetingPreset) => void) {
   const project = store.floor;
   const repo = repoOfItem(pull);
   // Nothing to bundle with outside a project, or for a PR the office can't place.
@@ -40,15 +45,22 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
   const list = h('div.kb-prs-body');
   const note = h('span.kb-prs-note', {}, 'Pull requests of the same branch or task in the project’s other repositories are picked with it. Add any other open pull request of the project.');
   const cancel = btn('Cancel', { kind: 'quiet' });
-  const justThis = btn('Just this PR', { attrs: { title: 'Review only this pull request, as before' } });
+  const justThis = btn('Just this PR', { attrs: { title: mode === 'panel' ? 'Call the panel for only this pull request' : 'Review only this pull request, as a kanban task' } });
   const go = btn('', { kind: 'primary' });
   const count = h('span', { 'aria-live': 'polite' });
+  // What the review also does (not a panel's: its meeting form has its own choices). Off until ticked, remembered in this browser.
+  const post = checkLine('', { checked: readFlag(POST_KEY) });
+  const uiTest = checkLine(UI_TEST_LABEL, { checked: readFlag(UI_TEST_KEY) });
+  const postWords = post.el.querySelector('span')!;
+  post.box.addEventListener('change', () => writeFlag(POST_KEY, post.box.checked));
+  uiTest.box.addEventListener('change', () => writeFlag(UI_TEST_KEY, uiTest.box.checked));
+  const opts = mode === 'review' ? h('div.kb-prs-opts', { role: 'group', 'aria-label': 'What the review also does' }, post.el, uiTest.el) : null;
   const shell = modalShell({
     cls: 'kb-prs w640',
     icon: mode === 'panel' ? 'users' : 'eye',
     title: mode === 'panel' ? 'Review panel: which pull requests?' : 'Review: which pull requests?',
     id: `${repo.split('/').pop()} #${pull.number}`,
-    body: [h('div.kb-prs-body', {}, note, list)],
+    body: [h('div.kb-prs-body', {}, note, list, opts)],
     footerLeft: [count],
     footerRight: [cancel, justThis, go],
   });
@@ -90,52 +102,49 @@ export function openReviewPicker(net: Net, pull: GhPull, mode: 'review' | 'panel
   };
 
   const onlySelf = () => picked.size === 1 && picked.has(refKey(self));
-  // A pull request on Azure DevOps or Bitbucket is reviewed by the kanban's reviewer even alone: its
-  // prompt tells it to use office-pr there, where upstream's single-PR review would use gh.
-  const elsewhere = mode === 'review' && (hostOfUrl(pull.url) ?? 'github') !== 'github';
   const paintGo = () => {
-    go.textContent = onlySelf() ? (mode === 'panel' ? 'Call the panel for this PR' : 'Review this PR') : `Review ${picked.size} PRs together`;
+    go.textContent = goLabel(mode, picked.size, onlySelf());
     go.disabled = picked.size === 0;
-    go.title = !picked.size ? 'Tick at least one pull request first' : mode === 'panel' ? 'A few workers review the ticked pull requests in the meeting room' : 'One worker reviews the ticked pull requests together';
+    go.title = goTitle(mode, picked.size);
+    postWords.textContent = postLabel(picked.size);
     count.textContent = `${picked.size} selected`;
   };
 
-  /** The kanban's review of the PRs `keys` names (one task's keep their task; any other mix is a new task). */
-  const reviewOf = async (keys: Set<string>, button: HTMLButtonElement) => {
-    const all = [self, ...bundle, ...others()];
-    const prs: PrRef[] = [];
-    for (const k of keys) {
-      const p = all.find((x) => refKey(x) === k);
-      if (p) prs.push({ repo: p.repo, number: p.number });
-    }
-    const taskId = reviewTaskOf(keys, bundle);
-    // The panel keeps being a panel for several PRs too: the meeting room reviews them as one change set.
-    const ok = await run(() => api.request<KanbanOk>({ t: 'kanban.pr.review', project, prs, ...(taskId ? { taskId } : {}), ...(mode === 'panel' ? { panel: true } : {}) }), button);
-    return { ok, prs };
+  /** The kanban's review of the PRs `keys` names: a kanban task (one task's PRs keep their task). */
+  const review = async (keys: Set<string>, button: HTMLButtonElement) => {
+    const req = reviewRequest(project, keys, [self, ...bundle, ...others()], bundle, { post: post.box.checked, uiTest: uiTest.box.checked });
+    const ok = await run(() => api.request<KanbanOk>(req, REVIEW_WAIT_MS).catch((err: Error) => Promise.reject(new Error(reviewFailure(err.message)))), button);
+    if (!ok) return;
+    modal.close();
+    toast(reviewToast(req.prs.length, ok));
   };
 
-  justThis.addEventListener('click', async () => {
-    if (elsewhere) return void reviewed(await reviewOf(new Set([refKey(self)]), justThis));
+  /** A panel on several PRs: the office writes the brief, and the meeting form opens with it. A refusal stays here, in the picker. */
+  const panel = async () => {
+    if (go.disabled) return;
+    go.disabled = true;
+    try {
+      const brief = await api.request<BriefMsg>(briefRequest(project, picked, [self, ...bundle, ...others()], bundle));
+      modal.close();
+      if (meeting) meeting(briefPreset(brief));
+      else single();
+    } catch (err) {
+      error = (err as Error).message;
+      paint();
+    }
+  };
+
+  justThis.addEventListener('click', () => {
+    if (mode === 'review') return void review(new Set([refKey(self)]), justThis);
     modal.close();
     single();
   });
-  go.addEventListener('click', async () => {
-    if (onlySelf() && !elsewhere) {
-      modal.close();
-      return single();
-    }
-    reviewed(await reviewOf(picked, go));
-  });
-
-  const reviewed = ({ ok, prs }: { ok: KanbanOk | undefined | null; prs: PrRef[] }) => {
-    if (!ok) return;
+  go.addEventListener('click', () => {
+    if (mode === 'review') return void review(picked, go);
+    if (!onlySelf()) return void panel();
     modal.close();
-    // The review is a kanban task of its own now (or goes into the bundle's task).
-    // No reviewer yet (a panel, or no room in the office: the review task is queued and starts by itself).
-    const what = prs.length === 1 ? 'the PR' : `the ${prs.length} PRs`;
-    if (ok.taskId && !ok.workerId && mode !== 'panel') toast(`The review of ${what} is queued: task #${ok.taskId} starts when the office has room`);
-    else toast(ok.taskId ? `A reviewer takes ${what}${prs.length > 1 ? ' together' : ''}: task #${ok.taskId}` : `A reviewer takes ${what}${prs.length > 1 ? ' together' : ''}`);
-  };
+    single();
+  });
 
   paint();
   api

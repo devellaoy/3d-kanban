@@ -44,7 +44,7 @@ export interface MachineConfig {
  * Which prompt a run is sent with. The orchestrator fills it in; `continue` is the short "carry on"
  * for a session that was cut off (it falls back to the phase's own prompt when there is no session).
  */
-export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'restarted' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review' | 'pr.comments' | 'pr.answers';
+export type PromptKind = 'plan' | 'replan' | 'implement' | 'investigate' | 'review' | 'rereview' | 'fix' | 'resume' | 'continue' | 'restarted' | 'pr.create' | 'pr.fix' | 'pr.conflicts' | 'pr.review' | 'pr.uitest' | 'pr.comments' | 'pr.answers';
 
 export type Effect =
   /**
@@ -91,8 +91,10 @@ export type MachineEvent =
   | { type: 'prDone'; pending?: boolean }
   /** A pr-comments turn ended: the task goes back to `back` (the office adds it, see Orchestrator.apply), or works on the comments typed meanwhile. */
   | { type: 'prCommentsDone'; back?: CommentsBack; pending?: boolean }
-  /** A review of several pull requests together (KanbanEngineApi.reviewPrs). */
-  | { type: 'prReview' }
+  /** A review of several pull requests together (KanbanEngineApi.reviewPrs). `ui`: an implementer tests their UI first (the pr-review phase's first run). */
+  | { type: 'prReview'; ui?: true }
+  /** The UI test before a pull-request review ended: the review starts. */
+  | { type: 'prUiTested' }
   /** That review's turn ended. */
   | { type: 'prReviewed'; pending?: boolean }
   /** The agent asks something in its terminal (needs_input outside a finished plan), or announced a question and ended its run (`ended`: the run is over, so the task is idle). */
@@ -222,7 +224,7 @@ const PR_RUNS: Record<PrRunMode, { phase: RunPhase; prompt: PromptKind; verb: st
 export const prPrompt = (phase: RunPhase): PromptKind | undefined => Object.values(PR_RUNS).find((r) => r.phase === phase)?.prompt;
 
 /** The prompt a run of `phase` that never started is retried with (plan and resume carry on: what the user said went with the queue). */
-function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): PromptKind {
+function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask, role?: KanbanRole): PromptKind {
   switch (phase) {
     case 'implement':
       return t.type === 'investigate' ? 'investigate' : 'implement';
@@ -231,7 +233,7 @@ function ownPrompt(phase: RunPhase, round: number | undefined, t: MachineTask): 
     case 'fix':
       return 'fix';
     case 'pr-review':
-      return 'pr.review';
+      return role === 'implementer' ? 'pr.uitest' : 'pr.review';
     default:
       return prPrompt(phase) ?? 'continue';
   }
@@ -417,6 +419,10 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
     case 'prReview':
       if (busy(s)) return no('Stop it first: it is running');
       if (s.status === 'archived') return no('An archived task gets no reviews');
+      return ok(running(s, 'pr-review', { retryAttempts: 0 }), e.ui ? { type: 'run', phase: 'pr-review', role: 'implementer', prompt: 'pr.uitest' } : { type: 'run', phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' });
+
+    case 'prUiTested':
+      if (!automated) return ok({ ...s, runState: 'idle' });
       return ok(running(s, 'pr-review', { retryAttempts: 0 }), { type: 'run', phase: 'pr-review', role: 'reviewer', prompt: 'pr.review' });
 
     case 'prReviewed':
@@ -469,7 +475,7 @@ export function next(s: MachineState, e: MachineEvent, t: MachineTask, cfg: Mach
       if (!canRetry(s)) return no('Only a stopped, failed or interrupted task can be retried');
       if (!e.last) return firstRun(s, t);
       const { phase, round, role, fresh } = e.last;
-      return ok(running(s, phase), { type: 'run', phase, role, prompt: fresh ? ownPrompt(phase, round, t) : 'continue', ...(round !== undefined ? { round } : {}) });
+      return ok(running(s, phase), { type: 'run', phase, role, prompt: fresh ? ownPrompt(phase, round, t, role) : 'continue', ...(round !== undefined ? { round } : {}) });
     }
 
     case 'continue': {

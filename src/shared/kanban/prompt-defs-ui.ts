@@ -53,6 +53,55 @@ If you cannot take a picture, do not get stuck on it: say in your summary what y
 {{imageList}}
 Look at the ones that are there (open the image files) and check that they show this task's change and that the UI they show is right: nothing broken, cut off, overlapping or unreadable, and the after picture matching what the task asked for. A wrong UI in the pictures is a finding. Pictures that are missing are not: if the change alters the UI and there are none, note it as optional, and do not ask for changes only because of it (the implementer may have had no way to take them). Never modify, move or delete the images.`,
   },
+  'kanban.pr.uiTest': {
+    group: 'kanban',
+    label: 'UI testing · before a pull-request review',
+    used: "Sent to the agent that tests the UI of the pull requests before their review, when the PR window's Review has “also test the UI” on: it takes before and after pictures, and the review starts when it is done. The pictures stay with the review task and go to no pull request. The office appends the UI test contract.",
+    vars: {
+      prs: 'The pull requests, one per line: owner/repo#number, its title, its branch, its URL, and the ref its head was fetched as',
+      project: 'The project’s name',
+      task: 'A line naming the kanban task they belong to; empty when they are not one task’s',
+      repos: 'The agent’s worktrees of the repositories, on their base branches',
+      imagesDir: 'The folder the task’s images go in (absolute path)',
+      instructions: 'The project’s instructions block; empty when there is none',
+      language: 'The language rule of the project’s prompts',
+    },
+    needs: ['prs', 'imagesDir'],
+    text: `Test the UI of these pull requests in the project {{project}} before they are reviewed. Nobody has looked at their UI yet: you take the pictures, and a reviewer reads them next.
+{{prs}}
+
+{{task}}
+
+Your workspace, a fresh worktree of each repository, on the target branch of the first pull request listed in it (the lines above say which; the configured base branch when that is not known), so the app is as it is before the pull requests:
+{{repos}}
+
+For each pull request that changes what a user sees in the app's UI (a page, a dialog, a component, its layout or its styles):
+1. Take the "before" pictures on the pull request's own target branch. When its line above says your workspace starts from its target, use your workspace as it is. When its line names another target, put that target in a worktree of its own, inside your workspace folder, with HEAD detached at it, using the command its line gives (git worktree add --detach ./base-<number> origin/<its target>), and work there. Start the app and take a picture of each view the pull request changes.
+2. Put the pull request's head in a worktree of its own, inside your workspace folder, with HEAD detached at it: git worktree add --detach ./pr-<number> <the ref named on its line above>. These detached worktrees (a pull request's head, and its target when that is not what your workspace starts from) are allowed here; they are the only checkouts you make. If that ref is missing, git fetch origin pull/<number>/head and use FETCH_HEAD in its place. Never create, move or delete a branch, never commit, and leave the branch of your workspace as it is. Install what the app needs there, start it, and take a picture of the same views in the same state and size.
+A pull request that its line says is from a fork is not tested: don't check it out or run it.
+3. Save the pictures in {{imagesDir}} (it exists; make it if it does not).
+${NAMING}
+The pictures stay with this task, under its Images tab: they are not added to any pull request.
+Use the kanban-ui-screenshots skill for the pictures if it is available to you, else whatever the project itself has for looking at its UI (its dev server and a headless browser, its screenshot tests, a storybook). Use test data and test accounts only: no real people's data, passwords or tokens in the pictures.
+Don't commit, push or change any file of the repositories (installing dependencies and build output are fine). Remove the worktrees you made (git worktree remove --force) and stop every process you started before you finish. If none of the pull requests changes the UI, or the app cannot be started (it does not start, it needs a login you do not have, there is no browser), say so in your reply and end: the review goes on without pictures.
+
+{{instructions}}
+
+In your final reply, list the pictures you saved and what you could not capture and why.
+
+{{language}}`,
+  },
+  'kanban.pr.uiTest.review': {
+    group: 'kanban',
+    label: 'UI testing · review of pull requests',
+    used: 'Added to the prompts of a pull-request review (and of its additional reviewers) that had the UI tested first, when the UI test saved pictures.',
+    vars: { imagesDir: 'The folder the task’s images are in (absolute path)', imageList: 'The images there, one per line, by subject' },
+    needs: ['imagesDir', 'imageList'],
+    optional: true,
+    text: `The UI of these pull requests was tested before your review: before and after pictures of the views they change are in {{imagesDir}}:
+{{imageList}}
+Look at them (open the image files) and check that they show the pull requests' change and that the UI they show is right: nothing broken, cut off, overlapping or unreadable. A wrong UI in the pictures is a finding. Pictures that are missing are not: don't ask for changes only because of that. Never modify, move or delete the images.`,
+  },
   'kanban.uiTesting.fix': {
     group: 'kanban',
     label: 'UI testing · fixes',

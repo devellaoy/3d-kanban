@@ -122,9 +122,19 @@ ${VERDICT}`,
 ${STOP_PROCESSES}
 
 ${REVIEW_SAFETY}
-- Read the pull requests with gh pr view and gh pr diff (and gh api for a file at their head); the worktree you are in is only for reading the code around them.
+- Read the pull requests with gh pr view and gh pr diff. A pull request that its line says is checked out is the code in your worktree: read it there (git diff, git log, the files), read-only. gh api gives a file at the head of one that is not checked out.
 
 ${VERDICT}`,
+  /** The UI test run before a pull-request review (the pr-review phase's first run, an implementer's): the app is started and photographed, nothing in the repositories is changed. */
+  prUiTest: `${RULE}
+${STOP_PROCESSES}
+
+Rules for this run (set by the office, they apply whatever else is said above):
+- Don't modify, stage or commit anything in the repositories' tracked files (installing dependencies and build output are fine), and don't push.
+- Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them.
+- Write only in your workspace and in the pictures folder named above. Use test data and test accounts only.
+
+${FINISH.replace(' and committed (for an investigation: nothing to commit)', '')}`,
   implementSafety: `${RULE}
 ${STOP_PROCESSES}
 
@@ -177,6 +187,12 @@ ${STOP_PROCESSES}`,
 } as const;
 export type KanbanContractId = keyof typeof KANBAN_CONTRACTS;
 
+/**
+ * Added to a pull-request review's prompts (the main reviewer's, an additional reviewer's, the combine's) when the review is posted on the
+ * pull requests (the request's `post`): not a prompt and not a contract, so a rewritten prompt gets it too, and it is no marker the office reads.
+ */
+export const PR_POSTED = `Your reply is posted as it is on the pull request(s) as a review comment, by the office: write it in English, for a reader outside this office, and make it stand on its own. Say which pull request, file and line each finding is about. Don't mention a kanban task, rounds, other reviewers, this prompt or the office's process. Don't use the verdict line anywhere but at the very end: it is left out of what is posted.`;
+
 /** The text typed into a run that ended a turn without its final marker (see KANBAN_CONTRACTS.finish), for the kind of turn its phase is. */
 export function finishNudge(phase: string): string {
   if (phase === 'plan') return KANBAN_CONTRACTS.finishPlan;
@@ -207,6 +223,8 @@ export const PROMPT_CONTRACT: Partial<Record<KanbanPromptId, KanbanContractId>> 
   'kanban.pr.answers': 'pr',
   'kanban.pr.comments': 'prComments',
   'kanban.pr.review': 'prReview',
+  'kanban.pr.review.combine': 'prReview',
+  'kanban.pr.uiTest': 'prUiTest',
   'kanban.pr.panel': 'panel',
 };
 

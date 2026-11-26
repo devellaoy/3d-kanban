@@ -37,7 +37,7 @@ import { Holds } from './hold.js';
 import { Restarts, receipt } from './restart.js';
 import { promptHead, TurnHolds, typeable } from './turnhold.js';
 import { agentHook, newTurn, acceptSignal, heardQuestion, QUESTION_TOOL, StopGate, stopMessage } from './signals.js';
-import type { Live, Via } from './live.js';
+import { isUiRun, type Live, type Via } from './live.js';
 import { lostText, stopFallback, TurnEnd, typedSettled, unfinishedText } from './turnend.js';
 import { Comments } from './comments.js'; import { runTyped } from '../db/typed.js';
 import type { ReviewPanelPart } from '../../../shared/kanban/review.js';
@@ -45,7 +45,7 @@ import { checkoutFor } from './checkoutfor.js';
 import { slot, slotPatch } from './slot.js';
 import { Seating, baseBranches } from './seating.js';
 export { baseBranches };
-import { PrReviews } from './prreview-launch.js';
+import { PrReviews, type GitRunner } from './prreview-launch.js';
 import { syncBranch } from './branchsync.js';
 import { UsageLimits } from './usagelimit.js';
 import { PANEL_WAIT_MS, ReviewPanel } from './panel.js';
@@ -68,6 +68,7 @@ export interface EngineOptions {
   maxNudges?: number;
   /** How long a review round waits for its additional reviewers once the main reviewer's own review is in (15 min). */
   panelWaitMs?: number;
+  prGit?: GitRunner; prHeadsMs?: number; // prGit runs git to fetch a pull-request review's heads (the real git; tests inject their own: see prheads.ts)
   /** How many Stops of a run the Stop hook gate may block at most (2; 0 turns it off, as AGENT_OFFICE_KANBAN_STOP_GATE=off does). */
   maxGateBlocks?: number;
   /** A phase that finds its own worker still busy (its teammates keep it working) waits this long for it to rest before it fails (10 min). */
@@ -138,7 +139,7 @@ export class Orchestrator {
   private seats: Seating;
   private panel: ReviewPanel;
   private limits: UsageLimits<Live>;
-  private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs'>>;
+  private opts: Required<Omit<EngineOptions, 'adapters' | 'restartStaggerMs' | 'prGit' | 'prHeadsMs'>>;
   private disposed = false;
 
   constructor(
@@ -262,9 +263,9 @@ export class Orchestrator {
       update: (id, patch) => this.update(id, patch),
       note: (task, text, runId) => this.note(task, text, runId),
       pushTask: (task) => this.pushTask(task),
-      follow: (live, prompt) => { this.live.set(live.workerId, live); this.prompted(live, prompt); },
+      follow: (live, prompt) => { this.live.set(live.workerId, live); this.prompted(live, prompt); this.ctx.floor(live.floorId)?.workers.follows(live.workerId, true); },
       exitedAtHire: (live) => this.exitedAtHire(live),
-      now: () => this.opts.now(),
+      now: () => this.opts.now(), git: options.prGit, headsMs: options.prHeadsMs,
     });
     this.panel = new ReviewPanel({
       ctx,
@@ -276,7 +277,7 @@ export class Orchestrator {
       finishRun: (id, project, patch) => this.finishRun(id, project, patch),
       update: (id, patch) => this.update(id, patch),
       note: (task, text, runId) => this.note(task, text, runId),
-      say: (task, run, text) => this.say(task, run, text),
+      say: (task, run, text) => this.say(task, run, text), posted: (task, text, verdict) => this.prReviews.publishedSolo(task, text, verdict),
       apply: (id, e, via) => this.apply(id, e, via),
       serial: (taskId, fn) => this.serial(taskId, fn),
       drain: (project) => void this.drain(project),
@@ -425,7 +426,7 @@ export class Orchestrator {
 
   /** Follows a run left `running` by the last office on its worker. */
   private attach(run: KanbanRun, task: KanbanTask, info: WorkerInfo, launch: QueuedRun | undefined): Live {
-    const live: Live = { taskId: task.id, runId: run.id, phase: run.phase, ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, ...(run.seat ? { seat: run.seat } : {}), ...(run.panel ? { panel: run.panel } : {}), tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch ? { eff: runOf(launch), via: { ...(launch.taken?.length ? { taken: launch.taken } : {}), ...(launch.commentId !== undefined ? { commentId: launch.commentId } : {}) } } : {}) };
+    const live: Live = { taskId: task.id, runId: run.id, phase: isUiRun(run) ? 'implement' : run.phase, ...(isUiRun(run) ? { ui: true as const } : {}), ...(run.round !== undefined ? { round: run.round } : {}), role: run.role, ...(run.seat ? { seat: run.seat } : {}), ...(run.panel ? { panel: run.panel } : {}), tool: run.tool, workerId: info.id, floorId: task.project, exitPlan: false, ended: false, promptAt: run.promptedAt, ack: this.restarts.ack(run, task, launch), officePrompts: runTyped(this.ctx.repo.db, run.id), ...(launch ? { eff: runOf(launch), via: { ...(launch.taken?.length ? { taken: launch.taken } : {}), ...(launch.commentId !== undefined ? { commentId: launch.commentId } : {}) } } : {}) };
     this.live.set(info.id, live);
     return live;
   }
@@ -810,8 +811,8 @@ export class Orchestrator {
     const floor = this.watch(task.project);
     if (!def || !floor) return "The project's floor isn't open";
     // A pull-request review carried on after an office restart (or its reviewer's question answered) goes on with its own reviewer (see Restarts.reviewer).
-    const { same: last, restarted } = co ? { same: undefined, restarted: false } : this.restarts.reviewer(task, eff, floor);
-    if (eff.phase === 'pr-review' && !last) return this.prReviews.launch(task, def, floor, via, restarted, eff);
+    const { same: last, restarted } = co ? { same: undefined, restarted: false } : this.restarts.reviewer(task, eff, floor, part);
+    if (eff.phase === 'pr-review' && !last) return this.prReviews.start(task, def, floor, via, restarted, eff, seat, part);
     const role = eff.role;
     const review = this.reviewSettings(task);
     const spec = co ? (task.coReviewers?.find((c) => c.seat === seat) ?? review.extra?.[seat - 1]) : undefined; // the seat as the round was opened with
@@ -860,7 +861,7 @@ export class Orchestrator {
       refsFile,
       ...(part === 'co' || part === 'combine' ? { panel: part } : {}),
       ...more,
-      fixPrs, prRepoIds: eff.phase === 'pr-review' ? prReviewRepoIds(def, this.prReviews.last(task.id)?.prs ?? []) : undefined, // a continued PR review keeps the repositories of its request
+      fixPrs, ...(eff.phase === 'pr-review' ? this.prReviews.composeExtra(def, task.id) : {}), // a continued PR review (or a combine) keeps the repositories and the pull requests of its request
       held, prAnswers: eff.phase === 'pr-answers' ? this.prComments.answersFor(task.id) : undefined,
     };
     const fresh = this.ctx.repo.getTask(task.id) ?? task;
@@ -1353,7 +1354,7 @@ export class Orchestrator {
     if (!task) return;
     // Sessions and branches, as they are now.
     if (info?.sessionId) this.update(task.id, slotPatch(live.role, { sessionId: info.sessionId }, live.seat ?? 0, task));
-    if (live.role === 'implementer') await syncBranch(this.ctx, task, info, (id, patch) => this.update(id, patch));
+    if (live.role === 'implementer' && !live.ui) await syncBranch(this.ctx, task, info, (id, patch) => this.update(id, patch)); // a UI test's worktree is never the task's
     task = this.ctx.repo.getTask(live.taskId) ?? task;
     const sessionId = info?.sessionId;
     // A round with several reviewers: an additional reviewer's turn is the panel's alone; the main reviewer's run that isn't a clean result (or is the combine) ends the round.
@@ -1418,6 +1419,7 @@ export class Orchestrator {
         break;
       }
       case 'implement':
+        if (live.ui) { event = await this.prReviews.uiEnded(task, live, text, say); break; } // the UI test before a pull-request review: the review starts
         say('result', text);
         this.update(task.id, { summary: clip(text, SUMMARY_MAX) });
         event = { type: 'implemented', changes: task.type === 'investigate' ? false : await changes(), pending };
@@ -1446,8 +1448,7 @@ export class Orchestrator {
         break;
       case 'pr-review':
         verdict = reviewVerdict(text);
-        say('review', text);
-        event = { type: 'prReviewed', pending };
+        event = this.prReviews.ended(task, live, text, pending, say);
         break;
       default:
         // 'compact' only lives in old runs (reconcile drops them), but a run must never be left running: it ends here.

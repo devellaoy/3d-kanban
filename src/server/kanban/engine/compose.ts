@@ -15,7 +15,7 @@ import type { KanbanContext } from '../registry.js';
 import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { grantFiles } from '../uploads.js';
 import { inlineFiles, unlinkedFiles } from './inlinefiles.js';
-import { kanbanPromptText, resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
+import { PR_POSTED, kanbanPromptText, resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
 import { closingPr, closingRef, parseGhKey } from '../../../shared/kanban/issuecard.js';
 import { isPrPhase, openPrs } from '../../../shared/kanban/prs.js';
 import { isKanbanTool, type KanbanPrLink, type KanbanTask, type KanbanTool, type ProjectRepo, type RunPhase, type SkillPhase, type TaskWorkspace } from '../../../shared/kanban/types.js';
@@ -159,6 +159,10 @@ export interface ComposeExtra {
   prRepos?: string;
   /** A pull-request review: the repositories involved, whose instructions it gets (besides the primary's). */
   prRepoIds?: string[];
+  /** A pull-request review that is posted on the pull requests (the request's `post`): its prompts end with the block asking for a reply an outside reader can follow. */
+  post?: boolean;
+  /** A pull-request review that had the UI tested first: its reviewers' prompts list the pictures that test saved. */
+  uiTest?: boolean;
   /** A review round with several reviewers: an additional reviewer's prompt ('co'), or the main reviewer's combining of them ('combine', with the reviews as `reviews`). */
   panel?: 'co' | 'combine';
   /** The reviewer's own viewpoint (review and rereview only); empty = none. */
@@ -401,8 +405,7 @@ export class Composer {
   build(kind: PromptKind, def: FloorDef, task: KanbanTask, tool: KanbanTool, floorDir: string, x: ComposeExtra): string {
     const v = this.taskVars(def, task, tool, floorDir, x);
     const p = task.project;
-    const seal = (body: string) => {
-      const c = this.contract(task, x.phase);
+    const seal = (body: string, c: KanbanContractId | undefined = this.contract(task, x.phase)) => {
       const text = x.held ? `${body.trimEnd()}\n\nMessages left on the task that you have not seen yet:\n${x.held}` : body;
       return c ? withContract(text, c) : text.trim();
     };
@@ -429,6 +432,7 @@ export class Composer {
         return seal(ins('kanban.review', hist('kanban.review', this.withUi('kanban.review', def, task, 'review', { ...v, history: h, summary }), h)) + this.reviewerText(x, p));
       }
       case 'rereview': {
+        if (x.panel === 'combine' && x.phase === 'pr-review') return seal(this.posted(ins('kanban.pr.review.combine', this.text('kanban.pr.review.combine', p, { prs: x.prs ?? '', reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })), x));
         if (x.panel === 'combine') return seal(ins('kanban.review.combine', this.text('kanban.review.combine', p, { taskId: task.id, round: v.round, rounds: v.rounds, reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })));
         const h = history();
         return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', plan: v.plan, history: h, instructions: v.instructions, language: v.language }), h)) + this.reviewerText(x, p));
@@ -479,10 +483,29 @@ export class Composer {
         const items = x.prAnswers ? renderAnswers(x.prAnswers.items, x.prAnswers.answers) : '(the decisions are gone: ask the user to send them again, and change nothing)';
         return seal(ins('kanban.pr.answers', this.withUi('kanban.pr.answers', def, task, 'comment', { taskId: task.id, prs: prs.join('\n'), repos: v.repos, items, instructions: v.instructions, language: v.language })));
       }
-      case 'pr.review':
+      case 'pr.review': {
         // What the user said to a reviewer that asked (a fresh reviewer starts the review again with the answer).
-        return seal([ins('kanban.pr.review', this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, instructions: v.instructions, language: v.language })), x.text ? this.text('kanban.sinceSaid', p, { text: x.text }) : ''].filter(Boolean).join('\n\n'));
+        const text = [ins('kanban.pr.review', this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, instructions: v.instructions, language: v.language })), x.text ? this.text('kanban.sinceSaid', p, { text: x.text }) : ''].filter(Boolean).join('\n\n');
+        return seal(this.posted(this.prPictures(text + this.reviewerText(x, p), task, def, x), x));
+      }
+      case 'pr.uitest': {
+        const body = ins('kanban.pr.uiTest', this.text('kanban.pr.uiTest', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, imagesDir: uiImagesDir(this.ctx.filesDir, task.id), instructions: v.instructions, language: v.language }));
+        return seal(x.text ? `${body}\n\n${this.text('kanban.sinceSaid', p, { text: x.text })}` : body, 'prUiTest');
+      }
     }
+  }
+
+  /** A pull-request review's prompt with the block that tells its reviewer the reply is posted as it is (see ComposeExtra.post). */
+  private posted(text: string, x: ComposeExtra): string {
+    return x.post ? `${text.trimEnd()}\n\n${PR_POSTED}` : text;
+  }
+
+  /** A pull-request review's prompt with the pictures its UI test saved (see ComposeExtra.uiTest), when it saved any. */
+  private prPictures(text: string, task: KanbanTask, def: FloorDef, x: ComposeExtra): string {
+    if (!x.uiTest) return text;
+    const dir = uiImagesDir(this.ctx.filesDir, task.id);
+    const images = listUiImages(dir, projectRepos(def).map((r) => r.id));
+    return images.length ? `${text.trimEnd()}\n\n${this.text('kanban.pr.uiTest.review', task.project, { imagesDir: dir, imageList: imageListText(dir, images) })}` : text;
   }
 
   /** What a reviewer's prompt has after the ordinary review prompt: its focus, then an additional reviewer's rule (see ComposeExtra.panel); empty for any other. */
