@@ -20,7 +20,10 @@ address works. If https does not answer at all it retries over `http://`. It use
 browser — **Chrome first, then Edge** — so no separate Chromium download is needed.
 
 Errors caused by bad input (unknown device, missing element, malformed flow) print a single
-clear line and exit with code `2`.
+clear line and exit with code `2`. In single-URL mode a failing `--wait-selector`, `--click` or
+`--clip-selector` prints the kind of failure without the selector, e.g.
+`Virhe: --click 1: not-found, matches=0`. Addresses on stderr are shown as their origin only
+(no path or query), unless a flow sets `includeValues: true`.
 
 ## Viewport, mobile and devices
 
@@ -170,7 +173,8 @@ another origin. A login kept only in sessionStorage is therefore recognised at t
 it was saved. An older state file without the field keeps its cookies and localStorage, but its
 sessionStorage is not restored anywhere (a note says so): run the login flow again, or add
 `"sessionStorageOrigin": "<origin>"` to the file if you know where it was saved. Values given with `--session-storage`, `--local-storage` and `--storage-file` likewise
-apply only to the origin of the target address; cookies stay bound to their domain.
+apply only to the origin of the target address; cookies stay bound to their domain, also when a
+viewport change mid-flow needs a new browser context.
 
 With two addresses (`--before-url` and `--after-url`, below) `--state s.json` means
 `s.before.json` and `s.after.json`, because localStorage belongs to one origin and a login

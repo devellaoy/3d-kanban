@@ -154,13 +154,15 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { validateTestSteps, runActions, runAssertions, classifyFailure } from './ui-test.mjs'
 import {
   DEFAULT_DELAY_MS, assignStatePaths, boolFlag, buildJobs, expandFlowArgs, findNameCollisions, parseArgs,
-  labelName, nonNegNum, LEGACY_SESSION_NOTE, hasLegacySessionStorage, posNum, runPool, safeOrigin, settlePlan, shotFileName, slug, subjectSlug, usableState, writeFileAtomic, suiteLine, summaryLine,
+  labelName, nonNegNum, LEGACY_SESSION_NOTE, hasLegacySessionStorage, posNum, runPool, safeOrigin, scrubUrls, settlePlan, shotFileName, slug, subjectSlug, usableState, writeFileAtomic, suiteLine, summaryLine,
 } from './flow-suite.mjs'
 
 /** Kaikki ei-polkutuloste menee stderriin, jotta stdout pysyy pelkkinä kuvapolkuina. */
 function note(msg) {
-  process.stderr.write(msg + '\n')
+  // URLs on stderr are reduced to their origin unless a flow asked for includeValues.
+  process.stderr.write((showFullUrls ? msg : scrubUrls(msg)) + '\n')
 }
+let showFullUrls = false
 
 /**
  * Käyttäjän/kutsujan virhe (väärä lippu, puuttuva elementti, virheellinen flow).
@@ -365,7 +367,7 @@ async function loadStateFile(path) {
     }
   } catch (err) {
     if (err?.code !== 'ENOENT') {
-      note(`Varoitus: istuntotiedostoa ei voitu lukea (${path}): ${err?.message ?? err} — aloitetaan tyhjästä.`)
+      note(`Varoitus: istuntotiedostoa ei voitu lukea (${path}): ${err instanceof SyntaxError ? 'invalid JSON' : err?.code ?? 'read error'} — aloitetaan tyhjästä.`)
     }
     return null
   }
@@ -415,7 +417,7 @@ async function saveStateFile(context, page, path) {
  * @param persisted Playwrightin storageState-muotoinen objekti tai null.
  * @param session   CLI-lipuista kerätyt cookie/localStorage/sessionStorage-arvot.
  */
-async function createContext(browser, vp, session, persisted, targetUrl, cliUrl = targetUrl) {
+async function createContext(browser, vp, session, persisted, targetUrl, cliUrl = targetUrl, recreated = false) {
   const context = await browser.newContext({
     viewport: vp.viewport,
     deviceScaleFactor: vp.deviceScaleFactor,
@@ -429,7 +431,9 @@ async function createContext(browser, vp, session, persisted, targetUrl, cliUrl 
 
   // Evästeet: domain-pohjaisina, jotta ne kelpaavat vaikka navigointi putoaisi
   // https:stä http:hen. Tiedostosta tulleet voivat tuoda omat domain/path-kentät.
-  if (session.cookies.length) {
+  // A recreated context gets its cookies only from the carried storageState (original domains);
+  // CLI cookies are never re-bound to whatever host the page is on now.
+  if (session.cookies.length && !recreated) {
     const { hostname } = new URL(targetUrl)
     await context.addCookies(
       session.cookies.map((c) => (c.domain || c.url ? c : { ...c, domain: hostname, path: c.path ?? '/' })),
@@ -547,7 +551,7 @@ async function navigate(page, url, timeout) {
       throw err
     }
   }
-  throw new Error(`Navigointi epäonnistui: ${url}`)
+  throw new Error('Navigointi epäonnistui')
 }
 
 /**
@@ -862,7 +866,7 @@ async function runFlowInner(job, ctx, result) {
     const currentUrl = page.url()
     await stopTrace()
     await context.close()
-    context = await createContext(browser, nextVp, session, carried, currentUrl || firstUrl, firstUrl)
+    context = await createContext(browser, nextVp, session, carried, currentUrl || firstUrl, firstUrl, true)
     page = await context.newPage()
     await setupContext()
     if (currentUrl && !/^about:/.test(currentUrl)) {
@@ -993,6 +997,25 @@ async function runFlowInner(job, ctx, result) {
 // Yhden kuvan ajo
 // ---------------------------------------------------------------------------------
 
+/**
+ * Single-URL mode: a failing step becomes one sanitized line (exit 2), e.g.
+ * "--wait-selector: not-found, matches=0", with no selector, URL path or Playwright call log.
+ * With onlyClip, only a failed clip-selector lookup (StepFailure) is converted.
+ */
+async function singleStep(label, page, selector, fn, onlyClip = false) {
+  try {
+    return await fn()
+  } catch (error) {
+    let f = error?.failure
+    if (onlyClip) {
+      if (!(error instanceof StepFailure)) throw error
+    } else {
+      f = await classifyFailure(selector ? page.locator(selector) : null, error, { single: false })
+    }
+    throw new UserError(`${label}: ${f.reason}${f.matches != null ? `, matches=${f.matches}` : ''}`)
+  }
+}
+
 async function runSingle(args, ctx, job) {
   const { browser, session, deviceRegistry, outDir, shotDir, timeout, delay } = ctx
   const rawUrl = args._[0]
@@ -1040,7 +1063,7 @@ async function runSingle(args, ctx, job) {
 
   const context = await createContext(browser, vp, session, persisted, url0)
   try {
-    const { page } = await openPage(context, url0, timeout)
+    const { page } = await singleStep('goto', null, null, () => openPage(context, url0, timeout))
     const plan = settlePlan({
       timeout,
       hasWaitSelector: !!waitSelector,
@@ -1051,7 +1074,7 @@ async function runSingle(args, ctx, job) {
     })
     const idleMs = await settle(page, { ...plan, delayMs: 0 })
 
-    if (waitSelector) await page.waitForSelector(waitSelector, { timeout })
+    if (waitSelector) await singleStep('--wait-selector', page, waitSelector, () => page.waitForSelector(waitSelector, { timeout }))
 
     // Pieni lisäviive client-renderöinnin / hydraation viimeistelyyn
     // (ei ajeta kun --wait-selector on annettu, ellei --delay ole annettu erikseen).
@@ -1059,7 +1082,9 @@ async function runSingle(args, ctx, job) {
 
     // Injektoidut toiminnot ennen kuvaa (esim. avaa valikko/modaali): ensin klikkaukset,
     // sitten mahdollinen oma JS sivun kontekstissa.
-    for (const sel of clicks) await page.click(sel, { timeout })
+    for (const [n, sel] of clicks.entries()) {
+      await singleStep(`--click ${n + 1}`, page, sel, () => page.click(sel, { timeout }))
+    }
     if (injectScript) {
       // Kääritään async-IIFE:hen, jotta injektoitu skripti voi käyttää awaitia.
       await page.evaluate(`(async () => { ${injectScript}\n})()`)
@@ -1078,11 +1103,12 @@ async function runSingle(args, ctx, job) {
     }
 
     if (idleMs && !waitSelector) note(idleNote(idleMs))
-    await capture(page, outPath, {
+    await singleStep('--clip-selector', page, null, () => capture(page, outPath, {
       clipSelector: typeof args['clip-selector'] === 'string' ? args['clip-selector'] : null,
       clipPadding: posNum(args['clip-padding'], 16),
       viewportOnly: boolFlag(args['viewport-only']),
-    })
+      classifyClip: true,
+    }), true)
 
     emitPath(outPath)
     if (statePath && job.stateWritable) await saveStateFile(context, page, statePath)
@@ -1147,7 +1173,7 @@ async function main() {
     try {
       return new URL(normalizeUrl(v)).toString()
     } catch {
-      return fail(`Virheellinen URL: ${v}`)
+      return fail('Virheellinen URL: [redacted]')
     }
   }
   const baseUrlOpt = urlOption('base-url')
@@ -1195,7 +1221,7 @@ async function main() {
     try {
       new URL(normalizeUrl(args._[0]))
     } catch {
-      fail(`Virheellinen URL: ${args._[0]}`)
+      fail('Virheellinen URL: [redacted]')
     }
     if (side && typeof args.name !== 'string') fail('--side needs --name in single-URL mode (the name is the picture name)')
     const name = labelName(typeof args.name === 'string' ? args.name : new URL(normalizeUrl(args._[0])).hostname)
@@ -1246,6 +1272,7 @@ async function main() {
     flowDir: process.cwd(),
   }
   const concurrency = Math.floor(posNum(args.concurrency, 4))
+  showFullUrls = jobs.some((j) => j.flow?.includeValues === true)
 
   note(`JOBS ${jobs.length}: ${jobs.map((j) => j.label).join(', ')}`)
 

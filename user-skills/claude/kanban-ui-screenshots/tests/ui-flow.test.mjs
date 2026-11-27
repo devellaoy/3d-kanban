@@ -280,3 +280,59 @@ test('real browser: sessionStorage state is bound to its origin (iframes, other 
   assert.equal(explicit.code, 0, explicit.stderr);
   assert.ok(!explicit.stderr.includes('no recorded origin'));
 });
+
+test('real browser: cookies stay on their host across a viewport change, URLs are scrubbed, single-shot failures are classified', { timeout: 120000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'kanban-ui-cookie-test-'));
+  const artifacts = new Set();
+  const received = { a: [], b: [] };
+  const listen = async key => {
+    const server = createServer((req, res) => {
+      received[key].push(req.headers.cookie ?? '');
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      res.end('<!doctype html><title>x</title><main><h1>Host page</h1></main>');
+    });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    return { server, port: server.address().port };
+  };
+  const a = await listen('a');
+  const b = await listen('b');
+  const urlA = `http://127.0.0.1:${a.port}`;
+  const urlB = `http://localhost:${b.port}`;
+  t.after(async () => {
+    for (const { server } of [a, b]) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+    for (const file of artifacts) await rm(file, { force: true });
+    await rm(directory, { recursive: true, force: true });
+  });
+  const steps = [
+    { goto: '/', waitSelector: 'main' },
+    { goto: `${urlB}/private?token=SECRETQ`, waitSelector: 'main' },
+    { viewport: { width: 390, height: 800, mobile: true }, waitSelector: 'main', shot: 'mobile-b' },
+    { goto: '/again', waitSelector: 'main' },
+  ];
+  const paths = [];
+  for (const name of ['cookie-one', 'cookie-two']) {
+    const path = join(directory, name + '.json');
+    await writeFile(path, JSON.stringify({ name, baseUrl: urlA, steps }));
+    paths.push(path);
+  }
+  const result = await execute(['--flow', paths[0], '--flow', paths[1], '--cookie', 'sid=COOKIE_SECRET', '--timeout', '3000', '--delay', '1']);
+  assert.equal(result.code, 0, result.stderr);
+  const texts = [result.stdout, result.stderr];
+  for (const m of result.stderr.matchAll(/(?:REPORT|SUITE-REPORT) (.+)$/gm)) { artifacts.add(m[1]); texts.push(await readFile(m[1], 'utf8')); }
+  for (const path of result.stdout.trim().split('\n')) artifacts.add(path);
+  assert.ok(received.b.length > 0);
+  assert.ok(received.b.every(cookie => !cookie.includes('COOKIE_SECRET')), `host B got ${JSON.stringify(received.b)}`);
+  assert.ok(received.a.some(cookie => cookie.includes('COOKIE_SECRET')), 'host A still has the cookie');
+  assert.ok(received.a.at(-1).includes('COOKIE_SECRET'), 'host A has it after the switch too');
+  for (const text of texts) assert.ok(!text.includes('SECRETQ') && !text.includes('/private'), 'no URL path or query in output');
+  assert.ok(result.stderr.includes(`goto ${urlB}`));
+
+  // Single-shot failures: one sanitized line, exit 2, no selector.
+  for (const [extra, line] of [[['--wait-selector', '#no-such-secret'], '--wait-selector: not-found, matches=0'], [['--click', '#gone-secret'], '--click 1: not-found, matches=0'], [['--clip-selector', '#clip-secret'], '--clip-selector: not-found, matches=0']]) {
+    const single = await execute([`${urlA}/p?token=SECRETQ`, '--timeout', '1000', '--delay', '1', ...extra]);
+    assert.equal(single.code, 2, single.stderr);
+    assert.ok(single.stderr.includes(`Virhe: ${line}`), single.stderr);
+    assert.ok(!/secret/i.test(single.stderr + single.stdout), single.stderr);
+    assert.equal(single.stdout, '');
+  }
+});

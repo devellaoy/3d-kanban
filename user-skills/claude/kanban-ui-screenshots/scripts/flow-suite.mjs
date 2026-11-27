@@ -291,6 +291,18 @@ export function safeOrigin(url) {
   }
 }
 
+/** Replaces every URL in a text with its origin (paths, queries and fragments can hold tokens). */
+export function scrubUrls(text) {
+  return String(text).replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>)\]]+/gi, (m) => {
+    try {
+      const origin = new URL(m).origin
+      return origin === 'null' ? '[redacted]' : origin
+    } catch {
+      return '[redacted]'
+    }
+  })
+}
+
 /** Writes a file atomically with mode 0600: random temp name beside it ('wx'), then rename. */
 export async function writeFileAtomic(path, text) {
   const tmp = `${path}.${randomBytes(8).toString('hex')}.tmp`

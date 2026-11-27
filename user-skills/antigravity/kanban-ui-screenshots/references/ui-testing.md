@@ -119,8 +119,9 @@ URLs are reduced to origins. Numeric/boolean comparisons remain readable. No req
 headers or cookies are collected in the JSON report. Diagnostics alone do not fail a run
 unless `failOnPageError: true` is set; expected HTTP failures may be part of a recovery test.
 Top-level `includeValues: true` opts into textual assertion values and raw console/error text
-(bounded); use only with nonsensitive test data. Legacy `eval`/`measure` and progress stderr
-can expose page text or URLs and are not a secure logging channel.
+(bounded); use only with nonsensitive test data. Progress lines on stderr show addresses as
+their origin only unless `includeValues` is set. Legacy `eval`/`measure` output can still expose
+page text and is not a secure logging channel.
 
 Top-level `trace: true` captures Playwright traces (one per browser context) for detailed
 inspection. **Traces, screenshots, session state and opt-in values may contain secrets.**
