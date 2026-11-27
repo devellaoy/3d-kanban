@@ -18,10 +18,10 @@ import { fetchPrHeads, prKey, prLine, repoOf, trusted, type HeadPr } from './prh
 import type { PrReviewDeps } from './prreview-launch.js';
 import { slot, slotPatch } from './slot.js';
 import { typeable } from './turnhold.js';
-import { ensureUiImagesDir, uiImagesDir } from './uitesting.js';
+import { ensureUiImagesDir, keepUiTestReport, resetUiTestReport, uiImagesDir } from './uitesting.js';
 import { instructionReadDirs, prReviewRepoIds } from './launchdirs.js';
 import { grantDir } from '../uploads.js';
-import { dropUiTestReport, readUiTestReport, storeUiTestReport } from '../taskfiles.js';
+import { dropUiTestReport, readUiTestReport } from '../taskfiles.js';
 
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 /** The heading the tester's prompt asks its report to start with. */
@@ -43,6 +43,7 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
   d.update(task.id, slotPatch('implementer', { workerId: null, sessionId: null }));
   // An earlier tester's report is not this one's; and no file is left, so the tester can create it itself (the office's copies are read-only).
   dropUiTestReport(d.ctx.filesDir, task.id);
+  resetUiTestReport(d.ctx.repo, task.id);
 
   const owner = d.hireOwner(task, via.who);
   const signIn = owner && tool === 'claude' && d.ctx.runAs && !d.ctx.runAs.claudeReady(owner) ? d.signInMissing(task, owner, via.who) : undefined;
@@ -140,7 +141,8 @@ export async function uiEnded(d: PrReviewDeps, task: KanbanTask, live: Live, tex
   const report = uiTestReport(readUiTestReport(d.ctx.filesDir, task.id), text);
   say('result', report);
   // Whatever the tester left at the path is replaced unread: a file over the limit, a link or a folder is not compared with or written through.
-  storeUiTestReport(d.ctx.filesDir, task.id, report);
+  // What was kept goes in a task event, so a file that could not be replaced is never named to the reviewers: they get the text.
+  keepUiTestReport(d.ctx.repo, d.ctx.filesDir, task.id, report);
   const floor = d.ctx.floor(live.floorId);
   if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'all', ENGINE);
   d.update(task.id, slotPatch('implementer', { workerId: null, sessionId: null }));

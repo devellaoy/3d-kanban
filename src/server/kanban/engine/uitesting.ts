@@ -7,6 +7,9 @@ import path from 'node:path';
 import type { KanbanPromptId } from '../../../shared/kanban/prompts.js';
 import { UI_IMAGES_DIR, UI_IMAGES_MAX, UI_IMAGE_MAX_BYTES, UI_IMAGE_FOLDER_RE, UI_IMAGE_RE, pairImages, uiImageKind, uiImageSubject, type KanbanTaskImage } from '../../../shared/kanban/uitesting.js';
 import { grantDir } from '../uploads.js';
+import { createHash } from 'node:crypto';
+import type { KanbanRepository } from '../db/repository.js';
+import { readUiTestReport, storeUiTestReport, uiTestReportPath } from '../taskfiles.js';
 
 /** An image of a task with the file it is in. */
 export type UiImageFile = KanbanTaskImage & { file: string };
@@ -113,4 +116,39 @@ export function uiBlockId(kind: UiBlockKind, on: boolean, images: boolean): Kanb
     case 'comment':
       return active ? 'kanban.uiTesting.fix' : 'kanban.uiTesting.onRequest';
   }
+}
+
+/** The task event that says what the office kept of a UI test's report (see keepUiTestReport); an empty one marks a new UI test. */
+export const UI_REPORT_EVENT = 'pr.uitest.report';
+/** The most of a report an event keeps, for a prompt to carry when the file cannot be named. */
+export const UI_REPORT_TEXT_MAX = 30_000;
+
+const reportHash = (text: string) => createHash('sha256').update(text.trim()).digest('hex');
+type ReportRepo = Pick<KanbanRepository, 'appendEvent' | 'listEvents'>;
+
+/** A new UI test starts: what an earlier one left is not its report. */
+export function resetUiTestReport(repo: ReportRepo, taskId: number): void {
+  repo.appendEvent(taskId, UI_REPORT_EVENT, {});
+}
+
+/**
+ * Keeps a UI test's report: in its file (storeUiTestReport), and in a task event that holds the hash of what the file was given,
+ * or none when the file could not be written, with the text itself (its first UI_REPORT_TEXT_MAX characters) as the fallback.
+ */
+export function keepUiTestReport(repo: ReportRepo, filesDir: string, taskId: number, report: string): void {
+  const text = report.trim();
+  const file = text ? storeUiTestReport(filesDir, taskId, text) : (storeUiTestReport(filesDir, taskId, undefined), undefined);
+  repo.appendEvent(taskId, UI_REPORT_EVENT, text ? { ...(file ? { sha: reportHash(text) } : {}), text: text.slice(0, UI_REPORT_TEXT_MAX) } : {});
+}
+
+/**
+ * What a prompt may say of the task's UI test report: its file, only when it is the very text the office stored there (a regular
+ * file within the limit whose hash is the one kept: a file the store could not replace or remove, or one changed since, is never
+ * named); else the kept text; nothing when the last UI test left no report.
+ */
+export function uiTestReportFor(repo: ReportRepo, filesDir: string, taskId: number): { file?: string; text?: string } {
+  const last = [...repo.listEvents(taskId)].reverse().find((e) => e.kind === UI_REPORT_EVENT)?.data as { sha?: unknown; text?: unknown } | undefined;
+  if (!last || typeof last.text !== 'string' || !last.text) return {};
+  const read = typeof last.sha === 'string' ? readUiTestReport(filesDir, taskId) : undefined;
+  return read !== undefined && reportHash(read) === last.sha ? { file: uiTestReportPath(filesDir, taskId) } : { text: last.text };
 }

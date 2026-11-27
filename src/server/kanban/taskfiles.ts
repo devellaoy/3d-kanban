@@ -80,21 +80,12 @@ export function dropUiTestReport(filesDir: string, taskId: number): void {
   try {
     rmSync(file, { force: true, recursive: true });
   } catch (err) {
-    // It stays: hasUiTestReport and readUiTestReport still take nothing but a regular file of the allowed size there.
+    // It stays: a prompt names the report file only when it holds the text the office stored (uiTestReportFor).
     failOnce(`remove ${file} (the UI test report)`, err);
   }
 }
 
 const REPORT_MAX_BYTES = 200_000;
-
-/** Whether a report is there for a prompt to name: a regular file only (not a link, not a folder). Never throws. */
-export function hasUiTestReport(filesDir: string, taskId: number): boolean {
-  try {
-    return lstatSync(uiTestReportPath(filesDir, taskId)).isFile();
-  } catch {
-    return false;
-  }
-}
 
 /** What a test may put in the way of readUiTestReport: a step before the open and after it, and the platform's no-follow flag (0: none). */
 export interface ReportReadSteps {

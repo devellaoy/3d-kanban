@@ -29,7 +29,13 @@ export function replaceOfficeFile(file: string, body: string, tmp: (file: string
         const fd = openSync(name, 'wx', 0o444);
         made = name;
         try {
-          writeSync(fd, body);
+          // To the last byte: one write may take only a part of it.
+          const bytes = Buffer.from(body, 'utf8');
+          for (let at = 0; at < bytes.length; ) {
+            const n = writeSync(fd, bytes, at, bytes.length - at);
+            if (n <= 0) throw new Error(`only ${at} of ${bytes.length} bytes could be written`);
+            at += n;
+          }
           fchmodSync(fd, 0o444);
         } finally {
           closeSync(fd);

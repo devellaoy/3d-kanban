@@ -11,10 +11,10 @@ import { putOfficeFile, replaceOfficeFile } from '../src/server/kanban/officefil
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { GitRunner } from '../src/server/kanban/engine/prheads.js';
-import { uiImagesDir } from '../src/server/kanban/engine/uitesting.js';
+import { uiImagesDir, uiTestReportFor } from '../src/server/kanban/engine/uitesting.js';
 import { checkScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { closingsIdle } from '../src/server/kanban/integrations/pulls/closes.js';
-import { dropUiTestReport, hasUiTestReport, readUiTestReport, storeUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
+import { dropUiTestReport, readUiTestReport, storeUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
 import { uiTestReport } from '../src/server/kanban/engine/prreview-ui.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
@@ -389,7 +389,7 @@ test('uiTest: a file over the limit, a folder or a link at the report’s path i
   for (const wrong of [() => mkdirSync(path.join(file, 'inner'), { recursive: true }), () => symlinkSync(secret, file), () => symlinkSync(path.dirname(file), file)]) {
     rmSync(file, { recursive: true, force: true });
     wrong();
-    assert.equal(hasUiTestReport(fx.ctx.filesDir, id), false, 'no prompt names it');
+    assert.deepEqual(Object.keys(uiTestReportFor(fx.repo, fx.ctx.filesDir, id)), ['text'], 'no prompt names it: the kept text is given');
     assert.equal(readUiTestReport(fx.ctx.filesDir, id), undefined);
     dropUiTestReport(fx.ctx.filesDir, id);
     assert.ok(!existsSync(file) && !lstatExists(file), 'the reset removes it');
@@ -513,7 +513,7 @@ test('storeUiTestReport: what is at the path is never read, also when it cannot 
     t.mock.restoreAll();
     syncBuiltinESMExports();
   }
-  assert.equal(hasUiTestReport(root, 7), false, 'and no prompt names the folder');
+  assert.ok(lstatSync(file).isDirectory(), 'the folder is left as it is');
   assert.ok(refused > 0, 'the removal was tried and refused');
   rmSync(file, { recursive: true });
 
@@ -528,6 +528,30 @@ test('storeUiTestReport: what is at the path is never read, also when it cannot 
   assert.equal(readFileSync(file, 'utf8'), 'safe\n');
   assert.ok(lstatSync(trap).isSymbolicLink(), 'the link itself is not removed or replaced');
   assert.ok(!existsSync(`${file}.free.tmp`), 'the temporary file became the report');
+  // A write that takes only a part at a time still leaves the whole text, multi-byte characters too; one that takes nothing fails and leaves the old file.
+  const whole = `${'äö€ '.repeat(3000)}end\n`;
+  const realWrite = fs.writeSync as (...a: unknown[]) => number;
+  let calls = 0;
+  t.mock.method(fs, 'writeSync', ((fd: number, buf: Uint8Array, at: number, len: number) => (calls++, realWrite(fd, buf, at, Math.min(len, 1000)))) as never);
+  syncBuiltinESMExports();
+  try {
+    replaceOfficeFile(file, whole);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.ok(calls > 10, 'written in parts');
+  assert.equal(readFileSync(file, 'utf8'), whole);
+  t.mock.method(fs, 'writeSync', (() => 0) as never);
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => replaceOfficeFile(file, 'short\n'), /bytes could be written/);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.equal(readFileSync(file, 'utf8'), whole, 'a half-written file never replaces the old one');
+  assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((n) => /\.tmp$/.test(n) && !/trap/.test(n)), [], 'and its temporary file is removed');
   // The old, guessable name too, through the ordinary writer.
   const guess = `${file}.${process.pid}.tmp`;
   symlinkSync(target, guess);
