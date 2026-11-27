@@ -154,7 +154,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { validateTestSteps, runActions, runAssertions, classifyFailure } from './ui-test.mjs'
 import {
   DEFAULT_DELAY_MS, assignStatePaths, boolFlag, buildJobs, expandFlowArgs, findNameCollisions, parseArgs,
-  labelName, nonNegNum, posNum, runPool, safeOrigin, settlePlan, shotFileName, slug, subjectSlug, usableState, writeFileAtomic, suiteLine, summaryLine,
+  labelName, nonNegNum, LEGACY_SESSION_NOTE, hasLegacySessionStorage, posNum, runPool, safeOrigin, settlePlan, shotFileName, slug, subjectSlug, usableState, writeFileAtomic, suiteLine, summaryLine,
 } from './flow-suite.mjs'
 
 /** Kaikki ei-polkutuloste menee stderriin, jotta stdout pysyy pelkkinä kuvapolkuina. */
@@ -444,9 +444,8 @@ async function createContext(browser, vp, session, persisted, targetUrl, cliUrl 
   // originiin (vanha tiedosto ilman originia: kohdeosoitteen originiin), CLI:n arvot
   // kohdeosoitteen originiin.
   const persistedValues = persisted?.sessionStorage ?? {}
-  const persistedOrigin = Object.keys(persistedValues).length
-    ? persisted?.sessionStorageOrigin ?? new URL(targetUrl).origin
-    : null
+  // The origin is never inferred: a legacy file without sessionStorageOrigin restores nothing.
+  const persistedOrigin = Object.keys(persistedValues).length ? persisted?.sessionStorageOrigin ?? null : null
   const cliOrigin = new URL(cliUrl).origin
   if (Object.keys(session.localStorage).length || Object.keys(session.sessionStorage).length || persistedOrigin) {
     await context.addInitScript(
@@ -778,6 +777,7 @@ async function runFlowInner(job, ctx, result) {
       }
     }
   }
+  if (hasLegacySessionStorage(persisted)) log(LEGACY_SESSION_NOTE)
   if (persisted) {
     const usable = usableState(persisted, firstUrl)
     persisted = usable.state
@@ -1011,6 +1011,7 @@ async function runSingle(args, ctx, job) {
 
   const statePath = job.statePath ?? null
   let persisted = statePath ? await loadStateFile(statePath) : null
+  if (hasLegacySessionStorage(persisted)) note(LEGACY_SESSION_NOTE)
   if (persisted) {
     const usable = usableState(persisted, url0)
     persisted = usable.state

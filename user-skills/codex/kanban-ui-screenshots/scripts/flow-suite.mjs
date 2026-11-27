@@ -273,6 +273,14 @@ export function usableState(state, url) {
   return { state: missingOrigin ? { ...state, sessionStorage: {} } : state, missingOrigin }
 }
 
+/** True for a state whose sessionStorage has values but no recorded origin (legacy file). */
+export function hasLegacySessionStorage(state) {
+  return !!state && !state.sessionStorageOrigin && Object.keys(state.sessionStorage ?? {}).length > 0
+}
+
+export const LEGACY_SESSION_NOTE =
+  'Note: the state file\'s sessionStorage has no recorded origin and is not restored; run the login flow again to save a new state file, or add "sessionStorageOrigin": "<origin>" to the file if you know where it was saved.'
+
 /** Origin of a URL for reports; '[redacted]' if it cannot be parsed. */
 export function safeOrigin(url) {
   if (url == null) return null
@@ -323,10 +331,8 @@ export function stateMissingOrigin(state, url) {
     if (o?.origin === origin.origin) return false
   }
   // A login that lives only in sessionStorage has no origins entry: use the saved origin.
-  // A legacy file (sessionStorage, no saved origin) counts as bound to the target address.
-  const hasSession = Object.keys(state.sessionStorage ?? {}).length > 0
-  if (state.sessionStorageOrigin ? state.sessionStorageOrigin === origin.origin : hasSession) return false
-  return true
+  // Legacy sessionStorage without a recorded origin never counts (its origin is unknown).
+  return state.sessionStorageOrigin !== origin.origin
 }
 
 // ---------------------------------------------------------------------------------

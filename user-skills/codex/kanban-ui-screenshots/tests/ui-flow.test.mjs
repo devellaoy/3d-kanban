@@ -262,11 +262,21 @@ test('real browser: sessionStorage state is bound to its origin (iframes, other 
   assert.equal(third.code, 0, third.stderr);
   assert.match(third.stderr, /state=missing-origin/);
 
-  // Legacy file (sessionStorage, no saved origin) is bound to the target address.
-  await writeFile(state, JSON.stringify({ cookies: [], origins: [], sessionStorage: { token: 'T2' } }));
+  // A legacy file (sessionStorage, no recorded origin) is restored nowhere, not even at its own address.
+  const legacyState = origin => JSON.stringify({ cookies: [], origins: [{ origin, localStorage: [] }], sessionStorage: { token: 'T2' } });
+  await writeFile(state, legacyState(a.url));
   reports.length = 0;
-  const legacy = await run('legacy', a.url, [{ goto: '/', waitSelector: '#tok', wait: 400, assertions: [read('#tok', 'T2')] }], state);
-  assert.equal(legacy.code, 0, legacy.stderr);
-  assert.ok(!legacy.stderr.includes('state=missing-origin'));
+  const noOrigin = await run('legacy-a', a.url, [{ goto: '/', waitSelector: '#tok', wait: 400, assertions: [read('#tok', 'none')] }], state);
+  assert.equal(noOrigin.code, 0, noOrigin.stderr);
+  assert.match(noOrigin.stderr, /sessionStorage has no recorded origin and is not restored/);
   assert.ok(reports.every(value => value === 'null'), `iframe got ${JSON.stringify(reports)}`);
+  // After that run the state was saved again, now with the page's origin.
+  assert.equal(JSON.parse(await readFile(state, 'utf8')).sessionStorageOrigin, a.url);
+  const otherAddress = await run('legacy-b', b.url, [{ goto: '/', waitSelector: '#tok', assertions: [read('#tok', 'none')] }], (await writeFile(state, legacyState(a.url)), state));
+  assert.equal(otherAddress.code, 0, otherAddress.stderr);
+  // The explicit field is the only way to declare the origin.
+  await writeFile(state, JSON.stringify({ cookies: [], origins: [], sessionStorage: { token: 'T3' }, sessionStorageOrigin: a.url }));
+  const explicit = await run('explicit', a.url, [{ goto: '/', waitSelector: '#tok', assertions: [read('#tok', 'T3')] }], state);
+  assert.equal(explicit.code, 0, explicit.stderr);
+  assert.ok(!explicit.stderr.includes('no recorded origin'));
 });

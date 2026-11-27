@@ -167,8 +167,9 @@ readable by its owner only (mode 0600).
 The state file records the origin its sessionStorage was read from (`sessionStorageOrigin`), and
 those values are restored only in documents of that origin: never in an iframe or a later page of
 another origin. A login kept only in sessionStorage is therefore recognised at the address where
-it was saved, and an older state file without the field is bound to the address of the run that
-loads it. Values given with `--session-storage`, `--local-storage` and `--storage-file` likewise
+it was saved. An older state file without the field keeps its cookies and localStorage, but its
+sessionStorage is not restored anywhere (a note says so): run the login flow again, or add
+`"sessionStorageOrigin": "<origin>"` to the file if you know where it was saved. Values given with `--session-storage`, `--local-storage` and `--storage-file` likewise
 apply only to the origin of the target address; cookies stay bound to their domain.
 
 With two addresses (`--before-url` and `--after-url`, below) `--state s.json` means
