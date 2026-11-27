@@ -17,11 +17,13 @@ description: >-
 
 - **Test behavior, not just pictures** — assertions, `references/ui-testing.md`
 - **Never build your own browser driver** — use `scripts/screenshot.mjs`
-- **1. Start the dev server in the background** — on `KANBAN_PORT_BASE`
+- **1. Start the dev server in the background** — pick a free port, never the default
 - **2. Wait until the server responds** — poll before capturing
 - **3. Capture** — command, output contract, common options, mobile, measure
 - **4. Look at the image** — open it with Read
-- **Saving before/after images to the kanban task** — the names, and when to take each
+- **More than one picture: one call** — flows, suites, before/after pair, shared `--state`, `waitSelector`
+- **Several people at once** — one environment owner, several browsers, subagents
+- **Saving before/after images to the kanban task** — `--out-dir` and `--side`, the names, and when to take each
 - **5. Clean up** — stop the server, test data, privacy
 
 Verify a web UI by actually rendering it: start the dev server, drive a real browser, capture
@@ -59,23 +61,22 @@ and ask — that is faster than writing an automation harness from scratch.
 Read the project's `package.json` and work out the right start command (e.g. `npm run dev`,
 `pnpm dev`, `vite`). Start it as a **background process** so you can keep running commands.
 
-- **Always use the assigned port.** The system reserves a port block per task in
-  **`KANBAN_PORT_BASE`** (`echo $KANBAN_PORT_BASE`, or `echo $env:KANBAN_PORT_BASE` in
-  PowerShell). This prevents clashes when several tasks run in parallel. **Do not use the
-  framework default port (3000/5173).**
-  - Pass it the framework's way: `npm run dev -- --port $KANBAN_PORT_BASE` (Vite/Nuxt),
-    `next dev -p $KANBAN_PORT_BASE`, or `PORT=$KANBAN_PORT_BASE npm run dev`.
-  - Need more than one port (separate backend/API, HMR)? Use `KANBAN_PORT_BASE + 1`, `+ 2`, …
-    (the block has 10 ports).
+- **Pick the port first, and never the framework default (3000/5173).** Other tasks may run on the
+  same machine.
+  - Use the ports the project's instructions name. Otherwise pick a free high port and check it is
+    free before you start the server (for example `lsof -i :$PORT`, or try to connect to it).
+  - Pass it the framework's own way: `npm run dev -- --port $PORT` (Vite/Nuxt), `next dev -p $PORT`,
+    or `PORT=$PORT npm run dev`.
+  - Need more than one port (a separate backend/API, HMR, a before and an after server)? Pick
+    consecutive ports.
   - **Watch out:** some backends read a bare `PORT` env var that is already set in the
     environment for something else. If the server starts on an unexpected port or dies with
     `EADDRINUSE`, pass the port explicitly with the framework's own flag.
-  - If `KANBAN_PORT_BASE` is unset, pick any free high port.
 - **Keep the process id** so you can shut it down afterwards (Windows: `taskkill /PID <pid> /T /F`).
 
 ## 2. Wait until the server responds
 
-Build the URL from the assigned port and poll it until it answers before capturing anything.
+Build the URL from the port you picked and poll it until it answers before capturing anything.
 
 ## 3. Capture
 
@@ -101,7 +102,13 @@ The most common options:
 | `--clip-selector "<sel>"` | Close-up of one element instead of the whole page. |
 | `--measure "<sel>"` | Print size, computed styles, line count and text overflow as JSON on stderr. |
 | `--state <path.json>` | Keep the session (cookies + storage) across separate runs. |
-| `--flow <path.json>` | Multi-step click path in one browser session, several screenshots. |
+| `--flow <path.json>` | Multi-step click path in one browser session, several screenshots. Repeatable, or a folder, or a glob: several flows in one call. |
+| `--base-url <url>` | Overrides a flow's `baseUrl`. |
+| `--before-url <url>` / `--after-url <url>` | Run every flow against each address given, in one call. |
+| `--side before\|after` | Names the side of a one-address run; with `--out-dir` the files are `<subject>-<side>.png`. |
+| `--out-dir <dir>` | Write the requested shots into this folder (created if missing). |
+| `--concurrency <n>` | Flows run at once in a suite (default 4; 1 = one after another). |
+| `--no-settle` / `--settle` / `--settle-timeout <ms>` | Skip, force or cap the wait for the page to go idle after navigation. |
 
 **A mobile-only bug cannot be reproduced at the default 1280px width** — always set the
 viewport when the ticket is about mobile. If a mobile bug still refuses to reproduce, check
@@ -122,27 +129,62 @@ Full option reference, flow-file format, logged-in sessions and worked examples:
 
 Pass the path to the **Read tool** — you will see the UI visually. Iterate: change, re-capture, verify.
 
+## More than one picture: one call
+
+Two or more pictures of the same app go through **one flow or one suite run**, never through
+separate single-shot calls: every call starts a browser, and a flow shares one.
+
+- Several views or paths: put them in one flow as steps with a `shot` each, or in several flow
+  files run together (`--flow a.json --flow b.json`, `--flow flows/*.json` or `--flow <folder>`).
+  The flows run in parallel in one browser; a failing flow does not stop the others (exit code 2
+  if any failed). Read the `FLOW` and `SUITE` lines on stderr.
+- A before/after pair: one call with `--before-url` and `--after-url` (or `--side before` now and
+  `--side after` later with the same flow), with `--out-dir` when the pictures are to be kept.
+- Logged-in pages: log in once with a flow and `--state s.json`, then pass the same `--state` to
+  every later call; in a two-address run it means `s.before.json` and `s.after.json`.
+- Use a `waitSelector` (or `--wait-selector`) that exists only when the view is ready, instead of
+  delays; the script then also skips its idle wait and its default 800 ms delay. A half-loaded
+  picture is fixed with a better `waitSelector` or `"settle": true`, not with a longer delay.
+
+Details: **[references/cli.md](references/cli.md)** ("Several flows in one call", "Before/after
+against two addresses") and **[references/ui-testing.md](references/ui-testing.md)**.
+
+## Several people at once
+
+One owner starts and stops the servers (and picks the ports). Several may drive a browser at the
+same time against the same servers. Flows that write to the same database need their own test
+data or account, or must run one after another (`--concurrency 1`).
+
+After the environment is up, the owner may hand test paths to subagents. The brief names the URL,
+the `--state` file and the test data to use; a subagent never starts a server and never stops
+one.
+
 ## Saving before/after images to the kanban task
 
 When the task's prompt names an images folder (a "UI testing" block with a path that ends in
 `grants/task-<id>/ui`), the kanban keeps the pictures of a UI change there: the task's Images
 tab shows them, the reviewer reads them and the office adds them to the pull request's
-description. The script writes to the OS temp directory, so **copy** the captures you want kept
-into that folder (create it if it is missing):
+description. Write the captures straight into that folder with `--out-dir <images folder>` plus
+`--side before|after` (one address) or `--before-url` / `--after-url` (both in one call); the
+script creates the folder and names the files for you:
 
-- Name them `<subject>-before.png` and `<subject>-after.png`. The subject says what the view is
-  (`login-form`, `board-narrow`): lowercase letters, digits, `.`, `_` and `-` only. A before and
-  an after of the same view share their subject; other names are ignored.
+- The files are named `<subject>-before.png` and `<subject>-after.png`, with no timestamp; a
+  later run overwrites an older file. The subject is the step's `shot` name in a flow and
+  `--name` in single mode, and says what the view is (`login-form`, `board-narrow`): lowercase
+  letters, digits, `.`, `_` and `-` only. A before and an after of the same view share their
+  subject; other names are ignored by the office. The office lists at most 40 images per task.
 - If the prompt lists a folder for each repository (`.../ui/<repo>`), the task changes several
-  repositories: copy each picture into the folder of the repository whose UI it shows (the pull
-  request of that repository gets it). A picture saved straight in the images folder goes to
+  repositories: use the folder of the repository whose UI the picture shows as `--out-dir` (the
+  pull request of that repository gets it). A picture saved straight in the images folder goes to
   every pull request of the task. Keep a view's before and after in the same folder, and retake an
   after picture under the same name in the same folder.
 - Take the **before** image before you change any code, and the **after** image of the same
   view, in the same state and at the same viewport, once the change works. A view that is new
   has only an after image.
-- After a later fix that changes the view, capture the after image again and save it under the
-  **same name**; leave the before image as it is, and delete images that no longer apply.
+- In a side-named run always give the first step a `waitSelector` (or an assertion), so that a
+  login page or an error page is not saved as the picture.
+- After a later fix that changes the view, take the after image again under the **same name**;
+  leave the before image as it is, and delete images that no longer apply.
 - Use test data and test accounts: these images may end up in a pull request.
 
 If the prompt names no images folder, leave the captures where the script put them.
@@ -158,7 +200,9 @@ accounts, keep artifacts private, and do not commit them. Do not enable `include
 `trace` on sensitive pages without appropriate authorization.
 
 Notes:
-- Images go to the OS temp directory, outside the target repo, so **do not commit them** — they
-  will not appear in the target repo's git status.
+- Without `--out-dir`, images go to the OS temp directory, outside the target repo, so **do not
+  commit them** — they will not appear in the target repo's git status. Reports, traces and failure
+  screenshots always stay in the OS temp directory. With `--out-dir`, do not commit the folder
+  either unless it is the kanban images folder, which lives outside the repo.
 - If the script reports that `playwright-core` is missing, install it once in this skill's
   directory with `npm ci` (or `npm install` if the lockfile is unavailable).
