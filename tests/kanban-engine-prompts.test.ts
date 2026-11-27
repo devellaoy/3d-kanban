@@ -996,6 +996,14 @@ test('post: the block telling the reply is posted goes after the pr.review and t
   // The fixture sets no public language: the block points at the prompt's own language rule.
   assert.match(prPosted(), /in the language this prompt's language rule sets for what is posted on pull requests, in English when it sets none, for a reader outside this office/);
   assert.match(prPosted(), /Don't mention a kanban task, rounds, other reviewers/);
+  // What doesn't block the merge is kept apart from the findings, in the posted review and in both editable prompts.
+  assert.match(prPosted(), /it goes after them under a heading `### Other observations`, written in the language of your reply/);
+  for (const id of ['kanban.pr.review', 'kanban.pr.review.combine'] as const) {
+    assert.match(KANBAN_PROMPT_DEFS[id].text, /under a heading of its own, "Other observations"/, id);
+    assert.match(KANBAN_PROMPT_DEFS[id].text, /the order to merge and deploy in/i, id);
+    assert.match(KANBAN_PROMPT_DEFS[id].text, /A migration or a step the change needs and doesn't have is a finding/, id);
+  }
+  assert.match(prPosted(), /a migration or a step the change needs and doesn't have is a finding/);
   assert.match(prPosted('Finnish'), /write it in Finnish, for a reader outside this office/);
   assert.ok(!prPosted('Finnish').includes('in English'));
   assert.match(prPosted('Finnish'), /don't write a section about testing/);
