@@ -1,6 +1,6 @@
-// The kanban's UI testing prompts: the blocks about before/after images that the implement, review, fix,
-// comment and pull-request-fix prompts carry as {{uiTesting}}, plus the pull-request testing's tester prompt (a UI in a
-// browser, an API by its endpoints, anything else through its entry point; the ids keep "uiTest"), the reviewers' block
+// The kanban's UI testing prompts: the blocks about before/after images (and, in the implementer's block with UI
+// testing on, about testing the change in a real browser) that the implement, review, fix, comment and
+// pull-request-fix prompts carry as {{uiTesting}}, plus the pull-request testing's tester prompt (a UI in a browser, an API by its endpoints, anything else through its entry point; the ids keep "uiTest"), the reviewers' block
 // about its report and pictures, and the review's own section. prompt-defs.ts spreads them into its DEFS.
 // No runtime imports besides the shared placeholders, so shared/prompts.ts can import it without a cycle.
 
@@ -17,19 +17,21 @@ export const UI_DEFS = {
   'kanban.uiTesting': {
     group: 'kanban',
     label: 'UI testing',
-    used: 'Added to the implement prompt when the task has UI testing on (the checkbox in the task, or the project’s or the office’s default). Left empty, nothing is added.',
+    used: 'Added to the implement prompt when the task has UI testing on (the checkbox in the task, or the project’s or the office’s default). The block has the implementer test the change in a real browser and save before and after pictures. Left empty, nothing is added.',
     vars: { imagesDir: 'The folder the task’s images go in (absolute path)', imageFolders: 'In a task with several repositories: the folder of each repository inside it and the instruction to save a picture in the folder of the repository whose UI it shows; empty otherwise' },
     needs: ['imagesDir'],
     optional: true,
-    text: `UI testing is on for this task. If the change alters what a user sees in the app's UI (a page, a dialog, a component, its layout or its styles), save pictures of it for review and the pull request:
+    text: `UI testing is on for this task. If the change alters what a user sees or does in the app's UI (a page, a dialog, a component, its layout, its styles or the behaviour behind them), test it in a real browser and save pictures of it for review and the pull request. Pictures alone are not enough.
 1. Before you change any code, take a picture of the view you are about to change, as it is now.
 2. After the change works, take a picture of the same view in the same state and size.
 3. Save them in {{imagesDir}} (it exists; make it if it does not).
 {{imageFolders}}
 ${NAMING}
-If the change touches several views, take a pair for each. A view that is new has only an after picture. If the change does not alter the UI, do nothing about pictures.
-${SHOT}
-If you cannot take a picture (the app does not start, it needs a login you do not have, there is no browser), do not get stuck on it: carry on with the task and say in your summary what you could not capture and why.`,
+If the change touches several views, take a pair for each. A view that is new has only an after picture.
+Then test the change the way a user uses it: real user actions (click, type, submit, keyboard) in the browser, and check the outcome of each. Fix what fails and test it again, and take the after pictures again if the fix changed the view. Changing the page with a script is no proof that a user's action works. Test your own change, the paths it adds or alters, not the whole app. This is functional testing, and the user asked for it explicitly: UI testing is on for this task.
+Use the kanban-ui-screenshots skill for the testing and the pictures if it is available to you, with its flow runner and assertions (its references/ui-testing.md), not only its screenshots; else whatever the project itself has for driving its UI (its dev server and a headless browser, its end-to-end tests, a storybook). Test only an instance that you started yourself, with test data and test accounts: the images are kept with the task and may end up in its pull request, so no real people's data, passwords or tokens in them, and send nothing that writes to a shared or production backend.
+Say briefly in your summary what you tested and what the result was. If the change does not alter the UI, do nothing about pictures or testing.
+If you cannot test or take a picture (the app does not start, it needs a login you do not have, there is no browser), do not get stuck on it: carry on with the task and say in your summary what you could not test or capture and why.`,
   },
   'kanban.uiTesting.onRequest': {
     group: 'kanban',

@@ -496,6 +496,10 @@ test('UI testing: the implementer gets the block with the images folder, or the 
   assert.match(on, /<subject>-before\.png/);
   assert.match(on, /kanban-ui-screenshots/);
   assert.match(on, /do not get stuck/);
+  assert.match(on, /real browser/);
+  assert.match(on, /flow runner and assertions/);
+  assert.match(on, /what you tested and what the result was/);
+  assert.match(on, /could not test or capture/);
   assert.ok(existsSync(images), 'the folder is made');
   assert.ok(on.indexOf('UI testing is on') < on.indexOf('Never push, open pull requests'), 'in front of the closing lines');
   assert.ok(on.endsWith(KANBAN_CONTRACTS.implementSafety));
@@ -504,6 +508,9 @@ test('UI testing: the implementer gets the block with the images folder, or the 
   const off = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
   assert.doesNotMatch(off, /UI testing is on/);
   assert.match(off, /UI testing is off for this task by default/);
+  assert.doesNotMatch(off, /flow runner/);
+  // The other blocks are still about pictures only.
+  for (const id of ['kanban.uiTesting.onRequest', 'kanban.uiTesting.fix'] as const) assert.ok(KANBAN_PROMPT_DEFS[id].text.includes('Use the kanban-ui-screenshots skill for the pictures if it is available to you'), id);
   // The task's own choice over the project's.
   const own = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada', overrides: { uiTesting: true } });
   assert.match(compose.build('implement', def, own, 'claude', dir, { phase: 'implement' }), /UI testing is on/);
