@@ -270,8 +270,8 @@ test('bad messages are refused with a reason, and their rid is still found for t
 
 test("the validator's limits fit what the rest of the kanban makes", () => {
   // A project's settings full to the brim still fit in one message.
-  const texts = 3 * INSTRUCTIONS_MAX + KANBAN_PROMPT_IDS.length * PROMPT_MAX;
-  const full = { branchInstructions: 'x'.repeat(INSTRUCTIONS_MAX), generalInstructions: 'x'.repeat(INSTRUCTIONS_MAX), testingInstructions: 'x'.repeat(INSTRUCTIONS_MAX), prompts: Object.fromEntries(KANBAN_PROMPT_IDS.map((id) => [id, 'y\n'.repeat(PROMPT_MAX / 2)])) };
+  const texts = 4 * INSTRUCTIONS_MAX + KANBAN_PROMPT_IDS.length * PROMPT_MAX;
+  const full = { branchInstructions: 'x'.repeat(INSTRUCTIONS_MAX), generalInstructions: 'x'.repeat(INSTRUCTIONS_MAX), testingInstructions: 'x'.repeat(INSTRUCTIONS_MAX), prReviewInstructions: 'x'.repeat(INSTRUCTIONS_MAX), prompts: Object.fromEntries(KANBAN_PROMPT_IDS.map((id) => [id, 'y\n'.repeat(PROMPT_MAX / 2)])) };
   assert.ok(JSON.stringify(full).length > texts);
   assert.ok(good({ t: 'kanban.project.settings.set', project: 'web', settings: full }));
   assert.ok(KANBAN_LIMITS.settingsJson < 2 * 1024 * 1024, "under the office's WebSocket message limit");

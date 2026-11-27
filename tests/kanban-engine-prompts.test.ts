@@ -1058,3 +1058,35 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   writeFileSync(report, 'x');
   assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }).includes(report));
 });
+
+test('the project’s pull-request review instructions go to the UI tester of a pull-request review only', (t) => {
+  const MARK = 'Pull-request review and UI testing';
+  const { def, dir, repo, settings, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const x = { phase: 'implement' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', prRepos: '- `.`: Proj' };
+  const file = path.join(ctx.filesDir, 'instructions', 'proj', 'pr-review.md');
+  assert.ok(KANBAN_PROMPT_DEFS['kanban.pr.uiTest'].text.includes("When the project's instructions below have a part for pull-request review and UI testing, follow it"));
+  assert.doesNotMatch(compose.build('pr.uitest', def, task, 'claude', dir, x), new RegExp(MARK));
+  settings.setProject('proj', { prReviewInstructions: 'Copy the database.' });
+  const text = compose.build('pr.uitest', def, task, 'claude', dir, x);
+  assert.ok(text.includes(`${MARK}: the project's instructions for it are in \`${file}\`. Read it now, before you start the app or prepare any test data`));
+  assert.equal(readFileSync(file, 'utf8'), 'Copy the database.\n');
+  assert.ok(text.includes('Keep it small.') || text.includes('general.md'), 'with the general instructions too');
+  assert.ok(text.includes(file));
+  for (const kind of ['pr.review', 'implement', 'review'] as const) {
+    const other = compose.build(kind, def, task, 'claude', dir, kind === 'pr.review' ? { ...x, phase: 'pr-review' as const } : { phase: kind === 'review' ? ('review' as const) : ('implement' as const) });
+    assert.ok(!other.includes(MARK), kind);
+  }
+  // Alone, without the general and the testing instructions.
+  settings.setProject('proj', { generalInstructions: '', testingInstructions: '' });
+  assert.ok(compose.build('pr.uitest', def, task, 'claude', dir, x).includes(`${MARK}: the project's`));
+});
+
+test('a rewritten kanban.pr.uiTest without {{instructions}} still gets the pull-request review instructions at its end', (t) => {
+  const { def, dir, repo, settings, compose, ctx } = setup(t, { 'kanban.pr.uiTest': { text: 'Test {{prs}} only.' } });
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  settings.setProject('proj', { prReviewInstructions: 'Copy the database.' });
+  const text = compose.build('pr.uitest', def, task, 'claude', dir, { phase: 'implement', prs: 'P1', prRepos: '- `.`: Proj' });
+  assert.ok(text.includes(`Test P1 only.`));
+  assert.ok(text.includes(path.join(ctx.filesDir, 'instructions', 'proj', 'pr-review.md')));
+});

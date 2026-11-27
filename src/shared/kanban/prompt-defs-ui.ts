@@ -65,7 +65,7 @@ Look at the ones that are there (open the image files) and check that they show 
       repos: 'The agent’s worktrees of the repositories, on their base branches',
       imagesDir: 'The folder the task’s images go in (absolute path)',
       reportFile: 'The file the tester writes its test report in (absolute path)',
-      instructions: 'The project’s instructions block; empty when there is none',
+      instructions: 'The project’s instructions block, including its pull-request review instructions; empty when there is none',
       language: 'The language rule of the project’s prompts',
     },
     needs: ['prs', 'imagesDir'],
@@ -89,6 +89,7 @@ A pull request that its line says is from a fork is not tested: don't check it o
 
 This is functional UI testing, and the user asked for it explicitly: use the kanban-ui-screenshots skill if it is available to you, with its flow runner and assertions (its references/ui-testing.md), not only its screenshots; else whatever the project itself has for driving its UI (its dev server and a headless browser, its end-to-end tests, a storybook).
 Test only an instance of the app that you started yourself, with test data and test accounts: no real people's data, passwords or tokens in the pictures or the report. Create, change and delete only data you made for the test. If the app only runs against a shared or production backend, do nothing there that writes: look only, and say so in the report.
+When the project's instructions below have a part for pull-request review and UI testing, follow it: start the environments the way it says, and prepare the data the test needs the way it says (a copy of the database that you may add data to, say). For a pull request that fixes a bug, first make the situation the bug appeared in, in that test data, see the bug on the pull request's target branch, and then check at its head that it is gone.
 Don't commit, push or change any file of the repositories (installing dependencies and build output are fine). Remove the worktrees you made (git worktree remove --force) and stop every process you started before you finish. If none of the pull requests changes the UI, or the app cannot be started (it does not start, it needs a login you do not have, there is no browser), say so in your report and end: the review goes on without a test.
 
 {{instructions}}

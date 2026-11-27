@@ -30,7 +30,7 @@ import { jiraReadAdvertised } from '../integrations/issues/agent-read-scope.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
 import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, type UiBlockKind } from './uitesting.js';
-import { instructionsBlock } from './instructions-block.js';
+import { instructionsBlock, prReviewInstructionsPart } from './instructions-block.js';
 import { historyBlock, planBlock } from './taskfiles-block.js';
 import { syncPlanFile, uiTestReportPath } from '../taskfiles.js';
 import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
@@ -489,7 +489,9 @@ export class Composer {
         return seal(this.posted(this.prUiTested(text + this.reviewerText(x, p), task, def, x), x));
       }
       case 'pr.uitest': {
-        const body = ins('kanban.pr.uiTest', this.text('kanban.pr.uiTest', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, imagesDir: uiImagesDir(this.ctx.filesDir, task.id), reportFile: uiTestReportPath(this.ctx.filesDir, task.id), instructions: v.instructions, language: v.language }));
+        // The tester also gets the project's pull-request review instructions, in its {{instructions}} or at the end of a rewritten prompt without it.
+        const insUi = [String(v.instructions), prReviewInstructionsPart(this.ctx, p)].filter(Boolean).join('\n\n');
+        const body = this.withBlock('kanban.pr.uiTest', p, this.text('kanban.pr.uiTest', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, imagesDir: uiImagesDir(this.ctx.filesDir, task.id), reportFile: uiTestReportPath(this.ctx.filesDir, task.id), instructions: insUi, language: v.language }), insUi, 'instructions');
         return seal(x.text ? `${body}\n\n${this.text('kanban.sinceSaid', p, { text: x.text })}` : body, 'prUiTest');
       }
     }

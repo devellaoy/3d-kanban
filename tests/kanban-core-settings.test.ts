@@ -76,6 +76,7 @@ test('project settings: texts capped, issue sources checked, prompts only the ka
   const p = sanitizeProjectSettings({
     branchInstructions: 'x'.repeat(30_000),
     generalInstructions: 'a\r\nb',
+    prReviewInstructions: 'p'.repeat(30_000),
     issueSources: [
       { kind: 'github-repo', repos: ['acme/web', 'not a repo'], filters: { labels: ['bug', ''], state: 'weird' } },
       { kind: 'github-project', owner: 'acme', number: 3, filters: {} },
@@ -88,6 +89,9 @@ test('project settings: texts capped, issue sources checked, prompts only the ka
   });
   assert.equal(p.branchInstructions.length, 20_000);
   assert.equal(p.generalInstructions, 'a\nb');
+  assert.equal(p.prReviewInstructions.length, 20_000);
+  assert.equal(sanitizeProjectSettings({}).prReviewInstructions, '', 'an old settings file has none');
+  assert.equal(sanitizeProjectSettings({ prReviewInstructions: 'q\r\n' }).prReviewInstructions, 'q\n');
   assert.equal(p.issueSources.length, 3);
   const [gh, proj, jira] = p.issueSources;
   assert.equal(gh.kind, 'github-repo');

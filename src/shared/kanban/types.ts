@@ -17,9 +17,7 @@ export type TaskStatus = 'todo' | 'in_progress' | 'waiting' | 'review' | 'on_hol
 export const TASK_STATUSES: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'review', 'on_hold', 'done', 'archived'];
 /** The board's columns, left to right. */
 export const BOARD_COLUMNS: readonly TaskStatus[] = ['todo', 'in_progress', 'waiting', 'review', 'on_hold', 'done'];
-export function isTaskStatus(v: unknown): v is TaskStatus {
-  return typeof v === 'string' && (TASK_STATUSES as readonly string[]).includes(v);
-}
+export const isTaskStatus = (v: unknown): v is TaskStatus => typeof v === 'string' && (TASK_STATUSES as readonly string[]).includes(v);
 
 /** implement: plan → implement → review ⇄ fix. investigate: read-only, writes report files. */
 export type TaskType = 'implement' | 'investigate';
@@ -406,6 +404,7 @@ export interface ProjectSettings {
   branchInstructions: string;
   generalInstructions: string;
   testingInstructions: string;
+  prReviewInstructions: string; // what the UI tester of a pull-request review is told: how to start the environments and prepare test data (see instructions.ts)
   maxConcurrent: number; // tasks of this project running at once
   /** What its issues, pull requests and commits are written in: FOLLOW_PROJECT (@project) goes by its own instructions; unset, the office's. */
   publicLanguage?: string;
