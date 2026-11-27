@@ -88,11 +88,18 @@ test('in the 3D office the review window\'s ✕ and Esc leave the settings too; 
   assert.equal(closesSettingsToo({ byButton: false, inOffice: false }), false);
 });
 
-test('unsaved instruction texts are kept over that close, given back once to the same project, and only where they differ', () => {
+test('only the boxes the person changed are kept, given back once to the same project and only where they differ', () => {
   const k = new KeptTexts();
-  k.keep('app', { general: 'my rules', testing: 'half written', prReview: '' });
-  assert.deepEqual(k.take('other', { general: '', testing: '', prReview: '' }), {});
-  // The settings drawn anew hold the saved texts: what differs comes back, what is the same or has no box does not.
-  assert.deepEqual(k.take('app', { general: 'my rules', testing: 'saved text' }), { testing: 'half written' });
-  assert.deepEqual(k.take('app', { general: '', testing: '' }), {}, 'given back once');
+  const saved = { general: 'old general', testing: '', prReview: '' };
+  k.keep('app', { general: 'old general', testing: 'half written', prReview: '' }, saved);
+  assert.equal(k.has('app'), true);
+  assert.equal(k.has('app'), true, 'asking uses nothing up');
+  assert.deepEqual(k.take('other', saved), {});
+  // Another admin saved new general instructions while the settings were closed: the untouched box keeps their text.
+  assert.deepEqual(k.take('app', { general: 'NEW general, saved elsewhere', testing: '', prReview: '' }), { testing: 'half written' });
+  assert.deepEqual(k.take('app', saved), {}, 'given back once');
+  // Nothing changed: nothing is kept, and an earlier keep of the project goes.
+  k.keep('app', { general: 'x' }, { general: '' });
+  k.keep('app', { general: '' }, { general: '' });
+  assert.equal(k.has('app'), false);
 });

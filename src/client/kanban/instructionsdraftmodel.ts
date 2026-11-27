@@ -113,8 +113,19 @@ export function closesSettingsToo(how: { byButton: boolean; inOffice: boolean })
 export class KeptTexts {
   private kept = new Map<string, Record<string, string>>();
 
-  keep(project: string, texts: Record<string, string>): void {
-    this.kept.set(project, { ...texts });
+  /**
+   * Keeps the boxes the person changed: those whose text is not what the form started with (`initial`, the
+   * saved texts). An untouched box is never kept, so a text someone else saved meanwhile is not put back over.
+   */
+  keep(project: string, texts: Record<string, string>, initial: Record<string, string>): void {
+    const edited = Object.fromEntries(Object.entries(texts).filter(([name, text]) => initial[name] !== text));
+    if (Object.keys(edited).length) this.kept.set(project, edited);
+    else this.kept.delete(project);
+  }
+
+  /** Whether the project has texts waiting; asking forgets nothing. */
+  has(project: string): boolean {
+    return this.kept.has(project);
   }
 
   /** The kept texts that differ from what the boxes hold now (`now`), by box; they are forgotten with this. */

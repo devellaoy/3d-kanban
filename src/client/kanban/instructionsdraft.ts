@@ -88,7 +88,8 @@ function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, t
 }
 
 /** What the instruction boxes held, unsaved, when a review window closed the Settings over them. */
-const kept = new KeptTexts();
+export const keptInstructionTexts = new KeptTexts();
+const kept = keptInstructionTexts;
 
 /**
  * Gives the project's two instruction boxes their "Write with AI" button. `others` are the pane's other
@@ -101,10 +102,21 @@ export function attachInstructionsDraft(api: Pick<KanbanApi, 'request'>, project
   const runs = new DraftRuns();
   const boxes: Record<string, HTMLTextAreaElement> = { ...others, ...fields };
   const texts = () => Object.fromEntries(Object.entries(boxes).map(([name, el]) => [name, el.value]));
-  // Texts a review window's ✕ or Esc took the Settings from, back in their boxes: still unsaved.
-  const back = kept.take(projectId, texts());
-  for (const [name, text] of Object.entries(back)) boxes[name].value = text;
-  if (Object.keys(back).length) toast('Your unsaved instruction texts are back in their boxes: press Save to keep them');
+  /** What the form started with (the saved texts): a box that still holds this was not changed here. */
+  const initial = texts();
+  // Texts a review window's ✕ or Esc took the Settings from go back in their boxes, still unsaved, once the
+  // boxes are seen: a pane drawn out of sight (behind another category of the Settings) and closed again uses nothing up.
+  if (kept.has(projectId) && typeof IntersectionObserver !== 'undefined') {
+    const seen = new IntersectionObserver((entries) => {
+      if (!entries.some((e) => e.isIntersecting)) return;
+      seen.disconnect();
+      const back = kept.take(projectId, texts());
+      for (const [name, text] of Object.entries(back)) boxes[name].value = text;
+      if (Object.keys(back).length) toast('Your unsaved instruction texts are back in their boxes: press Save to keep them');
+    });
+    seen.observe(fields.testing);
+    cleanups.add(() => seen.disconnect());
+  }
   const status = h('div.kb-insd-status', { role: 'status' });
 
   /** Ends the running draft, here and at the office. */
@@ -134,7 +146,7 @@ export function attachInstructionsDraft(api: Pick<KanbanApi, 'request'>, project
       (answer) => {
         if (!over()) return;
         if (!answer.text?.trim()) return void toast(draftFailure('the answer was empty') ?? '', 'error');
-        openReview(which, field, answer.text, () => field.isConnected && kept.keep(projectId, texts()));
+        openReview(which, field, answer.text, () => field.isConnected && kept.keep(projectId, texts(), initial));
       },
       (err) => {
         const why = over() ? draftFailure(err) : null;
