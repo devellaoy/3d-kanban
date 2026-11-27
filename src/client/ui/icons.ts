@@ -13,12 +13,13 @@ import {
   Send, Copy, Info, CircleAlert, CircleX, Clock, Tag, Folder, FolderOpen, Sparkles, Brain, Keyboard, Undo2, LogOut,
   CornerUpLeft, ArrowUp, ArrowDown, ArrowRight, Minus, List, Filter, Star, Sun, Moon, Palette,
   Sprout, Plug, VolumeX, Wind, CloudRain, Footprints, Armchair, FastForward, Activity,
-  Bell, BellOff, Calendar, Compass, Dices, Flag, Globe, House, Image, KeyRound, Layers, Save, Shield, Video, Volume2, ChevronUp, Zap, Hash, History, AtSign, CircleHelp, TrafficCone, Scissors, MessageCircleExclamationPoint, MessageSquareText,
+  Bell, BellOff, Calendar, Compass, Dices, Flag, Globe, House, Image, KeyRound, Layers, Save, Shield, Video, Volume2, ChevronUp, Zap, Hash, History, AtSign, CircleHelp, TrafficCone, Scissors, MessageCircleExclamationPoint, MessageSquareText, Maximize2,
 } from 'lucide';
 
 /** The icons by their Lucide (kebab-case) name. */
 export const ICONS = {
   'square-kanban': SquareKanban,
+  'maximize-2': Maximize2,
   'building-2': Building2,
   'package': Package,
   'ticket': Ticket,
