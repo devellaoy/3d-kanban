@@ -20,9 +20,10 @@ import { icon, iconButton, withIcon } from '../ui/icons';
 import { btn } from '../ui/kit';
 import { tabStrip } from '../ui/tabs';
 import { confirmDialog, openPrompt } from '../ui/prompt';
-import { onChangesMessage, pathLabel, plusMinus, renderDiff, renderPreview } from '../ui/changes';
+import { onChangesMessage, plusMinus, renderDiff, renderPreview } from '../ui/changes';
 import { getJson } from './api';
 import { LatestReads, branchMoved, changesModes, httpNeeds, liveFloor, liveRow, prHostName, prOfRepo, repoOfFloor, sortRepos, stepRow, taskRow, uncommittedNow, type ChangeRow, type ChangesMode } from './changesmodel';
+import { ChangesFileList } from './changeslist';
 import { holdChangesWatch } from './changeswatch';
 import { fmtTime } from './labels';
 import { splitDiff } from './model';
@@ -69,11 +70,10 @@ export class ChangesView {
   private commitsHead = h('h4', {}, 'Commits');
   private commitList = h('ol', { role: 'listbox', 'aria-label': 'Commits' });
   private commitsBox = h('div.kb-cv-commits.hidden', {}, this.commitsHead, this.commitList);
-  private filesHead = h('h4', {}, 'Changed files');
-  private list = h('ul', { role: 'listbox', 'aria-label': 'Changed files' });
+  private files = new ChangesFileList((p) => this.select(p));
   private diffHead = h('div.dh');
   private diffBody = h('div.diff-scroll');
-  readonly body = h('div.changes-body', {}, h('aside.changes-files', {}, this.commitsBox, this.filesHead, this.list), h('section.changes-diff', {}, this.diffHead, this.diffBody));
+  readonly body = h('div.changes-body', {}, h('aside.changes-files', {}, this.commitsBox, this.files.el), h('section.changes-diff', {}, this.diffHead, this.diffBody));
   private summary = h('span.grow');
   private discardBtn = btn('Discard all', { kind: 'quiet-danger', icon: 'trash-2', attrs: { title: 'Throw away every uncommitted change in this checkout' } });
   private commitBtn = btn('Commit…', { icon: 'check', attrs: { title: 'git add -A && git commit' } });
@@ -439,8 +439,11 @@ export class ChangesView {
     if (/^(INPUT|TEXTAREA|SELECT)$/.test((e.target as HTMLElement).tagName)) return;
     const l = this.listing();
     if (l.kind !== 'rows') return;
-    const next = stepRow(l.rows, this.selected, down ? 1 : -1);
-    if (next) this.select(next);
+    const next = stepRow(this.files.order(l.rows), this.selected, down ? 1 : -1);
+    if (next) {
+      this.files.reveal(l.rows, next);
+      this.select(next);
+    }
     e.preventDefault();
     e.stopPropagation();
   }
@@ -526,10 +529,10 @@ export class ChangesView {
       void this.fetchShown();
     }
     const l = this.listing();
-    if (l.kind !== 'rows' || !l.rows.some((r) => r.path === this.selected)) this.selected = l.kind === 'rows' ? (l.rows[0]?.path ?? null) : null;
+    if (l.kind !== 'rows' || !l.rows.some((r) => r.path === this.selected)) this.selected = l.kind === 'rows' ? this.files.first(l.rows, this.repoId) : null;
     this.paintBar(modes, n);
     this.paintCommits();
-    this.paintList(l);
+    this.files.paint({ rows: l.kind === 'rows' ? l.rows : [], more: l.kind === 'rows' ? l.more : 0, selected: this.selected, perCommit: this.mode === 'commits', scope: this.repoId });
     this.paintDiffHead(l);
     this.paintDiff(l);
     this.paintFooter();
@@ -600,29 +603,6 @@ export class ChangesView {
       }),
     );
     this.commitList.querySelector('li.on')?.scrollIntoView({ block: 'nearest' });
-  }
-
-  private paintList(l: Listing) {
-    this.list.replaceChildren();
-    const rows = l.kind === 'rows' ? l.rows : [];
-    const more = l.kind === 'rows' ? l.more : 0;
-    const n = rows.length;
-    const what = this.mode === 'commits' ? (n ? `${n} file${n > 1 ? 's' : ''} in this commit` : 'Files in this commit') : n ? `${n}${more ? '+' : ''} changed file${n > 1 || more ? 's' : ''}` : 'Changed files';
-    this.filesHead.textContent = what;
-    for (const f of rows) {
-      this.list.append(
-        h(
-          'li',
-          { class: f.path === this.selected ? 'on' : '', role: 'option', 'aria-selected': f.path === this.selected ? 'true' : 'false', tabindex: -1, onclick: () => this.select(f.path) },
-          h('span.st', { class: f.tone, title: f.word }, f.letter),
-          pathLabel(f.path),
-          f.uncommitted ? h('span.dirty', { title: 'Not committed yet' }) : null,
-          plusMinus(f.additions, f.deletions, f.binary),
-        ),
-      );
-    }
-    if (more) this.list.append(h('li.empty', {}, `…and ${more} more`));
-    this.list.querySelector('li.on')?.scrollIntoView({ block: 'nearest' });
   }
 
   private paintDiffHead(l: Listing) {

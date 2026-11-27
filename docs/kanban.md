@@ -551,7 +551,11 @@ the Pull requests tab. Its tabs:
   another project's floor takes you to that floor first.
 - **Changes**: the task's **Changes view**, the same one **C** (or Changes in the worker's window)
   opens in the 3D office: upstream's Changes window with a tab per repository of the task (and its PR
-  number), the changed files down the left and one file's diff on the right (j/k or the arrows move),
+  number), the changed files down the left and one file's diff on the right. The files are a folder
+  tree by default (a folder that only holds one folder is joined to it in one row, like `src/client`;
+  click a folder to close or open it); a **Tree** / **List** switch above the files turns the flat list
+  of paths back on, and the browser remembers the choice. j/k and the arrows move through the files in
+  the order shown, and open a closed folder they step into,
   and **All changes** (the branch against its base, `origin/<base>` or the local base), **Per commit**
   (the branch's commits, the newest picked, each with its own files) and, while the task's worktree
   has uncommitted work, **Uncommitted (n)** (the worktree against its HEAD commit). While the task's
@@ -618,7 +622,7 @@ Every action button of the task window and of a pull request's window says what 
 - **An issue's window**: its key, status and the quiet **Refresh** in the header, the description and comments in the body, **Status** and **Assignee** in the rail beside it (and **Epic** when the issue is in one, or **Parent** when it has a parent that is not an epic, such as a sub-task's story), and in the footer **Open in Jira** / **Open on GitHub** (or Azure Boards) on the left and, on the right, a link to the task made from it (once there is one), **Create task** and **Create and start**.
 - **Find / Link PRs**: a list of pull requests to tick, *N of M selected* in the footer, **Cancel** and **Link selected**.
 - **A pull request's window** (the PR board): its title, state and review on top, the tabs **Conversation** and **Files changed**, the details rail (task, worker, review, changes, labels, updated) with *Hand it to a worker* (**Review**, a kanban task with the PR checked out and two ticks, to post the review on the PR and to test the UI too; **Review panel**, the meeting form; **Fix comments and merge**, **Fix via task #N**, **Ask a worker**), and in the footer **Open on GitHub** on the left and **Close pull request** and **Merge** on the right.
-- **Changes**: the repositories as tabs, the modes (**All changes**, **Per commit**, **Uncommitted**) and **Refresh**, the files and the diff, and in the footer **Discard all**, **Commit…** and **Open PR…**.
+- **Changes**: the repositories as tabs, the modes (**All changes**, **Per commit**, **Uncommitted**) and **Refresh**, the files (as a folder tree or a flat list) and the diff, and in the footer **Discard all**, **Commit…** and **Open PR…**.
 - **Settings**: a window with the categories down the side (**You**, **Sound & voice**, **Notifications**, **Building**, **Workers**, **Kanban**, **Projects**, **Multiplayer**); the kanban's two are described under [Settings](#settings).
 
 ## Projects and repositories

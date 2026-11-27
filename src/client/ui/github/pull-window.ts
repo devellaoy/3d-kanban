@@ -17,7 +17,8 @@ import { conflicted, hostedMergeStatus, mergeBox, mergeStatus, openMerge } from 
 import { commentCard, errorBox, nodes, reviewBadge, spinnerRow, stateOf } from './pieces';
 import { FILES_KEY, mergePref, pref, savePref, TAB_KEY } from './prefs';
 import { fixAndMergePrompt, fixConflictsPrompt, type BoardActions } from './prompts';
-import { buildTree, looksGenerated, parseDiff, renderFileDiff, repliesOf, Reviewed, STATUS_WORD, treeOrder, type DiffFile, type TreeDir } from './pulldiff';
+import { buildTree, treeOrder, type TreeDir } from '../filetree';
+import { looksGenerated, parseDiff, renderFileDiff, repliesOf, Reviewed, STATUS_WORD, type DiffFile } from './pulldiff';
 import { pullFooter, pullRail } from './pull-rail';
 import { ThreadsUi } from './thread';
 import { commitsBlock, eventRow, historyCut, historyError } from './timeline';
@@ -301,7 +302,7 @@ export function openPull(first: GhPull, net: Net, actions: BoardActions) {
     );
   };
 
-  const dirRows = (d: TreeDir, depth: number, visible: Set<DiffFile>, out: HTMLElement[]) => {
+  const dirRows = (d: TreeDir<DiffFile>, depth: number, visible: Set<DiffFile>, out: HTMLElement[]) => {
     for (const sub of d.dirs) {
       const inside = treeOrder(sub).filter((f) => visible.has(f));
       if (!inside.length) continue;

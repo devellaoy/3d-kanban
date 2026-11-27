@@ -5,6 +5,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LatestReads, branchMoved, changesModes, floorOfRepo, httpNeeds, liveFloor, liveRow, prOfRepo, uncommittedNow, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
+import { buildTree, treeOrder } from '../src/client/ui/filetree.js';
+import { FileListState } from '../src/client/kanban/changeslistmodel.js';
 import { parseRepoFloorId, repoFloorId } from '../src/shared/kanban/repofloor.js';
 import { repoFloorId as serverRepoFloorId } from '../src/server/kanban/projects.js';
 import type { ChangedFile, WorkerRepo } from '../src/shared/protocol.js';
@@ -141,4 +143,54 @@ test('an older HTTP answer never overwrites a newer one, nor one forgotten since
   const other = r.start('whole:web');
   r.clear();
   assert.equal(r.take('whole:web', other), false);
+});
+
+test('stepRow over the tree order walks the files as the tree shows them', () => {
+  const rows = [{ path: 'z.ts' }, { path: 'b/x.ts' }, { path: 'a/y.ts' }];
+  const shown = treeOrder(buildTree(rows));
+  assert.deepEqual(shown.map((r) => r.path), ['a/y.ts', 'b/x.ts', 'z.ts']);
+  assert.equal(stepRow(shown, 'a/y.ts', 1), 'b/x.ts');
+  assert.equal(stepRow(shown, 'b/x.ts', 1), 'z.ts');
+  assert.equal(stepRow(shown, 'b/x.ts', -1), 'a/y.ts');
+  assert.equal(stepRow(rows, 'z.ts', 1), 'b/x.ts');
+});
+
+test('a closed folder stays closed over a switch to another repository and back', () => {
+  const a = [{ path: 'api/x.ts' }, { path: 'api/y.ts' }, { path: 'web/z.ts' }];
+  const b = [{ path: 'api/other.ts' }];
+  const s = new FileListState();
+  assert.equal(s.first(a, 'A')?.path, 'api/x.ts');
+  s.toggle('A', 'api');
+  // To B and back: the selection was dropped on the way, and the default one is the first file in sight.
+  assert.equal(s.first(b, 'B')?.path, 'api/other.ts');
+  assert.equal(s.first(a, 'A')?.path, 'web/z.ts');
+  assert.deepEqual([...s.shut('A')], ['api']);
+  assert.deepEqual([...s.shut('B')], []);
+  // Every file inside a closed folder: the first one, and the folder still stays as it was left.
+  s.toggle('A', 'web');
+  assert.equal(s.first(a, 'A')?.path, 'api/x.ts');
+  assert.deepEqual([...s.shut('A')].sort(), ['api', 'web']);
+  // The keys stepping into a closed folder open it, in that repository only.
+  s.toggle('B', 'api');
+  assert.equal(s.reveal(a, 'A', 'api/y.ts'), true);
+  assert.deepEqual([...s.shut('A')], ['web']);
+  assert.deepEqual([...s.shut('B')], ['api']);
+});
+
+test('a file picked in the list is in sight when the tree comes back', () => {
+  const rows = [{ path: 'web/z.ts' }, { path: 'api/src/x.ts' }, { path: 'api/y.ts' }];
+  const s = new FileListState();
+  s.toggle('A', 'api');
+  s.toggle('A', 'api/src');
+  s.toggle('A', 'web');
+  s.setMode('list', rows, 'A', 'web/z.ts');
+  // The list is the rows as given, and nothing opens while it is shown.
+  assert.deepEqual(s.order(rows).map((r) => r.path), ['web/z.ts', 'api/src/x.ts', 'api/y.ts']);
+  assert.equal(s.first(rows, 'A')?.path, 'web/z.ts');
+  assert.equal(s.reveal(rows, 'A', 'api/src/x.ts'), false);
+  assert.equal(s.shut('A').size, 3);
+  // Picked api/src/x.ts in the list, then back to the tree: the folders above it open, the others stay closed.
+  s.setMode('tree', rows, 'A', 'api/src/x.ts');
+  assert.deepEqual([...s.shut('A')], ['web']);
+  assert.deepEqual(s.order(rows).map((r) => r.path), ['api/src/x.ts', 'api/y.ts', 'web/z.ts']);
 });
