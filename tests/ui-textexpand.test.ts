@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  actionPlace, adopt, buttonPlace, editorState, expandable, fieldName, isExpandKey, keptOnClose, mayWrite, replacement, BTN_GAP, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts,
+  actionPlace, adopt, buttonPlace, editorState, expandable, fieldName, isActionKey, isExpandKey, keptOnClose, mayWrite, replacement, BTN_GAP, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts,
 } from '../src/client/ui/textexpandmodel.js';
 import { commentFocus } from '../src/client/kanban/issueactionsmodel.js';
 import { isSendKey } from '../src/client/kanban/sendkey.js';
@@ -115,6 +115,14 @@ const key = (o: Partial<Parameters<typeof isExpandKey>[0]> = {}) => ({
 
 test('Alt+Enter opens the editor', () => {
   assert.equal(isExpandKey(key()), true);
+});
+
+test('Alt+Shift+Enter is the key of the box\'s own action, and never the editor\'s', () => {
+  assert.equal(isActionKey(key({ shiftKey: true })), true);
+  assert.equal(isExpandKey(key({ shiftKey: true })), false);
+  assert.equal(isActionKey(key()), false);
+  assert.equal(isActionKey(key({ shiftKey: true, ctrlKey: true })), false);
+  assert.equal(isActionKey(key({ shiftKey: true, isComposing: true })), false);
 });
 
 test('other keys and chords do not', () => {

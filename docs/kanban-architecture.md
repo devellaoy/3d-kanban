@@ -679,8 +679,7 @@ answers `kanban.ok {rid, ...}` or `kanban.error {rid, message}`. Deltas are push
     Pull-request review (`prReviewInstructions`) text for the settings page's review window; `text` is the field's current, maybe unsaved and maybe empty content
     (at most `KANBAN_LIMITS.promptText`). Claude only (the Settings' default model when the default agent is Claude, else Claude's own; Codex can't be limited to
     read-only tools), run one-shot (see §10) with the tools `Read`, `Glob` and `Grep` and the project's existing repository folders as its only extra
-    directories (`--add-dir`); its working directory is the run's own fresh temp folder (a run with tools never works in the shared temp folder), so it reads the repositories and nothing else. A deny list in the run's settings file keeps it from `.env`, `.env.local`/`.development`/`.production`/`.staging`/`.test`,
-    `.env.*.local`, `*.pem`, `*.key` and `id_rsa*` (`.env.example` stays readable). Answered with `kanban.instructionsDraft {rid?, text, warnings?}`: the
+    directories (`--add-dir`); its working directory is the run's own fresh temp folder (a run with tools never works in the shared temp folder), so it reads the repositories and nothing else. A deny list in the run's settings file (`INSTRUCTIONS_DRAFT_DENY`) keeps it from every env file (`.env` and `.env.*`, whatever the suffix), `*.pem`, `*.key`, `id_rsa*` and `id_ed25519*`; Claude Code applies those `Read` rules to `Grep` and `Glob` too. The example env files (`.env.example`, `.sample`, `.template`, `.dist`, `.defaults`, up to three folders deep, 20 files) are read by the office instead and reach the agent's input as key names only (`envexamples.ts`), never a value. Answered with `kanban.instructionsDraft {rid?, text, warnings?}`: the
     answer with one wrapping code fence removed, clipped to 20 000 characters; `warnings` (omitted when none) are lines like `Line 12 may hold a secret (a token)` from
     a rough scan (`secrets.ts`: tokens, API keys, long key-like runs, a value after a key named like a password, secret or token, a password in a connection URL or given to a database client as a flag; it does not find everything), which never repeats the secret and never changes the text. Refused with `kanban.error` when
     there is no such project, hiring is paused, Claude or the asker's Claude sign-in is not ready, none of the repository folders exists, the office already has two
@@ -1020,7 +1019,7 @@ the floors are open and keeps the result as `ctx.kanban`; `kanbanHandlers` (WS, 
 
 `oneshot.ts` runs the kanban's one-shot agent calls (a prompt in, one answer out, no session; no tools unless the caller asks for read-only ones: `tools` (`Read,Glob,Grep`), `addDirs` (`--add-dir`) and `deny` (permission rules, written as `settings.json` beside the system file and passed with `--settings`); Claude Code with
 `-p` only, since Codex can't be run without tools) with a timeout and `kill()`; it never rejects. The system text goes in a
-file of a temp folder (`--system-prompt-file`) so no argument carries text; a Windows `.cmd`/`.bat` shim runs through
+file of a temp folder (`--system-prompt-file`) so no argument carries text; a `kill()` that comes while those files are being written starts no agent (the cancel is checked after the last write); a Windows `.cmd`/`.bat` shim runs through
 cmd.exe with every token quoted (`spawnPlan`; an argument with `"`, `%` or a line break is refused) and is killed with
 `taskkill /T`. The binary comes from the optional `claudeBin()` of `KanbanOffice`/`KanbanContext`, which `office.ts`
 provides (the workers' and sign-ins' Claude binary) and caches, so a login shell is not run per request; a miss is looked for again after a minute.

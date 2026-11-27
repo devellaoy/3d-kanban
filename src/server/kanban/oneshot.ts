@@ -92,6 +92,8 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
       if (o.deny?.length) {
         settingsFile = path.join(dir, 'settings.json');
         await writeFile(settingsFile, JSON.stringify({ permissions: { deny: o.deny } }), 'utf8');
+        // A cancel that came while this file was being written found no process to end: nothing is started for it.
+        if (cancelled) return { error: 'cancelled' };
       }
       const plan = spawnPlan(o.cmd, oneShotCommand(o.model, file, { tools: o.tools, addDirs: o.addDirs, settingsFile }).args);
       if ('error' in plan) return plan;

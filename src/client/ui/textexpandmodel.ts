@@ -66,6 +66,11 @@ export function isExpandKey(e: Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' 
   return e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.isComposing;
 }
 
+/** Alt+Shift+Enter and nothing else held: runs the box's own action (ui/fieldaction.ts), when it has one. */
+export function isActionKey(e: Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'isComposing'>): boolean {
+  return e.key === 'Enter' && e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing;
+}
+
 /** What tells one field of a view from another across the view's redraws. */
 export interface FieldIdentity {
   /** Its data-focus, the name its view keeps for it. */

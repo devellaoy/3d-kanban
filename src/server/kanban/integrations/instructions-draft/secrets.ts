@@ -22,18 +22,19 @@ const RULES: { re: RegExp; what: string; /** Whether the captured group 1 must b
 export function findSecrets(text: string): string[] {
   const out: string[] = [];
   text.split('\n').forEach((line, i) => {
-    for (const { re, what, value } of RULES) {
-      const m = re.exec(line);
-      if (!m) continue;
-      if (value) {
-        const v = (m[1] ?? '').replace(/^["']|["']$/g, '').trim();
-        if (!v || /^[<{[$%]/.test(v) || PLACEHOLDER.test(v)) continue;
-      } else if (what === 'a long key' && /^[A-Za-z]+$|^[/\\.]|\//.test(m[0]) && !/^[0-9a-fA-F]+$/.test(m[0])) {
-        // A long run of letters or a path-like run is prose or a path, not a key.
-        if (!/\d/.test(m[0])) continue;
+    rules: for (const { re, what, value } of RULES) {
+      // Every match of the rule on the line: a placeholder earlier on it must not hide a real value after it.
+      for (const m of line.matchAll(new RegExp(re.source, re.flags.includes('g') ? re.flags : `${re.flags}g`))) {
+        if (value) {
+          const v = (m[1] ?? '').replace(/^["']|["']$/g, '').trim();
+          if (!v || /^[<{[$%]/.test(v) || PLACEHOLDER.test(v)) continue;
+        } else if (what === 'a long key' && /^[A-Za-z]+$|^[/\\.]|\//.test(m[0]) && !/^[0-9a-fA-F]+$/.test(m[0])) {
+          // A long run of letters or a path-like run is prose or a path, not a key.
+          if (!/\d/.test(m[0])) continue;
+        }
+        out.push(`Line ${i + 1} may hold a secret (${what})`);
+        break rules;
       }
-      out.push(`Line ${i + 1} may hold a secret (${what})`);
-      break;
     }
   });
   return out;

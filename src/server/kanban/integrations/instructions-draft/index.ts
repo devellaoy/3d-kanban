@@ -7,6 +7,7 @@ import { childEnv } from '../../../workers/env.js';
 import { runOneShot, type OneShotRun } from '../../oneshot.js';
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
 import { fail } from '../util.js';
+import { envExampleKeys } from './envexamples.js';
 import { draftInput, draftSystem } from './prompt.js';
 import { findSecrets } from './secrets.js';
 
@@ -18,19 +19,12 @@ export const INSTRUCTIONS_DRAFT_RUNS_MAX = 2;
 export const INSTRUCTIONS_DRAFT_MAX = 20_000;
 
 const TOOLS = ['Read', 'Glob', 'Grep'];
-/** Files the agent can't read, though they lie in the repositories (`.env.example` stays readable). */
-export const INSTRUCTIONS_DRAFT_DENY = [
-  'Read(**/.env)',
-  'Read(**/.env.local)',
-  'Read(**/.env.development)',
-  'Read(**/.env.production)',
-  'Read(**/.env.staging)',
-  'Read(**/.env.test)',
-  'Read(**/.env.*.local)',
-  'Read(**/*.pem)',
-  'Read(**/*.key)',
-  'Read(**/id_rsa*)',
-];
+/**
+ * Files the agent can't read, though they lie in the repositories: every env file whatever its suffix (`.env.ci`
+ * or `.env.backup` may hold real values), and key files. The example env files' key names reach it through the
+ * input instead (envexamples.ts). Claude Code applies Read rules to Grep and Glob too.
+ */
+export const INSTRUCTIONS_DRAFT_DENY = ['Read(**/.env)', 'Read(**/.env.*)', 'Read(**/*.pem)', 'Read(**/*.key)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)'];
 
 export interface InstructionsDraftDeps {
   /** Stand-in for the agent, for tests. */
@@ -99,6 +93,7 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
               general: saved.generalInstructions,
               other: m.field === 'testing' ? saved.prReviewInstructions : saved.testingInstructions,
               current: m.text,
+              envExamples: envExampleKeys(dirs),
               field: m.field,
             }),
             env,

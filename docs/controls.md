@@ -104,6 +104,7 @@ The kanban view (`/kanban`, **🗂️ Kanban** in the ☰ menu or on the 2D view
 | ← / → | Between the detail's tabs; on the detail's left edge, make the panel wider or narrower |
 | Ctrl/⌘ + Enter | Send a comment or an answer; save the new-task dialog |
 | Alt + Enter | In a text box: open its text in the large editor (the **Expand** button in its corner); Esc, **Done** or Ctrl/⌘ + Enter return to the box |
+| Alt + Shift + Enter | In a text box that has an action button beside **Expand** (a project's *Debugging and testing* and *Pull-request review* instructions: **Write with AI**): the same as pressing that button |
 | Esc | Close the window on top (the same as its close button at the top right), then the task's detail |
 
 ## In a terminal

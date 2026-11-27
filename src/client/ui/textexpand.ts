@@ -26,7 +26,7 @@ import { actionButton, fieldAction } from './fieldaction';
 import { iconButton } from './icons';
 import { btn } from './kit';
 import { modalShell, openShell } from './shell';
-import { actionPlace, adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isExpandKey, replacement, editorState, keptOnClose, mayWrite, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts, type EditorState } from './textexpandmodel';
+import { actionPlace, adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isActionKey, isExpandKey, replacement, editorState, keptOnClose, mayWrite, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts, type EditorState } from './textexpandmodel';
 
 /** Marks the window's own text box, which never gets the button. */
 const EDITOR = 'data-text-expand-editor';
@@ -221,10 +221,15 @@ export function installTextExpand(): void {
     'keydown',
     (e) => {
       const el = e.target;
-      if (!isExpandKey(e) || !(el instanceof HTMLTextAreaElement) || !usable(el)) return;
+      if (!(el instanceof HTMLTextAreaElement) || !usable(el)) return;
+      // The box's own action has a key too: its button, like Expand's, is not a stop of the Tab key.
+      const action = isActionKey(e) ? fieldAction(el) : undefined;
+      if (!action && !isExpandKey(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      if (!e.repeat) open(el);
+      if (e.repeat) return;
+      if (action) action.run(el);
+      else open(el);
     },
     true,
   );
