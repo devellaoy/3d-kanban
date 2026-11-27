@@ -103,6 +103,7 @@ The kanban view (`/kanban`, **🗂️ Kanban** in the ☰ menu or on the 2D view
 | M | On a card: move it to another column (the same as its **Move** button, the ellipsis, and what dragging it does). Columns it can't go to are greyed out with the reason |
 | ← / → | Between the detail's tabs; on the detail's left edge, make the panel wider or narrower |
 | Ctrl/⌘ + Enter | Send a comment or an answer; save the new-task dialog |
+| Alt + Enter | In a text box: open its text in the large editor (the **Expand** button in its corner); Esc, **Done** or Ctrl/⌘ + Enter return to the box |
 | Esc | Close the window on top (the same as its close button at the top right), then the task's detail |
 
 ## In a terminal
@@ -119,4 +120,4 @@ The prompt edits the way it does in your own terminal (iTerm2's *Natural Text Ed
 | Ctrl + C | Copy the selected text, and let go of the selection so the next Ctrl + C interrupts; with nothing selected, interrupt as always (Windows / Linux; ⌘C on a Mac). Ctrl + Shift + C does the same |
 | Ctrl + V | Paste (Windows / Linux; ⌘V on a Mac). Ctrl + Shift + V does the same |
 
-Shift + Enter adds a new line in the prompt boxes too (hire, ask, queue, comments); they send with Ctrl/⌘ + Enter. In a terminal it is the agent's own new line.
+Shift + Enter adds a new line in the prompt boxes too (hire, ask, queue, comments); they send with Ctrl/⌘ + Enter. **Alt + Enter** in any multi-line text box, in the 3D office and the 2D view as in the kanban view, opens its text in the large editor (the **Expand** button in the box's corner does the same); Esc, **Done** or Ctrl/⌘ + Enter return to the box. In a terminal it is the agent's own new line.

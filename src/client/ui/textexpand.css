@@ -1,0 +1,48 @@
+/* The large editor of a text box (ui/textexpand.ts): the one button that sits in the top right corner of
+   whichever text box has the pointer or the focus, and the window the text opens in. */
+
+/* The button: on the page itself, above the windows (.backdrop is 50) and under the toasts (60) and the
+   tooltip (120). The script gives its place as --tx-left and --tx-top; its side is BTN_SIZE in
+   ui/textexpandmodel.ts. It has the field's own background and a line round it, so the text of a box
+   that isn't ours to pad never shows through it. */
+/* A theme's own look for buttons (glossy's glass pill, themes/glossy.css) is not for this one: it takes the
+   page's field colours back and keeps its corner and its line, hence the weight of the selector. */
+:root .btn.icon-btn.text-expand-btn.text-expand-btn { --field: inherit; --field-hover: inherit; border-color: var(--line-control); border-radius: var(--radius-xs); box-shadow: none; }
+.btn.text-expand-btn { position: fixed; left: var(--tx-left, 0); top: var(--tx-top, 0); z-index: 55; width: 22px; height: 22px; color: var(--text-2); background: var(--field); border: 1px solid var(--line-control); box-shadow: none; }
+.btn.text-expand-btn:hover { color: var(--text); background: var(--field-hover); }
+.btn.text-expand-btn:active { transform: none; }
+.btn.text-expand-btn.hidden { display: none; }
+
+/* Room for the button: a text box that gets it keeps its words out from under it (the button's side, how
+   far it sits from the edge, and a little air). The class is repeated so this wins over a window's own
+   `padding` for its text box (.modal .composite > textarea, .kb-browse-window .kb-br-jql textarea)
+   wherever this sheet lands among the others. */
+textarea.ta-expandable.ta-expandable.ta-expandable { padding-right: 32px; }
+
+/* The window: as large as the screen lets it be, and all of it the text. */
+.modal.text-expand { width: min(1100px, 100%); height: calc(100vh - 32px); height: calc(100dvh - 32px); }
+/* The body is the text box and nothing else, at every width: the kit's narrow rule (kit-modal.css) would
+   turn it into a scrolling column as tall as its content. */
+.modal.text-expand > .shell-body { overflow: hidden; }
+.modal.text-expand > .shell-body > .shell-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; padding: 0; overflow: hidden; }
+.modal.text-expand textarea.text-expand-box { flex: 1 1 auto; min-height: 0; width: 100%; padding: 18px 22px; font: inherit; font-size: var(--fs-md); line-height: 1.6; color: var(--text); background: var(--field); border: 0; border-radius: 0; outline: 0; resize: none; }
+.modal.text-expand textarea.text-expand-box.mono { font-family: var(--font-mono); font-size: var(--fs-sm); }
+
+/* A phone: the whole screen (whatever is left inside the backdrop's padding, which the kanban page takes
+   away), and 16px text so iOS doesn't zoom in on the box. Here and not in kanban.css, which the 3D office
+   and the 2D view don't load. */
+@media (max-width: 700px) {
+  .modal.text-expand { height: 100%; max-height: 100%; }
+  .modal.text-expand textarea.text-expand-box, .modal.text-expand textarea.text-expand-box.mono { padding: 14px 16px; font-size: 16px; }
+}
+
+/* The editor's footer says when its field can't take the text (gone, or locked): in the warning ink, and
+   it wraps so the buttons keep their size on a phone. */
+.modal.text-expand .foot-hint.text-expand-note { display: block; flex: 1 1 200px; min-width: 0; color: var(--warn-ink); }
+
+/* The window that keeps a text the editor could not put anywhere (closing the editor with the field gone or locked). */
+.modal.text-kept .text-kept-why { margin: 0 0 12px; }
+.modal.text-kept textarea.text-kept-box { display: block; width: 100%; resize: vertical; }
+@media (max-width: 700px) {
+  .modal.text-kept textarea.text-kept-box { font-size: 16px; }
+}
