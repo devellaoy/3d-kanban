@@ -111,13 +111,21 @@ export function dropUiTestReport(filesDir: string, taskId: number): boolean {
   }
 }
 
+/** The bytes a report file holds for `text`, as storeUiTestReport writes it. */
+export const uiTestReportBytes = (text: string): number => Buffer.byteLength(`${text.trim()}\n`, 'utf8');
+
 const REPORT_MAX_BYTES = 200_000;
 
-/** What a test may put in the way of readUiTestReport: a step before the open and after it, and the platform's no-follow flag (0: none). */
+/** How readUiTestReport reads: the size limit, and what a test may put in its way (a step before the open and after it, and the platform's no-follow flag; 0: none). */
 export interface ReportReadSteps {
   beforeOpen?: () => void;
   opened?: () => void;
   noFollow?: number;
+  /**
+   * The most bytes the file may have: the tester's own file is held to REPORT_MAX_BYTES (the default); a file the office stored
+   * itself is read against the size it was given, which it knows.
+   */
+  maxBytes?: number;
 }
 
 /**
@@ -141,12 +149,13 @@ export function readUiTestReport(filesDir: string, taskId: number, steps: Report
     fd = openSync(file, constants.O_RDONLY | (steps.noFollow ?? constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
     steps.opened?.();
     const st = fstatSync(fd, { bigint: true });
-    if (!same(before, st) || st.size > BigInt(REPORT_MAX_BYTES)) return undefined;
-    const buf = Buffer.alloc(REPORT_MAX_BYTES + 1);
+    const max = steps.maxBytes ?? REPORT_MAX_BYTES;
+    if (!same(before, st) || st.size > BigInt(max)) return undefined;
+    const buf = Buffer.alloc(max + 1);
     let n = 0;
     for (let got = -1; got !== 0 && n < buf.length; n += got) got = readSync(fd, buf, n, buf.length - n, null);
     // It grew while it was read: not the report that was checked.
-    if (n > REPORT_MAX_BYTES) return undefined;
+    if (n > max) return undefined;
     return buf.toString('utf8', 0, n).trim() || undefined;
   } catch {
     return undefined;

@@ -9,7 +9,7 @@ import { UI_IMAGES_DIR, UI_IMAGES_MAX, UI_IMAGE_MAX_BYTES, UI_IMAGE_FOLDER_RE, U
 import { grantDir } from '../uploads.js';
 import { createHash } from 'node:crypto';
 import type { KanbanRepository } from '../db/repository.js';
-import { dropUiTestReport, readUiTestReport, storeUiTestReport, uiTestReportPath } from '../taskfiles.js';
+import { dropUiTestReport, readUiTestReport, storeUiTestReport, uiTestReportBytes, uiTestReportPath } from '../taskfiles.js';
 
 /** An image of a task with the file it is in. */
 export type UiImageFile = KanbanTaskImage & { file: string };
@@ -125,7 +125,7 @@ export const UI_REPORT_TEXT_MAX = 30_000;
 
 const reportHash = (text: string) => createHash('sha256').update(text.trim()).digest('hex');
 type ReportRepo = Pick<KanbanRepository, 'appendEvent' | 'listEvents'>;
-type ReportEvent = { sha?: unknown; name?: unknown; text?: unknown; length?: unknown; stale?: unknown };
+type ReportEvent = { sha?: unknown; name?: unknown; bytes?: unknown; text?: unknown; length?: unknown; stale?: unknown };
 const lastReportEvent = (repo: ReportRepo, taskId: number) => [...repo.listEvents(taskId)].reverse().find((e) => e.kind === UI_REPORT_EVENT)?.data as ReportEvent | undefined;
 
 /**
@@ -145,18 +145,18 @@ export function ownUiTestReport(repo: ReportRepo, filesDir: string, taskId: numb
 
 /**
  * Keeps a UI test's report: whole in a file (storeUiTestReport: the report's own, or one beside it when that path cannot be written),
- * and in a task event that holds that file's name and the hash of what it was given, or neither when no file could be written, with
+ * and in a task event that holds that file's name and the size and hash of what it was given, or neither when no file could be written, with
  * the text's first UI_REPORT_TEXT_MAX characters and its whole length as the last fallback.
  */
 export function keepUiTestReport(repo: ReportRepo, filesDir: string, taskId: number, report: string): void {
   const text = report.trim();
   const file = storeUiTestReport(filesDir, taskId, text || undefined);
-  repo.appendEvent(taskId, UI_REPORT_EVENT, text ? { ...(file ? { sha: reportHash(text), name: path.basename(file) } : {}), text: text.slice(0, UI_REPORT_TEXT_MAX), length: text.length } : {});
+  repo.appendEvent(taskId, UI_REPORT_EVENT, text ? { ...(file ? { sha: reportHash(text), name: path.basename(file), bytes: uiTestReportBytes(text) } : {}), text: text.slice(0, UI_REPORT_TEXT_MAX), length: text.length } : {});
 }
 
 /**
  * What a prompt may say of the task's UI test report: its file, only when it is the very text the office stored there (a regular
- * file within the limit whose hash is the one kept: a file the store could not replace or remove, or one changed since, is never
+ * file of no more than the bytes it was given, whose hash is the one kept: a file the store could not replace or remove, or one changed since, is never
  * named); else the kept text, with `cut` (the report's whole length) when that is only its beginning; nothing when the last UI
  * test left no report.
  */
@@ -164,7 +164,9 @@ export function uiTestReportFor(repo: ReportRepo, filesDir: string, taskId: numb
   const last = lastReportEvent(repo, taskId);
   if (!last || typeof last.text !== 'string' || !last.text) return {};
   const name = typeof last.name === 'string' ? last.name : undefined;
-  const read = typeof last.sha === 'string' ? readUiTestReport(filesDir, taskId, {}, name === path.basename(uiTestReportPath(filesDir, taskId)) ? undefined : name) : undefined;
+  // The office's own file is read against the size it was given (the tester's file and its reply together may pass the tester's limit), then by its hash.
+  const sized = typeof last.sha === 'string' && typeof last.bytes === 'number' && Number.isSafeInteger(last.bytes) && last.bytes > 0;
+  const read = sized ? readUiTestReport(filesDir, taskId, { maxBytes: last.bytes as number }, name === path.basename(uiTestReportPath(filesDir, taskId)) ? undefined : name) : undefined;
   if (read !== undefined && reportHash(read) === last.sha) return { file: name ? path.join(path.dirname(uiTestReportPath(filesDir, taskId)), name) : uiTestReportPath(filesDir, taskId) };
   return { text: last.text, ...(typeof last.length === 'number' && last.length > last.text.length ? { cut: last.length } : {}) };
 }

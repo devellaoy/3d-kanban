@@ -20,6 +20,7 @@ import type { LanguageSettings } from '../src/shared/language.js';
 import { makeRepo } from './kanban-engine-fixture.js';
 import { conversationFilePath, planFilePath } from '../src/server/kanban/taskfiles.js';
 import { keepUiTestReport, resetUiTestReport } from '../src/server/kanban/engine/uitesting.js';
+import { uiTestReport } from '../src/server/kanban/engine/prreview-ui.js';
 import { syncBuiltinESMExports } from 'node:module';
 import { HISTORY_TEXT_MAX } from '../src/server/kanban/engine/taskfiles-block.js';
 
@@ -1073,6 +1074,34 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   assert.ok(combine.indexOf(SECTION) < combine.indexOf(KANBAN_CONTRACTS.prReview), 'before the contract');
   keepUiTestReport(repo, ctx.filesDir, task.id, 'x');
   assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }).includes(`The tester's report is in ${report}.`));
+});
+
+test('kanban.pr.uiTest.review: a report that is the tester’s file and its reply together, larger than the tester’s own file may be, is still named whole to the reviewers', (t) => {
+  const { def: floorDef, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const report = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui-test-report.md');
+  // The tester's file, near its limit, and a reply as large that holds the last finding: what uiEnded keeps of the two.
+  const own = `## UI test report\n### Tested\n${'- PR 3 a path in the file: PASSED\n'.repeat(3600)}`;
+  const reply = `## UI test report\n### Tested\n${'- PR 3 a path in the reply: PASSED\n'.repeat(3600)}### Findings\n- PR 3: the last finding, only in the reply`;
+  const whole = uiTestReport(own.trim(), reply);
+  assert.ok(Buffer.byteLength(own) < 200_000 && Buffer.byteLength(whole) > 200_000, `${Buffer.byteLength(own)} and ${Buffer.byteLength(whole)} bytes`);
+  keepUiTestReport(repo, ctx.filesDir, task.id, whole);
+  const build = () => compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
+  const text = build();
+  assert.ok(text.includes(`The tester's report is in ${report}.`), 'the file is named');
+  assert.ok(!text.includes('The report is cut here') && !text.includes('could not be kept as a file'));
+  assert.match(readFileSync(report, 'utf8'), /the last finding, only in the reply\n$/, 'and it holds the reply’s finding at its end');
+  // One byte more in it than the office gave it, or other text of the same size, and it is not named.
+  const stored = readFileSync(report, 'utf8');
+  rmSync(report);
+  writeFileSync(report, `${stored}x`);
+  assert.ok(!build().includes("The tester's report is in"), 'grown');
+  rmSync(report);
+  writeFileSync(report, stored.replace('the last finding', 'THE LAST FINDING'));
+  assert.ok(!build().includes("The tester's report is in"), 'changed');
+  rmSync(report);
+  writeFileSync(report, stored);
+  assert.ok(build().includes(`The tester's report is in ${report}.`));
 });
 
 test('kanban.pr.uiTest.review: when the report file can be neither replaced nor removed, the file left there is not named: the whole report is kept beside it, and with no file at all its text is given, marked as cut when it is', (t) => {
