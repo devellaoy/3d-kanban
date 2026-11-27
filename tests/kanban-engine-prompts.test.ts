@@ -992,6 +992,8 @@ test('post: the block telling the reply is posted goes after the pr.review and t
   assert.match(prPosted('Finnish'), /write it in Finnish, for a reader outside this office/);
   assert.ok(!prPosted('Finnish').includes('in English'));
   assert.match(prPosted('Finnish'), /don't write a section about testing/);
+  assert.match(prPosted(), /`## <owner\/repo#number>` exactly as its line above names it/);
+  assert.ok(!prPosted().includes('Pictures:') && prPosted(undefined, true).includes('`Pictures:`'));
   // A rewritten prompt gets it too: it is not a prompt variable.
   settings.setProject('proj', { prompts: { 'kanban.pr.review': 'Mine', 'kanban.pr.review.combine': 'Mine too {{reviews}}' } });
   const mine = compose.build('pr.review', def, task, 'claude', dir, { ...common, post: true });

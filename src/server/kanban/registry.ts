@@ -5,6 +5,7 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import type { FloorDef } from '../building.js';
 import type { Floor } from '../floor.js';
+import type { UiImageFile } from './engine/uitesting.js';
 import type { KanbanRepository } from './db/repository.js';
 import type { KanbanSecrets } from './secrets.js';
 import type { KanbanSettingsStore } from './settings.js';
@@ -154,7 +155,7 @@ export interface KanbanPullsApi {
    * text without its verdict and work-done lines, clipped under GitHub's limit. Resolves to a URL or an error per PR; never rejects.
    * (Optional only so stand-ins in tests needn't have it.)
    */
-  postReview?(project: string, prs: PrRef[], text: string, account?: string, opts?: { verdict?: 'approved' | 'changes_requested'; cut?: boolean }): Promise<{ repo: string; number: number; url?: string; error?: string }[]>;
+  postReview?(project: string, prs: PrRef[], text: string, account?: string, opts?: { verdict?: 'approved' | 'changes_requested'; cut?: boolean; images?: UiImageFile[] }): Promise<{ repo: string; number: number; url?: string; error?: string; note?: string }[]>;
 }
 
 /** Reading other tasks, for agents (implemented by the task-references plugin). */

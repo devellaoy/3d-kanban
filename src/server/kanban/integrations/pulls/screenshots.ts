@@ -123,7 +123,7 @@ export function editTimeout(images: readonly KanbanTaskImage[]): number {
  * image from a repository's folder (a number before the extension when that name is taken). Returns the
  * files and the reference to each image by its name in the task.
  */
-async function stageImages(stage: string, images: readonly UiImageFile[]): Promise<{ files: string[]; ref: Map<string, string> }> {
+export async function stageImages(stage: string, images: readonly UiImageFile[]): Promise<{ files: string[]; ref: Map<string, string> }> {
   await mkdir(stage, { mode: 0o700 });
   const ref = new Map<string, string>();
   const taken = new Set<string>();

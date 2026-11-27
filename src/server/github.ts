@@ -312,7 +312,15 @@ export class GitHub {
    * Posts a review on a pull request that only comments (the meeting room's review panel), its body
    * read from a file. Resolves to the review's URL.
    */
-  async review(n: number, file: string, as?: GhAs): Promise<string> {
+  async review(n: number, file: string, as?: GhAs, _owner?: string, attach?: string[]): Promise<string> {
+    if (attach?.length) {
+      // Pictures: a conversation comment (a review has no attachments); gh uploads each file and rewrites the body's `./name` references.
+      const repo = this.target ?? (await this.repoInfo()).nameWithOwner;
+      const args = ['pr', 'comment', String(n), '--repo', repo, '--body-file', file, ...attach.flatMap((f) => ['--attach', f])];
+      const out = await this.gh(args, this.dir, Math.min(600_000, 60_000 + attach.length * 10_000), as?.env);
+      void this.refreshPulls();
+      return out.split('\n').map((l) => l.trim()).filter(Boolean).pop() ?? '';
+    }
     // -F reads @file's contents as the value.
     const url = (await this.gh(['api', '--method', 'POST', repoApi(this.target, `pulls/${n}/reviews`), '-F', `body=@${file}`, '-f', 'event=COMMENT', '--jq', '.html_url'], this.dir, 60_000, as?.env)).trim();
     void this.refreshPulls();
@@ -564,7 +572,7 @@ export type Board = Omit<GitHub, 'pullDetail' | 'pullCard' | 'comment' | 'review
   pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail>;
   pullCard(n: number, host?: HostAs): Promise<GhPull>;
   comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }>;
-  review(n: number, file: string, as?: GhAs, owner?: string): Promise<string>;
+  review(n: number, file: string, as?: GhAs, owner?: string, attach?: string[]): Promise<string>;
 };
 
 /**

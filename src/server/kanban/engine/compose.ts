@@ -499,7 +499,7 @@ export class Composer {
 
   /** A pull-request review's prompt with the block that tells its reviewer the reply is posted as it is (see ComposeExtra.post). */
   private posted(text: string, x: ComposeExtra, project: string): string {
-    return x.post ? `${text.trimEnd()}\n\n${prPosted(this.languages(project).public)}` : text;
+    return x.post ? `${text.trimEnd()}\n\n${prPosted(this.languages(project).public, !!x.uiTest)}` : text;
   }
 
   /**
