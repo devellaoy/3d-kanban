@@ -151,8 +151,8 @@ export interface KanbanPullsApi {
   brief?(req: KanbanPrReviewRequest): Promise<{ prompt: string; title: string; pr: number } | string>;
   /**
    * Posts a pull-request review's text on each of the PRs as a review comment (GitHub: a COMMENT review as `account`; Azure DevOps and
-   * Bitbucket: a comment on the conversation): a header line with the verdict, for several PRs the list of the ones it covers, then the
-   * text without its verdict and work-done lines, clipped under GitHub's limit. Resolves to a URL or an error per PR; never rejects.
+   * Bitbucket: a comment on the conversation): a header line with the verdict, then the text without its verdict and
+   * work-done lines, clipped under GitHub's limit; of a review of several PRs each gets only its own part. Resolves to a URL or an error per PR; never rejects.
    * (Optional only so stand-ins in tests needn't have it.)
    */
   postReview?(project: string, prs: PrRef[], text: string, account?: string, opts?: { verdict?: 'approved' | 'changes_requested'; cut?: boolean; images?: UiImageFile[] }): Promise<{ repo: string; number: number; url?: string; error?: string; note?: string }[]>;

@@ -57,7 +57,7 @@ Look at the ones that are there (open the image files) and check that they show 
   'kanban.pr.uiTest': {
     group: 'kanban',
     label: 'UI testing · before a pull-request review',
-    used: "Sent to the agent that tests the UI of the pull requests before their review, when the PR window's Review has “also test the UI” on: it runs the app, tests the views and functions the pull requests change with real browser actions, saves before and after pictures as evidence and writes a test report; the review starts when it is done, and its reviewers read the report. The pictures stay with the review task and go to no pull request. The office appends the UI test contract.",
+    used: "Sent to the agent that tests the UI of the pull requests before their review, when the PR window's Review has “also test the UI” on: it runs the app, tests the views and functions the pull requests change with real browser actions, saves before and after pictures as evidence and writes a test report; the review starts when it is done, and its reviewers read the report. The pictures stay with the review task; when the review is posted on the pull requests, the ones a finding shows in are attached to its comment. The office appends the UI test contract.",
     vars: {
       prs: 'The pull requests, one per line: owner/repo#number, its title, its branch, its URL, and the ref its head was fetched as',
       project: 'The project’s name',
@@ -84,7 +84,7 @@ How to test each pull request that changes what a user sees or does in the app's
 4. When something behaves wrongly at the head, check the same path on the pull request's own target branch, so your report can tell a regression of the pull request from a fault that was there before. When its line above says your workspace starts from its target, use your workspace as it is. When its line names another target, put that target in a worktree of its own, inside your workspace folder, with HEAD detached at it, using the command its line gives (git worktree add --detach ./base-<number> origin/<its target>), and work there.
 5. Take a picture of each view the pull request changes, before (on its target branch) and after (at its head), in the same state and size, and a picture of each fault you find. Save the pictures in {{imagesDir}} (it exists; make it if it does not).
 ${NAMING}
-The pictures stay with this task, under its Images tab: they are not added to any pull request.
+The pictures stay with this task, under its Images tab. When the review is posted on the pull requests, the pictures that show a fault are attached to its comment there: save a fault's picture as an after picture named for what it shows, and keep it free of anything that must not be public.
 A pull request that its line says is from a fork is not tested: don't check it out or run it.
 
 This is functional UI testing, and the user asked for it explicitly: use the kanban-ui-screenshots skill if it is available to you, with its flow runner and assertions (its references/ui-testing.md), not only its screenshots; else whatever the project itself has for driving its UI (its dev server and a headless browser, its end-to-end tests, a storybook).

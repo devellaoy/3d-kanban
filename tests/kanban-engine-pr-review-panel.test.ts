@@ -341,7 +341,9 @@ test('post: with additional reviewers that never deliver, a long approving revie
   assert.equal(calls[0].opts?.cut, false);
   assert.equal(calls[0].text, long, 'the whole text, not the run’s clipped summary');
   assert.ok(fx.repo.listRuns(id)[0].summary!.length < long.length, 'the run row keeps only the start');
-  const body = reviewBody(pr(3), [pr(3), pr(4)], calls[0].text, calls[0].opts as never);
+  // As one pull request's review: the text has no part per pull request, so of the two reviewed nothing would be posted on either.
+  const body = reviewBody(pr(3), [pr(3)], calls[0].text, calls[0].opts as never)!;
+  assert.equal(reviewBody(pr(3), [pr(3), pr(4)], calls[0].text, calls[0].opts as never), undefined);
   assert.match(body, /^\*\*Review: approved\*\*/);
   assert.ok(body.includes('Finding 1999: a note.') && !/REVIEW: APPROVED/.test(body) && !/cut/.test(body));
 });

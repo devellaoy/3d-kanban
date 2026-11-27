@@ -112,7 +112,7 @@ test('uiTest: a task of its own even when one is named, the tester first (an imp
   const prompt = start.prompt!;
   assert.match(prompt, /- acme\/proj#3 “PR 3” \(branch feat\/login\) https:\/\/github\.com\/acme\/proj\/pull\/3 — its head is not fetched: git fetch origin pull\/3\/head/);
   assert.ok(prompt.includes(`Save the pictures in ${dir()}`));
-  assert.match(prompt, /not added to any pull request/);
+  assert.match(prompt, /the pictures that show a fault are attached to its comment there/);
   assert.match(prompt, /git worktree add --detach/);
   assert.match(prompt, /How to end your work/, 'the work-done contract of an investigation');
   assert.doesNotMatch(prompt, /REVIEW: APPROVED/, 'no verdict is asked of it');

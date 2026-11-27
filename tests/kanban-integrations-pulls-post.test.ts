@@ -9,7 +9,8 @@ import path from 'node:path';
 import { GitHub } from '../src/server/github.js';
 import type { Floor } from '../src/server/floor.js';
 import { createPullsParts } from '../src/server/kanban/integrations/pulls/index.js';
-import { POST_MAX, postReview, reviewBody } from '../src/server/kanban/integrations/pulls/postreview.js';
+import { POST_MAX, postReview, reviewBody, strayText } from '../src/server/kanban/integrations/pulls/postreview.js';
+import { PicturesNotPosted, PicturesPartly, commentWithPictures } from '../src/server/ghattach.js';
 import { reviewParts } from '../src/server/kanban/integrations/pulls/reviewparts.js';
 import { WHO, def, makeCtx } from './kanban-integrations-ctx.js';
 
@@ -18,11 +19,12 @@ const PRS = [
   { repo: 'o/web', number: 4 },
 ];
 const REVIEW = 'src/login.ts:12 never clears the cache.\n\nREVIEW: CHANGES_REQUESTED\nWORK DONE';
+/** The same review with a part for each of the two pull requests. */
+const BOTH = `## o/web#3\nsrc/login.ts:12 never clears the cache.\n## o/web#4\nThe same cache, read here.\n\nREVIEW: CHANGES_REQUESTED\nWORK DONE`;
 
-test('the body: a header with the verdict, the list of the pull requests when there are several, the text without its verdict and work-done lines', () => {
+test('the body: a header with the verdict, then the text without its verdict and work-done lines', () => {
   assert.equal(reviewBody(PRS[0], [PRS[0]], 'Nothing to fix.\n\nREVIEW: APPROVED'), '**Review: approved**\n\nNothing to fix.');
   assert.equal(reviewBody(PRS[0], [PRS[0]], REVIEW), '**Review: changes requested**\n\nsrc/login.ts:12 never clears the cache.');
-  assert.equal(reviewBody(PRS[0], PRS, 'Fine.\nREVIEW: APPROVED'), '**Review: approved**\n\nThis review covers:\n- o/web#3 Fix login\n- o/web#4\n\nFine.');
   // No verdict line: a review that did not end with one counts as asking for changes, as everywhere.
   assert.match(reviewBody(PRS[0], [PRS[0]], 'Unclear.'), /^\*\*Review: changes requested\*\*/);
   assert.match(reviewBody(PRS[0], [PRS[0]], 'REVIEW: APPROVED'), /\(The reviewer gave no findings\.\)$/);
@@ -35,19 +37,20 @@ test('the verdict is the run’s own when it is given, and a review the office k
 });
 
 test('the fixed lines follow the language: Finnish ones, English for a language the office has none for', () => {
-  const fi = reviewBody(PRS[0], PRS, 'Fine.\nREVIEW: APPROVED', { language: ' finnish ', cut: true });
-  assert.match(fi, /^\*\*Katselmointi: hyväksytty\*\*\n\nTämä katselmointi kattaa:\n- o\/web#3 Fix login/);
+  const fi = reviewBody(PRS[0], [PRS[0]], 'Fine.\nREVIEW: APPROVED', { language: ' finnish ', cut: true })!;
+  assert.match(fi, /^\*\*Katselmointi: hyväksytty\*\*\n\nFine\./);
   assert.ok(fi.endsWith('(Katselmoinnin teksti katkaistiin tästä: toimisto säilytti vain sen alkuosan.)'));
   assert.match(reviewBody(PRS[0], [PRS[0]], REVIEW, { language: 'Finnish' }), /^\*\*Katselmointi: muutoksia pyydetty\*\*/);
   assert.equal(reviewBody(PRS[0], [PRS[0]], REVIEW, { language: 'Klingon' }), reviewBody(PRS[0], [PRS[0]], REVIEW));
+  assert.equal(reviewBody(PRS[0], [PRS[0]], REVIEW, { language: 'constructor' }), reviewBody(PRS[0], [PRS[0]], REVIEW), 'no inherited property is a language');
 });
 
 test('a very long review is cut under GitHub’s limit, and says so', () => {
-  const body = reviewBody(PRS[0], PRS, `${'finding. '.repeat(20_000)}\nREVIEW: APPROVED`);
+  const body = reviewBody(PRS[0], [PRS[0]], `${'finding. '.repeat(20_000)}\nREVIEW: APPROVED`)!;
   assert.ok(body.length <= POST_MAX, `${body.length} characters`);
   assert.ok(POST_MAX < 65_536);
   assert.ok(body.endsWith('(The review is cut off here: it is too long to post.)'));
-  assert.match(body, /^\*\*Review: approved\*\*\n\nThis review covers:/);
+  assert.match(body, /^\*\*Review: approved\*\*\n\nfinding\./);
 });
 
 /** A gh that records what it is asked and the body file it is given, and fails for the pull requests `failing` names. */
@@ -97,7 +100,7 @@ test('GitHub: one COMMENT review per pull request through gh, the body in a file
   try {
     const ctx = makeCtx([def('web', dir, { repo: 'o/web' })], { ghAs: (id) => (id === 'acc1' ? { env: { ...process.env as Record<string, string>, FAKE_GH_ACCOUNT: 'acc1' } } : undefined) });
     ctx.floors.set('web', floor);
-    const got = await postReview(ctx, 'web', PRS, REVIEW, 'acc1');
+    const got = await postReview(ctx, 'web', PRS, BOTH, 'acc1');
     assert.deepEqual(got, [
       { repo: 'o/web', number: 3, url: 'https://github.com/o/web/pull/3#pullrequestreview-77' },
       { repo: 'o/web', number: 4, url: 'https://github.com/o/web/pull/4#pullrequestreview-77' },
@@ -109,7 +112,8 @@ test('GitHub: one COMMENT review per pull request through gh, the body in a file
       assert.deepEqual(c.args.slice(0, 3), ['api', '--method', 'POST']);
       assert.ok(c.args.includes('repos/o/web/pulls/' + n + '/reviews'), c.args.join(' '));
       assert.ok(c.args.includes('event=COMMENT'), 'only a comment: never an approval or a change request');
-      assert.equal(c.body, reviewBody(PRS[0], PRS, REVIEW));
+      assert.equal(c.body, reviewBody(PRS[n - 3], PRS, BOTH));
+      assert.ok(c.body.includes(n === 3 ? 'never clears' : 'read here') && !c.body.includes(n === 3 ? 'read here' : 'never clears'), 'only its own findings');
       assert.equal(c.env, 'acc1', 'as the account that asked');
       assert.ok(!c.body.includes('WORK DONE') && !c.body.includes('REVIEW: CHANGES_REQUESTED'));
     }
@@ -126,20 +130,20 @@ test('an error is a result for that pull request and the rest go on; nothing eve
   try {
     const ctx = makeCtx([def('web', dir, { repo: 'o/web' })]);
     ctx.floors.set('web', floor);
-    const got = await postReview(ctx, 'web', PRS, REVIEW);
+    const got = await postReview(ctx, 'web', PRS, BOTH);
     assert.equal(got[0].number, 3);
     assert.match(got[0].error ?? '', /422|locked/);
     assert.equal(got[0].url, undefined);
     assert.equal(got[1].url, 'https://github.com/o/web/pull/4#pullrequestreview-77');
     // The floor closed, or no board for the repository: an error per pull request, not an exception.
     const shut = makeCtx([def('web', dir, { repo: 'o/web' })]);
-    const none = await postReview(shut, 'web', PRS, REVIEW);
+    const none = await postReview(shut, 'web', PRS, BOTH);
     assert.deepEqual(none.map((r) => [r.number, !!r.error]), [[3, true], [4, true]]);
     // An account with no GitHub sign-in: why, per pull request, and gh is not run for it.
     const before = Object.keys(gh.calls()).length;
     const signedOut = makeCtx([def('web', dir, { repo: 'o/web' })], { ghAs: () => 'Sign in to GitHub first' });
     signedOut.floors.set('web', floor);
-    assert.deepEqual((await postReview(signedOut, 'web', PRS, REVIEW, 'x')).map((r) => r.error), ['Sign in to GitHub first', 'Sign in to GitHub first']);
+    assert.deepEqual((await postReview(signedOut, 'web', PRS, BOTH, 'x')).map((r) => r.error), ['Sign in to GitHub first', 'Sign in to GitHub first']);
     assert.equal(Object.keys(gh.calls()).length, before);
   } finally {
     gh.done();
@@ -190,40 +194,46 @@ const IMAGES = [
   { name: 'web/login-after.png', file: '/x/web/login-after.png', size: 1, mtime: 1 },
 ] as never[];
 
-test('several pull requests: each body has only its own part, its own verdict, and no list of the ones covered', () => {
-  const three = reviewBody(PRS[0], PRS, SPLIT);
-  assert.equal(three, '**Review: changes requested**\n\nIntro for everyone.\n\nsrc/login.ts:12 never clears the cache.');
-  assert.equal(reviewBody(PRS[1], PRS, SPLIT), '**Review: approved**\n\nIntro for everyone.\n\nNothing wrong.');
-  // A reply with a part for only some of the pull requests (a cut one, say) is posted whole on each, with the list.
-  const some = reviewBody(PRS[1], PRS, '## o/web#3\nA.\nREVIEW: APPROVED');
-  assert.ok(some.includes('This review covers:') && some.endsWith('## o/web#3\nA.'), some);
-  assert.equal(reviewBody(PRS[1], PRS, 'Same for both.\nREVIEW: APPROVED'), reviewBody(PRS[0], PRS, 'Same for both.\nREVIEW: APPROVED'));
-  assert.match(reviewBody(PRS[1], PRS, 'Same for both.\nREVIEW: APPROVED'), /This review covers:/);
+test('several pull requests: each gets only its own part and verdict; what names no pull request is posted on none', () => {
+  assert.equal(reviewBody(PRS[0], PRS, SPLIT), '**Review: changes requested**\n\nsrc/login.ts:12 never clears the cache.');
+  assert.equal(reviewBody(PRS[1], PRS, SPLIT), '**Review: approved**\n\nNothing wrong.');
+  assert.equal(strayText(PRS, SPLIT), true, 'the intro is in no part');
+  assert.equal(strayText(PRS, SPLIT.replace('Intro for everyone.\n', '')), false);
+  // A pull request the review has no part for gets nothing: not the other one's findings, and not a review without headings.
+  assert.equal(reviewBody(PRS[1], PRS, '## o/web#3\nA.\nREVIEW: APPROVED'), undefined);
+  assert.equal(reviewBody(PRS[0], PRS, '## o/web#3\nA.\nREVIEW: APPROVED'), '**Review: approved**\n\nA.');
+  assert.equal(reviewBody(PRS[0], PRS, 'Same for both.\nREVIEW: APPROVED'), undefined);
+  assert.equal(reviewBody(PRS[0], PRS, '## o/web#3: APPROVED\n## o/web#4\nBroken.'), '**Review: approved**\n\n(The reviewer gave no findings.)');
 });
 
-test('reviewParts: a heading in a code fence or naming another number is no part, and a part heading is no verdict line', () => {
+test('reviewParts: a heading in a code fence, naming another number or with a title of its own is no part, and a part heading is no verdict line', () => {
   const fenced = reviewParts(PRS, 'Look:\n```\n## o/web#3: APPROVED\nPictures: a.png\n```\n## o/web#33: APPROVED');
-  assert.equal(fenced.split, false);
+  assert.equal(fenced.parts.size, 0);
   assert.deepEqual(fenced.common.pictures, []);
   // The heading is not the verdict line: the run's verdict still comes from REVIEW:, and the part's from its heading.
-  assert.match(reviewBody(PRS[0], PRS, '## o/web#3: APPROVED\nFine.\n## o/web#4\nBroken.\nREVIEW: CHANGES_REQUESTED'), /^\*\*Review: approved\*\*\n\nFine\.$/);
-  assert.match(reviewBody(PRS[1], PRS, '## o/web#3: APPROVED\nFine.\n## o/web#4\nBroken.\nREVIEW: CHANGES_REQUESTED'), /^\*\*Review: changes requested\*\*\n\nBroken\.$/, 'a heading without a verdict leaves the overall one');
+  const two = '## o/web#3: APPROVED\nFine.\n## o/web#4\nBroken.\nREVIEW: CHANGES_REQUESTED';
+  assert.equal(reviewBody(PRS[0], PRS, two), '**Review: approved**\n\nFine.');
+  assert.equal(reviewBody(PRS[1], PRS, two), '**Review: changes requested**\n\nBroken.', 'a heading without a verdict leaves the overall one');
   // Only the label alone (with its verdict) is a part's heading: a finding's own title that names a pull request is text, and one pull request is never split.
   const titled = '## o/web#3: CHANGES REQUESTED\n### o/web#4 breaks the approved flag\nDetails.\n## `o/web#4`: APPROVED\nNone.';
-  assert.ok(reviewBody(PRS[0], PRS, titled).endsWith('### o/web#4 breaks the approved flag\nDetails.'));
+  assert.ok(reviewBody(PRS[0], PRS, titled)!.endsWith('### o/web#4 breaks the approved flag\nDetails.'));
   assert.equal(reviewBody(PRS[1], PRS, titled), '**Review: approved**\n\nNone.');
-  assert.match(reviewBody(PRS[0], [PRS[0]], '## o/web#3: APPROVED\nBad.\nREVIEW: CHANGES_REQUESTED'), /^\*\*Review: changes requested\*\*\n\n## o\/web#3: APPROVED/);
-  // A before picture is never attached, and a finding that starts with the word is no pictures line.
-  const pics = reviewBody(PRS[0], [PRS[0]], '- Pictures: are not lazy loaded.\nPictures: login-before.png, login-after.png', { images: [...IMAGES, { name: 'login-before.png', file: '/x/login-before.png', size: 1, mtime: 1 }] as never[] });
-  assert.ok(pics.includes('- Pictures: are not lazy loaded.') && pics.endsWith('\n\n![login-after.png](./login-after.png)'), pics);
+  assert.match(reviewBody(PRS[0], [PRS[0]], '## o/web#3: APPROVED\nBad.\nREVIEW: CHANGES_REQUESTED')!, /^\*\*Review: changes requested\*\*\n\n## o\/web#3: APPROVED/);
 });
 
-test('pictures: only names that are images of the task go at the end as references, the Pictures line is taken out', () => {
-  const body = reviewBody(PRS[0], PRS, SPLIT, { images: IMAGES });
+test('pictures: only the task’s own images a part names go at the end, by name or by the path the prompt lists; never a before picture', () => {
+  const body = reviewBody(PRS[0], PRS, SPLIT, { images: IMAGES })!;
   assert.ok(!/Pictures:/i.test(body) && !body.includes('passwd') && !body.includes('nope'));
   assert.ok(body.endsWith('\n\n![login-after.png](./login-after.png)\n![web/login-after.png](./web.login-after.png)'), body);
-  assert.ok(!reviewBody(PRS[1], PRS, SPLIT, { images: IMAGES }).includes('!['), 'the other pull request’s part named none');
-  assert.ok(!reviewBody(PRS[0], PRS, SPLIT).includes('!['), 'no images, no references');
+  assert.ok(!reviewBody(PRS[1], PRS, SPLIT, { images: IMAGES })!.includes('!['), 'the other pull request’s part named none');
+  assert.ok(!reviewBody(PRS[0], PRS, SPLIT)!.includes('!['), 'no images, no references');
+  // A finding that starts with the word is no pictures line, and the characters inside a name are kept.
+  const more = [...IMAGES, { name: 'login-before.png', file: '/x/login-before.png', size: 1, mtime: 1 }, { name: 'login_error-after.png', file: '/x/login_error-after.png', size: 1, mtime: 1 }, { name: 'loginerror-after.png', file: '/x/loginerror-after.png', size: 1, mtime: 1 }, { name: 'api/login-after.png', file: '/x/api/login-after.png', size: 1, mtime: 1 }] as never[];
+  const one = (line: string) => reviewBody(PRS[0], [PRS[0]], `- Pictures: are not lazy loaded.\n${line}`, { images: more })!;
+  assert.ok(one('Pictures: login-before.png, `login_error-after.png`.').endsWith('- Pictures: are not lazy loaded.\n\n![login_error-after.png](./login_error-after.png)'));
+  // The absolute paths of the prompt's list name the images of two repositories apart; a bare name two folders share names none.
+  assert.ok(one('**Pictures:** /x/api/login-after.png, /x/web/login-after.png, /x/login-before.png, /etc/hosts.png').endsWith('\n\n![api/login-after.png](./api.login-after.png)\n![web/login-after.png](./web.login-after.png)'));
+  assert.ok(!reviewBody(PRS[0], [PRS[0]], 'Bug.\nPictures: login-after.png', { images: more.slice(1) })!.includes('!['), 'two folders have it');
 });
 
 test('GitHub: pictures go as attachments of a conversation comment; without them, or when gh fails, a COMMENT review without the block', { skip: process.platform === 'win32' }, async () => {
@@ -235,7 +245,7 @@ test('GitHub: pictures go as attachments of a conversation comment; without them
     const imgDir = mkdtempSync(path.join(tmpdir(), 'kanban-post-img-'));
     writeFileSync(path.join(imgDir, 'login-after.png'), 'x');
     const images = [{ name: 'login-after.png', file: path.join(imgDir, 'login-after.png'), size: 1, mtime: 1 }];
-    const got = await postReview(ctx, 'web', PRS, 'A.\n## o/web#3: CHANGES REQUESTED\nBug.\nPictures: login-after.png\n## o/web#4: APPROVED\nOk.', undefined, { verdict: 'changes_requested', images: images as never });
+    const got = await postReview(ctx, 'web', PRS, '## o/web#3: CHANGES REQUESTED\nBug.\nPictures: login-after.png\n## o/web#4: APPROVED\nOk.', undefined, { verdict: 'changes_requested', images: images as never });
     // #3's part names the picture; #4's part names none and is posted as a review.
     assert.deepEqual(got.map((r) => [r.number, r.url, r.note]), [[3, 'https://github.com/o/web/pull/3#issuecomment-5', undefined], [4, 'https://github.com/o/web/pull/4#pullrequestreview-77', undefined]]);
     const c = gh.comment(3);
@@ -248,15 +258,70 @@ test('GitHub: pictures go as attachments of a conversation comment; without them
   }
 });
 
-test('a board that cannot attach: the review is posted without the pictures and the result says so', async () => {
+/** A board that posts reviews and fails a comment with pictures with `fail`. */
+function pictureBoard(fail: Error) {
   const bodies: string[] = [];
-  const board = { review: async (_n: number, file: string, _as: unknown, _o: unknown, attach?: string[]) => { if (attach?.length) throw new Error('unknown flag: --attach\nusage'); bodies.push(readFileSync(file, 'utf8')); return 'https://github.com/o/web/pull/3#r'; } };
+  let tries = 0;
+  const board = { review: async (_n: number, file: string, _as: unknown, _o: unknown, attach?: string[]) => { if (attach?.length) { tries++; throw fail; } bodies.push(readFileSync(file, 'utf8')); return 'https://github.com/o/web/pull/3#r'; } };
   const ctx = makeCtx([def('web', '/tmp/none', { repo: 'o/web' })]);
   ctx.floors.set('web', { githubFor: () => board } as unknown as Floor);
   const imgDir = mkdtempSync(path.join(tmpdir(), 'kanban-post-img-'));
   writeFileSync(path.join(imgDir, 'a.png'), 'x');
-  const got = await postReview(ctx, 'web', [PRS[0]], 'Bug.\nPictures: a.png', undefined, { verdict: 'changes_requested', images: [{ name: 'a.png', file: path.join(imgDir, 'a.png'), size: 1, mtime: 1 }] as never });
-  rmSync(imgDir, { recursive: true, force: true });
-  assert.deepEqual(got, [{ repo: 'o/web', number: 3, url: 'https://github.com/o/web/pull/3#r', note: 'the pictures could not be attached: unknown flag: --attach' }]);
-  assert.equal(bodies[0], '**Review: changes requested**\n\nBug.');
+  const images = [{ name: 'a.png', file: path.join(imgDir, 'a.png'), size: 1, mtime: 1 }] as never;
+  const post = (text = 'Bug.\nPictures: a.png', prs: typeof PRS = [PRS[0]]) => postReview(ctx, 'web', prs, text, undefined, { verdict: 'changes_requested', images });
+  return { post, bodies, tries: () => tries, imgDir, done: () => rmSync(imgDir, { recursive: true, force: true }) };
+}
+
+test('pictures that could not be attached: posted once without them when no comment was made, never again when one was or nobody knows', async () => {
+  const none = pictureBoard(new PicturesNotPosted('unknown flag: --attach\nusage'));
+  assert.deepEqual(await none.post(), [{ repo: 'o/web', number: 3, url: 'https://github.com/o/web/pull/3#r', note: 'the pictures could not be attached: unknown flag: --attach' }]);
+  assert.deepEqual(none.bodies, ['**Review: changes requested**\n\nBug.']);
+  none.done();
+  // gh made the comment and then failed an upload: that comment is the post.
+  const partly = pictureBoard(new PicturesPartly('upload failed: b.png', 'https://github.com/o/web/pull/3#issuecomment-9'));
+  assert.deepEqual(await partly.post(), [{ repo: 'o/web', number: 3, url: 'https://github.com/o/web/pull/3#issuecomment-9', note: 'some of the pictures could not be attached: upload failed: b.png' }]);
+  assert.deepEqual(partly.bodies, [], 'no second post');
+  partly.done();
+  const unknown = pictureBoard(new Error('timed out'));
+  const got = await unknown.post();
+  assert.match(got[0].error ?? '', /may or may not have been made \(timed out\).*nothing more was posted/);
+  assert.deepEqual(unknown.bodies, []);
+  unknown.done();
+  // A picture that is gone before it is staged costs the pictures, not the review; gh is not asked to attach.
+  const gone = pictureBoard(new Error('never reached'));
+  rmSync(path.join(gone.imgDir, 'a.png'));
+  const lost = await gone.post();
+  assert.equal(lost[0].url, 'https://github.com/o/web/pull/3#r');
+  assert.match(lost[0].note ?? '', /^the pictures could not be attached: /);
+  assert.deepEqual([gone.tries(), gone.bodies], [0, ['**Review: changes requested**\n\nBug.']]);
+  // Several pull requests: the one without a part gets nothing, and stray text is said once.
+  const two = await gone.post('For all.\n## o/web#3\nBug.', PRS);
+  assert.equal(two[0].note, "the review has text outside the pull requests' own parts, which was posted on none of them");
+  assert.match(two[1].error ?? '', /no part of its own for this pull request/);
+  assert.equal(gone.bodies.length, 2, 'only #3 was posted');
+  gone.done();
+});
+
+test('commentWithPictures: a failed gh is looked into before anyone posts again', async () => {
+  const dir = mkdtempSync(path.join(tmpdir(), 'kanban-post-c-'));
+  const file = path.join(dir, 'review.md');
+  writeFileSync(file, '**Review: changes requested**\n\nBug.\n\n![a.png](./a.png)\n![b.png](./b.png)');
+  const run = (fail: string | undefined, listed: unknown) => async (args: string[]) => {
+    if (args[0] === 'pr') {
+      if (fail) throw new Error(fail);
+      return 'https://github.com/o/web/pull/3#issuecomment-5\n';
+    }
+    if (listed === undefined) throw new Error('HTTP 502');
+    assert.match(args[1], /^repos\/o\/web\/issues\/3\/comments\?since=/);
+    return JSON.stringify(listed);
+  };
+  const call = (fail?: string, listed?: unknown) => commentWithPictures(run(fail, listed), 'o/web', 3, file, [path.join(dir, 'a.png')], dir);
+  assert.equal(await call(), 'https://github.com/o/web/pull/3#issuecomment-5');
+  await assert.rejects(call('upload failed no comment was posted'), PicturesNotPosted);
+  // gh posted the comment with the picture that did upload, then failed: the comment is found by its text.
+  const mine = { html_url: 'https://github.com/o/web/pull/3#issuecomment-9', body: '**Review: changes requested**\r\n\r\nBug.\r\n\r\n![a.png](https://github.com/user-attachments/assets/1)\r\n![b.png](./b.png)' };
+  await assert.rejects(call('upload failed: b.png', [{ html_url: 'x', body: 'Someone else.' }, mine]), (e: unknown) => e instanceof PicturesPartly && e.url === mine.html_url);
+  await assert.rejects(call('unknown flag: --attach', [{ html_url: 'x', body: 'Someone else.' }]), PicturesNotPosted);
+  await assert.rejects(call('timed out', undefined), (e: unknown) => !(e instanceof PicturesNotPosted) && !(e instanceof PicturesPartly) && (e as Error).message === 'timed out');
+  rmSync(dir, { recursive: true, force: true });
 });

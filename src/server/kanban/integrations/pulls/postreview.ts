@@ -2,7 +2,7 @@
 // its request had `post`. GitHub gets a COMMENT review (never an approval or a change request), through the board's own `review`, as
 // the account that asked, written in the project's public language (posttexts.ts); Azure DevOps and Bitbucket get a comment on the conversation (hosting/hosted-board.ts). Nothing here throws.
 
-import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { PrRef } from '../../../../shared/kanban/types.js';
@@ -11,6 +11,7 @@ import { resolveLanguages } from '../../../../shared/language.js';
 import { postTexts } from './posttexts.js';
 import { reviewParts, partKey } from './reviewparts.js';
 import { stageImages } from './screenshots.js';
+import { PicturesNotPosted, PicturesPartly } from '../../../ghattach.js';
 import type { UiImageFile } from '../../engine/uitesting.js';
 import { reviewFindings, reviewVerdict, stripWorkDone } from '../../engine/markers.js';
 
@@ -22,7 +23,7 @@ export interface PostedReview {
   number: number;
   url?: string;
   error?: string;
-  /** What did not go as asked (the pictures could not be attached), though the review is posted. */
+  /** What did not go as asked (the pictures could not be attached, text that was posted nowhere), beside the URL or the error. */
   note?: string;
 }
 
@@ -31,23 +32,33 @@ export const POST_PICTURES = 10;
 
 type Verdict = 'approved' | 'changes_requested';
 
+/** What of the review is `pr`'s: the whole text of a review of one pull request, its own part of a review of several (none: nothing is posted on it). */
+function ownPart(pr: PrRef, prs: readonly PrRef[], text: string) {
+  const found = reviewParts(prs, stripWorkDone(reviewFindings(text)));
+  return prs.length > 1 ? found.parts.get(partKey(pr)) : found.common;
+}
+
+/** Whether a review of several pull requests has text in no pull request's part: it is posted nowhere, and the task is told. */
+export function strayText(prs: readonly PrRef[], text: string): boolean {
+  if (prs.length < 2) return false;
+  const { common } = reviewParts(prs, stripWorkDone(reviewFindings(text)));
+  return !!common.text || common.pictures.length > 0;
+}
+
 /**
- * The task's images the reviewer named for `pr`: its part's names (and the common ones; all of them when the text has no parts), kept only
- * when they are the name of an image of the task (or the bare file name of exactly one), in the order given, each once, at most POST_PICTURES.
- * A name that matches nothing is dropped: a path is never taken from the reviewer's text.
+ * The task's images the reviewer named for `pr` (in its own part of a review of several): a name counts when it is an image's name in the
+ * task, its absolute path as the reviewer's prompt lists it, or the bare file name of exactly one image; in the order given, each once, at
+ * most POST_PICTURES, and never a before picture. A name that matches nothing is dropped: a path is never taken from the reviewer's text.
  */
 export function reviewPictures(pr: PrRef, prs: readonly PrRef[], text: string, images: readonly UiImageFile[] = []): UiImageFile[] {
   if (!images.length) return [];
-  const found = reviewParts(prs, stripWorkDone(reviewFindings(text)));
-  const names = found.split ? [...found.common.pictures, ...(found.parts.get(partKey(pr))?.pictures ?? [])] : found.common.pictures;
   const out: UiImageFile[] = [];
-  for (const n of names) {
-    // Never a before picture: only the ones a finding shows in.
-    if (/-before\.[a-z]+$/i.test(n)) continue;
-    const exact = images.find((i) => i.name === n);
+  for (const n of ownPart(pr, prs, text)?.pictures ?? []) {
+    const exact = images.find((i) => i.name === n || i.file === n);
     const bare = images.filter((i) => i.name.split('/').pop() === n);
     const hit = exact ?? (bare.length === 1 ? bare[0] : undefined);
-    if (hit && !out.includes(hit)) out.push(hit);
+    // Never a before picture: only the ones a finding shows in.
+    if (hit && !/-before\.[a-z]+$/i.test(hit.name) && !out.includes(hit)) out.push(hit);
   }
   return out.slice(0, POST_PICTURES);
 }
@@ -66,33 +77,34 @@ export interface ReviewBodyOpts {
 }
 
 /**
- * The review as it is posted on `pr`: "Review: approved" (or "changes requested"), for several pull requests the list of the ones it covers,
- * then the text without its verdict and WORK DONE lines. When the text has a part for each pull request (reviewparts.ts) `pr` gets only its
- * own part (with what came before the first heading), its own verdict when the part has one, and no list. The fixed lines are in `language`
- * (posttexts.ts). Cut off, with a line saying so, when it is too long for GitHub; the pictures the reviewer named close the comment.
+ * The review as it is posted on `pr`: "Review: approved" (or "changes requested"), then the text without its verdict and WORK DONE lines.
+ * Of a review of several pull requests `pr` gets only its own part (reviewparts.ts) and its own verdict when the part has one; undefined
+ * when the review has no part for it, so nothing that is not plainly about a pull request is ever posted on it. The fixed lines are in
+ * `language` (posttexts.ts). Cut off, with a line saying so, when it is too long for GitHub; the pictures the reviewer named close it.
  */
-export function reviewBody(pr: PrRef, prs: (PrRef & { title?: string })[], text: string, opts: ReviewBodyOpts = {}): string {
+export function reviewBody(pr: PrRef, prs: readonly PrRef[], text: string, opts: ReviewBodyOpts = {}): string | undefined {
+  const part = ownPart(pr, prs, text);
+  if (!part) return undefined;
   const t = postTexts(opts.language);
-  const found = reviewParts(prs, stripWorkDone(reviewFindings(text)));
-  const part = found.split ? found.parts.get(partKey(pr)) : undefined;
   // The run's own verdict when it is given: the text may be cut, and a cut one has no verdict line to read.
-  const overall = opts.verdict ?? reviewVerdict(text);
-  const head = [t.heading((found.split ? part?.verdict ?? overall : overall) === 'approved')];
-  if (prs.length > 1 && !found.split) head.push('', t.covers, ...prs.map((p) => `- ${p.repo}#${p.number}${p.title ? ` ${p.title}` : ''}`));
-  const top = head.join('\n');
+  const top = t.heading((part.verdict ?? opts.verdict ?? reviewVerdict(text)) === 'approved');
   const pics = reviewPictures(pr, prs, text, opts.images);
   const block = pics.length ? `\n\n${pics.map((i) => `![${i.name}](./${opts.ref?.get(i.name) ?? flatName(i)})`).join('\n')}` : '';
   const cut = `\n\n${t.cutLong}`;
-  const own = (found.split ? [found.common.text, part?.text ?? ''].filter(Boolean).join('\n\n') : found.common.text) || t.none;
-  const body = own + (opts.cut ? `\n\n${t.cutKept}` : '');
+  const body = (part.text || t.none) + (opts.cut ? `\n\n${t.cutKept}` : '');
   const room = POST_MAX - top.length - 2 - block.length;
   return `${top}\n\n${body.length > room ? `${body.slice(0, room - cut.length).trimEnd()}${cut}` : body}${block}`;
 }
 
+const NO_PART = 'the review has no part of its own for this pull request (a heading with its owner/repo#number), so nothing was posted on it';
+const STRAY = 'the review has text outside the pull requests\' own parts, which was posted on none of them';
+
 /**
- * Posts `text` on each of `prs`; one result per pull request, a URL or why not. Each gets its own body (reviewBody), written to a folder of its
- * own; the pictures it names (opts.images) are put next to it, and on a GitHub board go as attachments of a conversation comment. When that
- * fails the review is posted without them through `review`, with a `note`. Azure DevOps and Bitbucket never get pictures.
+ * Posts `text` on each of `prs`; one result per pull request, a URL or why not. Each gets its own body (reviewBody) in a folder of its own;
+ * a pull request the review has no part for gets nothing, and says so. The pictures a part names (opts.images) are put next to the body, and
+ * on a GitHub board go as attachments of a conversation comment (ghattach.ts). When the pictures cannot be prepared, or that comment was
+ * certainly not made, the review is posted once without them through `review`, with a `note`; when the comment was made with only some of
+ * them, that is the post; when nobody knows, nothing more is posted. Azure DevOps and Bitbucket never get pictures.
  */
 export async function postReview(ctx: KanbanContext, project: string, prs: (PrRef & { title?: string })[], text: string, account?: string, opts: Omit<ReviewBodyOpts, 'language' | 'ref'> = {}): Promise<PostedReview[]> {
   const out: PostedReview[] = [];
@@ -103,6 +115,11 @@ export async function postReview(ctx: KanbanContext, project: string, prs: (PrRe
     dir = await mkdtemp(path.join(tmpdir(), 'office-review-'));
     const floor = ctx.floor(project);
     for (const [i, p] of prs.entries()) {
+      const plainBody = reviewBody(p, prs, text, { ...opts, language, images: [] });
+      if (plainBody === undefined) {
+        out.push({ repo: p.repo, number: p.number, error: NO_PART });
+        continue;
+      }
       const board = floor?.githubFor(p.repo);
       if (!board) {
         out.push({ repo: p.repo, number: p.number, error: "the project's floor is not open, or has no board for its repository" });
@@ -116,25 +133,36 @@ export async function postReview(ctx: KanbanContext, project: string, prs: (PrRe
       }
       try {
         const folder = path.join(dir, `pr-${i}`);
-        const pics = board.hosted ? [] : reviewPictures(p, prs, text, opts.images);
-        // The folder is made with the pictures in it (flat names), the body beside them: gh finds `./name` next to the body file.
-        const staged = await stageImages(folder, pics);
         const file = path.join(folder, 'review.md');
-        const base = { ...opts, language, ...(board.hosted ? { images: [] } : {}) };
-        await writeFile(file, reviewBody(p, prs, text, { ...base, ref: staged.ref }), { encoding: 'utf8', mode: 0o600 });
+        let pics = board.hosted ? [] : reviewPictures(p, prs, text, opts.images);
         let note: string | undefined;
-        let url = '';
-        const plain = async () => {
-          // Without the picture block: the same body as the one an image-less review gets.
-          if (pics.length) await writeFile(file, reviewBody(p, prs, text, { ...base, images: [] }), { encoding: 'utf8', mode: 0o600 });
-          return (await board.review(p.number, file, as as Parameters<typeof board.review>[2], account)).trim();
-        };
+        let staged: Awaited<ReturnType<typeof stageImages>> | undefined;
+        // The folder is made with the pictures in it (flat names), the body beside them: gh finds `./name` next to the body file.
+        // A picture that is gone or cannot be read costs the pictures, never the review.
         if (pics.length) {
+          try {
+            staged = await stageImages(folder, pics);
+          } catch (err) {
+            note = `the pictures could not be attached: ${firstLine(err)}`;
+            pics = [];
+          }
+        }
+        await mkdir(folder, { recursive: true, mode: 0o700 });
+        const write = (body: string) => writeFile(file, body, { encoding: 'utf8', mode: 0o600 });
+        const plain = async () => (await write(plainBody), (await board.review(p.number, file, as as Parameters<typeof board.review>[2], account)).trim());
+        let url = '';
+        if (pics.length && staged) {
+          await write(reviewBody(p, prs, text, { ...opts, language, ref: staged.ref }) ?? plainBody);
           try {
             url = (await board.review(p.number, file, as as Parameters<typeof board.review>[2], account, staged.files)).trim();
           } catch (err) {
-            note = `the pictures could not be attached: ${firstLine(err)}`;
-            url = await plain();
+            if (err instanceof PicturesPartly) {
+              url = err.url;
+              note = `some of the pictures could not be attached: ${firstLine(err)}`;
+            } else if (err instanceof PicturesNotPosted) {
+              note = `the pictures could not be attached: ${firstLine(err)}`;
+              url = await plain();
+            } else throw new Error(`the comment with its pictures may or may not have been made (${firstLine(err)}): look at the pull request; nothing more was posted`);
           }
         } else url = await plain();
         out.push({ repo: p.repo, number: p.number, ...(url ? { url } : {}), ...(note ? { note } : {}) });
@@ -149,6 +177,8 @@ export async function postReview(ctx: KanbanContext, project: string, prs: (PrRe
   } finally {
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
+  // Said once, on the first pull request's line.
+  if (out.length && strayText(prs, text)) out[0] = { ...out[0], note: [out[0].note, STRAY].filter(Boolean).join('; ') };
   return out;
 }
 

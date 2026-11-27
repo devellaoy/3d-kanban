@@ -1,23 +1,22 @@
 // Splits a finished pull-request review's text into one part per pull request (postreview.ts): a review of several pull requests is
 // asked to write each one's findings under a heading `## <owner/repo#number>: APPROVED|CHANGES REQUESTED`, and a line
 // `Pictures: a.png, b.png` ending a part names the UI-test pictures its findings show. Pure; the text is already without its verdict
-// and WORK DONE lines. Headings and Pictures lines inside a code fence are ordinary text, as is a heading naming no (or several) pull requests.
+// and WORK DONE lines. Headings and Pictures lines inside a code fence are ordinary text, as is a heading that is not a pull request's
+// label alone. A review of one pull request is never split: its whole text is `common`.
 
 import type { PrRef } from '../../../../shared/kanban/types.js';
 
 export interface Part {
   text: string;
-  /** The picture names the reviewer gave (not yet checked against the task's images). */
+  /** The pictures the reviewer named, as written (not yet checked against the task's images). */
   pictures: string[];
   verdict?: 'approved' | 'changes_requested';
 }
 
 export interface ReviewParts {
-  /** At least one pull request's heading was found. */
-  split: boolean;
-  /** What comes before the first heading (or the whole text when there is none). */
+  /** What is in no pull request's part: before the first heading of a review of several, the whole text of a review of one. */
   common: Part;
-  /** By `${repo.toLowerCase()}#${number}`. */
+  /** By `${repo.toLowerCase()}#${number}`: only the pull requests the review has a heading for. */
   parts: Map<string, Part>;
 }
 
@@ -26,12 +25,13 @@ export const partKey = (p: PrRef): string => `${p.repo.toLowerCase()}#${p.number
 const HEADING = /^\s{0,3}#{1,6}\s+(.*?)\s*#*\s*$/;
 const PICTURES = /^\s*(?:[-*+]\s+)?[*_`]*pictures[*_`]*\s*:[*_`]*\s*(.*)$/i;
 const IMAGE = /\.(?:png|jpe?g|webp)$/i;
-const VERDICT = /^\s*[:\u2013\u2014-]\s*(approved|changes[ _]requested)$/i;
+const VERDICT = /^\s*[:–—-]\s*(approved|changes[ _]requested)$/i;
 
+/** The names on a pictures line, separated by commas: only the formatting around a name goes, never a character inside it. */
 const namesIn = (list: string): string[] =>
   list
-    .split(/[,\s]+/)
-    .map((n) => n.replace(/[`*_"'()[\]]/g, '').replace(/[.;:]+$/, '').trim())
+    .split(',')
+    .map((n) => n.trim().replace(/^[`*"'([<]+/, '').replace(/[`*"'\])>.;:]+$/, '').trim())
     .filter(Boolean);
 
 /**
@@ -51,10 +51,12 @@ function partHeading(heading: string, prs: readonly PrRef[]): { pr: PrRef; verdi
   return undefined;
 }
 
+type Acc = { lines: string[]; pictures: string[]; verdict?: Part['verdict'] };
+
 export function reviewParts(prs: readonly PrRef[], text: string): ReviewParts {
-  const acc = new Map<string, { lines: string[]; pictures: string[]; verdict?: Part['verdict'] }>();
-  const common = { lines: [] as string[], pictures: [] as string[] };
-  let cur: { lines: string[]; pictures: string[]; verdict?: Part['verdict'] } = common;
+  const acc = new Map<string, Acc>();
+  const common: Acc = { lines: [], pictures: [] };
+  let cur = common;
   let fence: string | undefined;
   for (const line of text.replace(/\r\n?/g, '\n').split('\n')) {
     const t = line.trim();
@@ -62,10 +64,7 @@ export function reviewParts(prs: readonly PrRef[], text: string): ReviewParts {
     if (f) {
       if (!fence) fence = f[1];
       else if (f[1][0] === fence[0] && f[1].length >= fence.length && /^[`~]+$/.test(t)) fence = undefined;
-      cur.lines.push(line);
-      continue;
-    }
-    if (!fence) {
+    } else if (!fence) {
       const h = HEADING.exec(line);
       const hit = h && prs.length > 1 ? partHeading(h[1], prs) : undefined;
       if (hit) {
@@ -76,7 +75,7 @@ export function reviewParts(prs: readonly PrRef[], text: string): ReviewParts {
         if (hit.verdict) part.verdict = hit.verdict;
         continue;
       }
-      // Only a line that goes on with an image file name is the pictures line: a finding that starts with the word is text.
+      // Only a line that goes on with an image file's name is the pictures line: a finding that starts with the word is text.
       const pic = PICTURES.exec(line);
       const listed = pic ? namesIn(pic[1]) : [];
       if (listed.length && IMAGE.test(listed[0])) {
@@ -86,31 +85,6 @@ export function reviewParts(prs: readonly PrRef[], text: string): ReviewParts {
     }
     cur.lines.push(line);
   }
-  const done = (a: { lines: string[]; pictures: string[]; verdict?: Part['verdict'] }): Part => ({ text: a.lines.join('\n').trim(), pictures: a.pictures, ...(a.verdict ? { verdict: a.verdict } : {}) });
-  // A part for every pull request, or none: a reply that names only some of them (or was cut before the rest) is posted whole on each.
-  if (prs.length > 1 && prs.every((p) => acc.has(partKey(p)))) return { split: true, common: done(common), parts: new Map([...acc].map(([k, a]) => [k, done(a)])) };
-  return reviewWhole(text);
-}
-
-/** The text as one part: its pictures lines taken out, every heading left as it is. */
-function reviewWhole(text: string): ReviewParts {
-  const lines: string[] = [], pictures: string[] = [];
-  let fence: string | undefined;
-  for (const line of text.replace(/\r\n?/g, '\n').split('\n')) {
-    const t = line.trim();
-    const f = /^(`{3,}|~{3,})/.exec(t);
-    if (f) {
-      if (!fence) fence = f[1];
-      else if (f[1][0] === fence[0] && f[1].length >= fence.length && /^[`~]+$/.test(t)) fence = undefined;
-    } else if (!fence) {
-      const pic = PICTURES.exec(line);
-      const listed = pic ? namesIn(pic[1]) : [];
-      if (listed.length && IMAGE.test(listed[0])) {
-        pictures.push(...listed);
-        continue;
-      }
-    }
-    lines.push(line);
-  }
-  return { split: false, common: { text: lines.join('\n').trim(), pictures }, parts: new Map() };
+  const done = (a: Acc): Part => ({ text: a.lines.join('\n').trim(), pictures: a.pictures, ...(a.verdict ? { verdict: a.verdict } : {}) });
+  return { common: done(common), parts: new Map([...acc].map(([k, a]) => [k, done(a)])) };
 }

@@ -2,7 +2,7 @@
 // a fresh worktree of the involved repositories on their configured base branches (so the app starts as it is before the pull
 // requests), who tests the UI and the functionality the pull requests change with real browser actions, takes before and after
 // pictures into the task's images folder and writes a test report in the task's grant folder (ui-test-report.md; the reply is the
-// fallback when it left none). The pictures stay with the task: none is added to a pull request; the reviewers read the report.
+// fallback when it left none). The pictures stay with the task (a posted review attaches the ones a finding shows in, postreview.ts); the reviewers read the report.
 // When its turn ends the tester goes home with its worktree, and the review starts by itself (machine event `prUiTested`). Split out of prreview-launch.ts; PrReviews hands it the request and the engine's deps.
 
 import path from 'node:path';

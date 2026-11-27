@@ -160,7 +160,7 @@ export class PrReviews {
     let mixed: string | undefined;
     // A review that tests the UI is always a task of its own: the pictures are kept with it, and a task whose pull requests the office opened would have them added to those pull requests (see checkScreenshots).
     if (req.uiTest && named !== undefined) {
-      mixed = `This review was asked for on task #${named} and tests the UI too. Its pictures are not added to any pull request, so it is a review task of its own and task #${named} is left alone.`;
+      mixed = `This review was asked for on task #${named} and tests the UI too. Its pictures are kept with the review, not put in a pull request's description, so it is a review task of its own and task #${named} is left alone.`;
       named = undefined;
     }
     if (named !== undefined) {
@@ -459,6 +459,6 @@ export class PrReviews {
     } catch (err) {
       results = prs.map((p) => ({ repo: p.repo, number: p.number, error: (err as Error).message }));
     }
-    for (const r of results) this.d.note(task, r.error ? `Could not post the review on ${r.repo}#${r.number}: ${clip(r.error, 300)}` : `Posted the review on ${r.repo}#${r.number}${r.url ? `: ${r.url}` : ''}${r.note ? ` (${r.note})` : ''}`);
+    for (const r of results) this.d.note(task, `${r.error ? `Could not post the review on ${r.repo}#${r.number}: ${clip(r.error, 300)}` : `Posted the review on ${r.repo}#${r.number}${r.url ? `: ${r.url}` : ''}`}${r.note ? ` (${clip(r.note, 300)})` : ''}`);
   }
 }
