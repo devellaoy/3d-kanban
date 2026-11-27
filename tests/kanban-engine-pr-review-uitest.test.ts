@@ -5,14 +5,16 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import fs, { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { putOfficeFile, replaceOfficeFile } from '../src/server/kanban/officefile.js';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { GitRunner } from '../src/server/kanban/engine/prheads.js';
 import { uiImagesDir } from '../src/server/kanban/engine/uitesting.js';
 import { checkScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { closingsIdle } from '../src/server/kanban/integrations/pulls/closes.js';
-import { dropUiTestReport, hasUiTestReport, readUiTestReport, syncUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
+import { dropUiTestReport, hasUiTestReport, readUiTestReport, storeUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
 import { uiTestReport } from '../src/server/kanban/engine/prreview-ui.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
@@ -391,7 +393,7 @@ test('uiTest: a file over the limit, a folder or a link at the report’s path i
     assert.equal(readUiTestReport(fx.ctx.filesDir, id), undefined);
     dropUiTestReport(fx.ctx.filesDir, id);
     assert.ok(!existsSync(file) && !lstatExists(file), 'the reset removes it');
-    assert.equal(syncUiTestReport(fx.ctx.filesDir, id, 'next'), file, 'and the next report can be written');
+    assert.equal(storeUiTestReport(fx.ctx.filesDir, id, 'next'), file, 'and the next report can be written');
   }
   assert.equal(readFileSync(secret, 'utf8'), 'secret', 'a link is removed, never followed');
 });
@@ -405,10 +407,12 @@ test('readUiTestReport: what is read is the file that was checked, even when the
   writeFileSync(secret, 'secret');
   writeFileSync(file, 'the report');
   let swapped = false;
-  const got = readUiTestReport(root, 7, () => {
-    rmSync(file);
-    symlinkSync(secret, file);
-    swapped = true;
+  const got = readUiTestReport(root, 7, {
+    opened: () => {
+      rmSync(file);
+      symlinkSync(secret, file);
+      swapped = true;
+    },
   });
   assert.ok(swapped);
   assert.equal(got, 'the report', 'the open file, not what the path points at now');
@@ -416,7 +420,122 @@ test('readUiTestReport: what is read is the file that was checked, even when the
   // A file that grows past the limit after it was checked is no report either.
   rmSync(file);
   writeFileSync(file, 'x'.repeat(200_000));
-  assert.equal(readUiTestReport(root, 7, () => writeFileSync(file, 'y'.repeat(300_000))), undefined);
+  assert.equal(readUiTestReport(root, 7, { opened: () => writeFileSync(file, 'y'.repeat(300_000)) }), undefined);
+});
+
+test('readUiTestReport: a path that becomes a link between the check and the open is refused, with or without the platform’s no-follow flag', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  mkdirSync(path.dirname(file), { recursive: true });
+  const secret = path.join(root, 'secret.txt');
+  writeFileSync(secret, 'secret');
+  // 0: a platform without O_NOFOLLOW, where the open follows the link; undefined: this platform's own flag.
+  for (const noFollow of [0, undefined]) {
+    rmSync(file, { force: true });
+    writeFileSync(file, 'the report');
+    let swapped = false;
+    const got = readUiTestReport(root, 7, {
+      noFollow,
+      beforeOpen: () => {
+        rmSync(file);
+        symlinkSync(secret, file);
+        swapped = true;
+      },
+    });
+    assert.ok(swapped);
+    assert.equal(got, undefined, `the link's target is not the report (noFollow ${noFollow})`);
+  }
+  // Swapped to a link for the open and back to a file after it: still not the file that was checked.
+  rmSync(file, { force: true });
+  writeFileSync(file, 'the report');
+  const back = readUiTestReport(root, 7, {
+    noFollow: 0,
+    beforeOpen: () => (rmSync(file), symlinkSync(secret, file)),
+    opened: () => (rmSync(file), writeFileSync(file, 'the report')),
+  });
+  assert.equal(back, undefined);
+  assert.equal(readFileSync(secret, 'utf8'), 'secret');
+});
+
+test('storeUiTestReport: what is at the path is never read, also when it cannot be removed first; a temporary name that is a link is not written through', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, 'x'.repeat(5_000_000));
+  // Every read of the report's path through fs is counted, and removing it fails: the store must still replace it, unread.
+  const reads: string[] = [];
+  const watch = <K extends 'readFileSync' | 'readSync' | 'openSync'>(name: K) => {
+    const real = fs[name] as (...a: unknown[]) => unknown;
+    t.mock.method(fs, name, ((...a: unknown[]) => {
+      if (name === 'readSync' || (typeof a[0] === 'string' && a[0] === file)) reads.push(name);
+      return real(...a);
+    }) as never);
+  };
+  watch('readFileSync');
+  watch('readSync');
+  watch('openSync');
+  const realRm = fs.rmSync;
+  let refused = 0;
+  t.mock.method(fs, 'rmSync', ((p: fs.PathLike, o?: fs.RmOptions) => {
+    if (p === file) {
+      refused++;
+      throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+    }
+    return realRm(p, o);
+  }) as never);
+  syncBuiltinESMExports();
+  try {
+    assert.equal(storeUiTestReport(root, 7, 'the report'), file);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.deepEqual(reads, [], 'the old file was not opened or read');
+  assert.equal(refused, 0, 'a file is renamed over: it needs no removal that could fail');
+  assert.equal(readFileSync(file, 'utf8'), 'the report\n');
+
+  // A folder there cannot be renamed over: with its removal refused nothing is stored, and still nothing is read.
+  rmSync(file);
+  mkdirSync(path.join(file, 'inner'), { recursive: true });
+  t.mock.method(fs, 'rmSync', ((p: fs.PathLike, o?: fs.RmOptions) => {
+    if (p === file) {
+      refused++;
+      throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+    }
+    return realRm(p, o);
+  }) as never);
+  syncBuiltinESMExports();
+  try {
+    assert.equal(storeUiTestReport(root, 7, 'the report'), undefined);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.equal(hasUiTestReport(root, 7), false, 'and no prompt names the folder');
+  assert.ok(refused > 0, 'the removal was tried and refused');
+  rmSync(file, { recursive: true });
+
+  // The temporary file: a link waiting at its name is left alone, target and all, and another name is used.
+  const target = path.join(root, 'target.txt');
+  writeFileSync(target, 'untouched');
+  const trap = `${file}.trap.tmp`;
+  symlinkSync(target, trap);
+  const names = [trap, `${file}.free.tmp`];
+  replaceOfficeFile(file, 'safe\n', () => names.shift()!);
+  assert.equal(readFileSync(target, 'utf8'), 'untouched');
+  assert.equal(readFileSync(file, 'utf8'), 'safe\n');
+  assert.ok(lstatSync(trap).isSymbolicLink(), 'the link itself is not removed or replaced');
+  assert.ok(!existsSync(`${file}.free.tmp`), 'the temporary file became the report');
+  // The old, guessable name too, through the ordinary writer.
+  const guess = `${file}.${process.pid}.tmp`;
+  symlinkSync(target, guess);
+  assert.equal(putOfficeFile(file, 'again'), true);
+  assert.equal(readFileSync(target, 'utf8'), 'untouched');
+  // With every name taken it gives up rather than write through one.
+  assert.throws(() => replaceOfficeFile(file, 'no\n', () => trap), /EEXIST/);
+  assert.equal(readFileSync(target, 'utf8'), 'untouched');
 });
 
 test('readUiTestReport: only a regular file with text, up to 200 kB; a link, an empty or a large file is no report', (t) => {

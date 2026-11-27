@@ -21,7 +21,7 @@ import { typeable } from './turnhold.js';
 import { ensureUiImagesDir, uiImagesDir } from './uitesting.js';
 import { instructionReadDirs, prReviewRepoIds } from './launchdirs.js';
 import { grantDir } from '../uploads.js';
-import { dropUiTestReport, readUiTestReport, syncUiTestReport } from '../taskfiles.js';
+import { dropUiTestReport, readUiTestReport, storeUiTestReport } from '../taskfiles.js';
 
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
 /** The heading the tester's prompt asks its report to start with. */
@@ -139,9 +139,8 @@ export function uiTestReport(own: string | undefined, reply: string): string {
 export async function uiEnded(d: PrReviewDeps, task: KanbanTask, live: Live, text: string, say: (kind: 'result', text: string) => void): Promise<{ type: 'prUiTested' }> {
   const report = uiTestReport(readUiTestReport(d.ctx.filesDir, task.id), text);
   say('result', report);
-  // Whatever the tester left there goes first, unread: a file over the limit, a link or a folder is not compared with or written through.
-  dropUiTestReport(d.ctx.filesDir, task.id);
-  syncUiTestReport(d.ctx.filesDir, task.id, report);
+  // Whatever the tester left at the path is replaced unread: a file over the limit, a link or a folder is not compared with or written through.
+  storeUiTestReport(d.ctx.filesDir, task.id, report);
   const floor = d.ctx.floor(live.floorId);
   if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'all', ENGINE);
   d.update(task.id, slotPatch('implementer', { workerId: null, sessionId: null }));
