@@ -62,7 +62,7 @@ export function goTitle(mode: PickerMode, n: number): string {
 /** The tick that posts the review, in the number of the PRs ticked. */
 export const postLabel = (n: number) => `Post the review on the pull request${n > 1 ? 's' : ''} when it is done`;
 
-export const UI_TEST_LABEL = 'Also test the UI: a worker takes before and after pictures for the task’s Images tab (they are not added to any pull request)';
+export const UI_TEST_LABEL = 'Also test the UI: a worker runs the app and tests the views and functions the pull requests change. What it tested and found goes into the review, its before and after pictures to the task’s Images tab (not to any pull request)';
 
 /** What the toast says once the office took the review. No worker yet: the task waits for room in the office. */
 export function reviewToast(n: number, ok: { taskId?: number; workerId?: string }): string {

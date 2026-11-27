@@ -37,7 +37,7 @@ export const MAX_ISSUE_SOURCES = 10;
 export const DEFAULT_REVIEW: ReviewSettings = { tool: 'claude', rounds: 2, reReviewLastFix: false, sandbox: true };
 
 export function defaultProjectSettings(): ProjectSettings {
-  return { branchInstructions: '', generalInstructions: '', testingInstructions: '', maxConcurrent: 2, issueSources: [], prompts: {}, skills: {} };
+  return { branchInstructions: '', generalInstructions: '', testingInstructions: '', prReviewInstructions: '', maxConcurrent: 2, issueSources: [], prompts: {}, skills: {} };
 }
 
 export function defaultKanbanSettings(): KanbanSettings {
@@ -208,6 +208,7 @@ export function sanitizeProjectSettings(raw: unknown, base: ProjectSettings = de
     branchInstructions: 'branchInstructions' in r ? text(r.branchInstructions, INSTRUCTIONS_MAX) : base.branchInstructions,
     generalInstructions: 'generalInstructions' in r ? text(r.generalInstructions, INSTRUCTIONS_MAX) : base.generalInstructions,
     testingInstructions: 'testingInstructions' in r ? text(r.testingInstructions, INSTRUCTIONS_MAX) : base.testingInstructions,
+    prReviewInstructions: 'prReviewInstructions' in r ? text(r.prReviewInstructions, INSTRUCTIONS_MAX) : base.prReviewInstructions,
     maxConcurrent: int(r.maxConcurrent, 1, 20, base.maxConcurrent),
     issueSources: 'issueSources' in r ? (Array.isArray(r.issueSources) ? r.issueSources : []).map(sanitizeIssueSource).filter((s): s is IssueSourceConfig => !!s).slice(0, MAX_ISSUE_SOURCES) : base.issueSources,
     prompts: 'prompts' in r ? sanitizePrompts(r.prompts) : base.prompts,

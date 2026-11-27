@@ -1,8 +1,9 @@
 // The UI test before a pull-request review (the request's `uiTest`): the pr-review phase's first run, by an implementer-role agent in
 // a fresh worktree of the involved repositories on their configured base branches (so the app starts as it is before the pull
-// requests), who takes before and after pictures into the task's images folder. The pictures stay with the task: none is added to a
-// pull request. When its turn ends the tester goes home with its worktree, and the review starts by itself (machine event
-// `prUiTested`). Split out of prreview-launch.ts; PrReviews hands it the request and the engine's deps.
+// requests), who tests the UI and the functionality the pull requests change with real browser actions, takes before and after
+// pictures into the task's images folder and writes a test report in the task's grant folder (ui-test-report.md; the reply is the
+// fallback when it left none). The pictures stay with the task: none is added to a pull request; the reviewers read the report.
+// When its turn ends the tester goes home with its worktree, and the review starts by itself (machine event `prUiTested`). Split out of prreview-launch.ts; PrReviews hands it the request and the engine's deps.
 
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
@@ -17,11 +18,13 @@ import { fetchPrHeads, prKey, prLine, repoOf, trusted, type HeadPr } from './prh
 import type { PrReviewDeps } from './prreview-launch.js';
 import { slot, slotPatch } from './slot.js';
 import { typeable } from './turnhold.js';
-import { ensureUiImagesDir, uiImagesDir } from './uitesting.js';
+import { ensureUiImagesDir, keepUiTestReport, ownUiTestReport, resetUiTestReport, uiImagesDir } from './uitesting.js';
 import { instructionReadDirs, prReviewRepoIds } from './launchdirs.js';
 import { grantDir } from '../uploads.js';
 
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
+/** The heading the tester's prompt asks its report to start with. */
+const REPORT_HEADING = /^#{1,6}\s*UI test report\b/im;
 
 /**
  * Hires the tester: it never carries on an earlier one (a Retry, an office restart or an answer to its question starts the UI test
@@ -37,6 +40,9 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
   const prev = slot(task, 'implementer').workerId ? floor.workers.get(slot(task, 'implementer').workerId!) : undefined;
   if (prev) await floor.sendHome(prev.id, 'all', ENGINE);
   d.update(task.id, slotPatch('implementer', { workerId: null, sessionId: null }));
+  // An earlier tester's report is not this one's: its files go, so the tester can create the report itself (the office's copies are
+  // read-only), and a file that could not be removed is remembered, never to be taken for the new test's report.
+  resetUiTestReport(d.ctx.repo, d.ctx.filesDir, task.id);
 
   const owner = d.hireOwner(task, via.who);
   const signIn = owner && tool === 'claude' && d.ctx.runAs && !d.ctx.runAs.claudeReady(owner) ? d.signInMissing(task, owner, via.who) : undefined;
@@ -113,11 +119,29 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
 }
 
 /**
- * The tester's turn ended with its reply: it is a `result` comment of the task, the tester goes home with its worktree removed (a
- * worker that is not a reviewer would keep it), and the review starts. Returns the machine event for that.
+ * The report of a UI test, from what the tester wrote in its file (`own`, see readUiTestReport) and its last reply: the file's
+ * text comes first; a reply that is a report too (it has the report's heading) and says something the file does not is kept
+ * after it, so neither a draft in the file nor a short reply loses the other's findings. Without a file it is the reply.
+ */
+export function uiTestReport(own: string | undefined, reply: string): string {
+  const text = reply.trim();
+  if (!own) return text;
+  const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
+  if (!REPORT_HEADING.test(text) || flat(own).includes(flat(text))) return own;
+  return `${own}\n\n---\n\nThe tester's final reply:\n\n${text}`;
+}
+
+/**
+ * The tester's turn ended with its reply. Its report (uiTestReport) is one text: it replaces whatever is at the report's path as
+ * the office's own copy, which the reviewers read, and it is the `result` comment of the task. The tester goes home with its
+ * worktree removed (a worker that is not a reviewer would keep it), and the review starts. Returns the machine event for that.
  */
 export async function uiEnded(d: PrReviewDeps, task: KanbanTask, live: Live, text: string, say: (kind: 'result', text: string) => void): Promise<{ type: 'prUiTested' }> {
-  say('result', text);
+  const report = uiTestReport(ownUiTestReport(d.ctx.repo, d.ctx.filesDir, task.id), text);
+  say('result', report);
+  // Whatever the tester left at the path is replaced unread: a file over the limit, a link or a folder is not compared with or written through.
+  // What was kept goes in a task event, so a file that could not be replaced is never named to the reviewers: they get the text.
+  keepUiTestReport(d.ctx.repo, d.ctx.filesDir, task.id, report);
   const floor = d.ctx.floor(live.floorId);
   if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'all', ENGINE);
   d.update(task.id, slotPatch('implementer', { workerId: null, sessionId: null }));

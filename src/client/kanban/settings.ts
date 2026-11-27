@@ -354,6 +354,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   const branch = textArea(ps.branchInstructions, { rows: 3, maxlength: KANBAN_LIMITS.promptText, placeholder: 'e.g. gh-{issue}/short-slug' });
   const general = textArea(ps.generalInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
   const testing = textArea(ps.testingInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
+  const prReview = textArea(ps.prReviewInstructions ?? '', { rows: 4, maxlength: KANBAN_LIMITS.promptText, placeholder: 'e.g. how to start the environments, and how to make a copy of the database that the test may add data to' });
   const fields = thisProjectFields(ps, s);
   const save = saveButton();
   save.addEventListener('click', () => {
@@ -363,6 +364,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
       branchInstructions: branch.value,
       generalInstructions: general.value,
       testingInstructions: testing.value,
+      prReviewInstructions: prReview.value,
       ...own,
     };
     void run(() => api.request({ t: 'kanban.project.settings.set', project: projectId, settings: settings as Partial<ProjectSettings> }), save, 'Saved');
@@ -386,6 +388,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
       field('Branch naming', branch, 'Empty: the default (see Prompts → Branch naming)'),
       field('General instructions', general),
       field('Debugging and testing', testing),
+      field('Pull-request review', prReview, 'Given as a file to the worker that tests the UI before a pull-request review (the Review button’s “Also test the UI”)'),
     ),
     fields.el,
     h('div.kb-row.kb-save', {}, h('span.grow'), save),

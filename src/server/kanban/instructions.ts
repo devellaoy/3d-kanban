@@ -1,5 +1,5 @@
 // A project's instructions as files the agents read (prompts name the paths instead of inlining the text):
-// `<filesDir>/instructions/<project>/{general,testing,repo-<id>}.md`, kept in step with the settings and the project's repositories.
+// `<filesDir>/instructions/<project>/{general,testing,pr-review,repo-<id>}.md`, kept in step with the settings and the project's repositories.
 
 import { existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
 import path from 'node:path';
@@ -9,6 +9,7 @@ import type { KanbanContext } from './registry.js';
 export interface InstructionTexts {
   general?: string;
   testing?: string;
+  prReview?: string;
   repos?: { id: string; instructions?: string }[];
 }
 
@@ -16,6 +17,7 @@ export interface InstructionFiles {
   dir: string;
   general?: string;
   testing?: string;
+  prReview?: string;
   /** A repository id to the path of its file. */
   repos: Record<string, string>;
 }
@@ -58,6 +60,8 @@ export function syncInstructionFiles(filesDir: string, projectId: string, texts:
   if (general) out.general = general;
   const testing = part('testing.md', texts.testing);
   if (testing) out.testing = testing;
+  const prReview = part('pr-review.md', texts.prReview);
+  if (prReview) out.prReview = prReview;
   const keep = new Set<string>();
   for (const r of texts.repos ?? []) {
     if (!REPO_ID.test(r.id)) continue;
@@ -92,5 +96,5 @@ export function pruneInstructionDirs(filesDir: string, projectIds: string[]): vo
 /** The texts of a project as they are now: its settings and every repository of it. */
 export function projectInstructionTexts(ctx: Pick<KanbanContext, 'settings' | 'repos'>, projectId: string): InstructionTexts {
   const ps = ctx.settings.project(projectId);
-  return { general: ps.generalInstructions, testing: ps.testingInstructions, repos: ctx.repos(projectId).map((r) => ({ id: r.id, instructions: r.instructions })) };
+  return { general: ps.generalInstructions, testing: ps.testingInstructions, prReview: ps.prReviewInstructions, repos: ctx.repos(projectId).map((r) => ({ id: r.id, instructions: r.instructions })) };
 }

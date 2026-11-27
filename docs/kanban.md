@@ -407,8 +407,8 @@ or a comment asks for UI testing or screenshots. Investigations take none.
 The images may end up in a pull request, so the agents are told to use test data and test accounts.
 Look at the Images tab before pressing **Create PRs** if that matters.
 
-The PR window's **Review** can test the UI too (the *Also test the UI* tick, see [Reviewing pull requests](#pull-requests)): one implementer takes the pictures first, in a task of its own, and they are
-not added to any pull request.
+The PR window's **Review** can test the UI too (the *Also test the UI* tick, see [Reviewing pull requests](#pull-requests)): one implementer first runs the app and tests what the pull requests change with real browser actions, in a task of its own. Its before and after pictures are evidence and are
+not added to any pull request; its test report goes to the reviewers.
 
 ### Settings
 
@@ -622,7 +622,7 @@ Every action button of the task window and of a pull request's window says what 
 - **Issues** (the top bar, or **Select issue** in the new-task form): a filter row (search and chips for source, status, label and assignee), **Refresh**, **Browse all**, then a row per issue with **Task #N** (opens the task made from it) or **Create task**; the footer counts the issues. A Jira row shows its type (Story, Bug, Sub-task) before the key, and a sub-task sits indented under its parent. When the parent is not in the list (someone else's, done, or filtered out), a low dimmed line with its type, key and title stands in for it above its sub-tasks; it is not counted. The search also matches an issue's type and its parent's key and title, so "bug" lists the bugs and a story's key or title finds its sub-tasks. Rows of other sources stay flat. Picking an issue for a new task shows **Select** instead.
 - **An issue's window**: its key, status and the quiet **Refresh** in the header, the description and comments in the body, **Status** and **Assignee** in the rail beside it (and **Epic** when the issue is in one, or **Parent** when it has a parent that is not an epic, such as a sub-task's story), and in the footer **Open in Jira** / **Open on GitHub** (or Azure Boards) on the left and, on the right, a link to the task made from it (once there is one), **Create task** and **Create and start**.
 - **Find / Link PRs**: a list of pull requests to tick, *N of M selected* in the footer, **Cancel** and **Link selected**.
-- **A pull request's window** (the PR board): its title, state and review on top, the tabs **Conversation** and **Files changed**, the details rail (task, worker, review, changes, labels, updated) with *Hand it to a worker* (**Review**, a kanban task with the PR checked out and two ticks, to post the review on the PR and to test the UI too; **Review panel**, the meeting form; **Fix comments and merge**, **Fix via task #N**, **Ask a worker**), and in the footer **Open on GitHub** on the left and **Close pull request** and **Merge** on the right.
+- **A pull request's window** (the PR board): its title, state and review on top, the tabs **Conversation** and **Files changed**, the details rail (task, worker, review, changes, labels, updated) with *Hand it to a worker* (**Review**, a kanban task with the PR checked out and two ticks, to post the review on the PR and to test the UI and its functionality first; **Review panel**, the meeting form; **Fix comments and merge**, **Fix via task #N**, **Ask a worker**), and in the footer **Open on GitHub** on the left and **Close pull request** and **Merge** on the right.
 - **Changes**: the repositories as tabs, the modes (**All changes**, **Per commit**, **Uncommitted**) and **Refresh**, the files (as a folder tree or a flat list) and the diff, and in the footer **Discard all**, **Commit…** and **Open PR…**.
 - **Settings**: a window with the categories down the side (**You**, **Sound & voice**, **Notifications**, **Building**, **Workers**, **Kanban**, **Projects**, **Multiplayer**); the kanban's two are described under [Settings](#settings).
 
@@ -678,16 +678,19 @@ Saving the form keeps the field empty; type an `owner/name` to pin one.
 A task gets a worktree of each git repository it works in, all on the same branch (named by the
 project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`; with a public language set the default prompt also asks for the slug in that language, and a rewrite of the *Branch naming* prompt can use `{{slugNote}}` for that line, which is empty otherwise and then leaves no blank line). A *folder*
 repository has no worktree: the agent works in the folder itself. The same page has the project's
-general and testing instructions, *tasks at once*, and the project's own
+general, testing and pull-request review instructions, *tasks at once*, and the project's own
 plan approval, implementation mode and review settings.
 
 The project's general and testing instructions and each repository's instructions are written to files
-under `<data>/kanban/instructions/<project>/` (`general.md`, `testing.md`, `repo-<id>.md`; read-only, and
+under `<data>/kanban/instructions/<project>/` (`general.md`, `testing.md`, `pr-review.md`, `repo-<id>.md`; read-only, and
 only for the parts that have text), and every prompt that starts or continues work names them: the agent
 is told to read the general file first, the testing file before it tests or verifies anything, and a
 repository's file before it works there (a pull request review gets those of the repositories in the
 pull requests). The prompts carry the paths, not the text, so an edit in the settings reaches a task
-that is already under way the next time its agent reads the file. The files are brought up to date when
+that is already under way the next time its agent reads the file.
+
+The **Pull-request review** instructions (Projects → Project → Instructions) are meant for the UI test of a pull-request review: how to start the project's environments and how to prepare the data for a test, for example to take a copy of the database that the tester may add data to, so that the situation of a bug can be made there and tested against. They are written to `instructions/<project>/pr-review.md` (only when they have text) and are given only to the UI tester of a pull-request review (the *Also test the UI* tick), which is told to read the file before it starts the app or prepares any data: no other agent, and no other prompt, mentions them. If the file cannot be written, the text goes into the tester's prompt instead.
+ The files are brought up to date when
 the settings are saved and again whenever a prompt is composed. If a file cannot be written, that part
 goes into the prompt as text instead. A comment typed into an agent that is at work carries the same
 reference, after the comment's text. After upgrading, a Claude session started before this change is
@@ -979,13 +982,19 @@ reads its own. A kanban task made from a card keeps the description as its own, 
       reviewers (a rewritten prompt gets that too). The task says in its conversation where it was posted, or why not; a posting that
       fails changes nothing else, and a run that failed or was stopped posts nothing. Retry reviews again and posts again.
     - **Also test the UI**: before the review, one agent (an implementer, with the implementer's permissions) starts the app in a fresh worktree on the
-      base branch and, for each PR that changes what a user sees, takes pictures of the affected views before and after the PR (the PR's head checked out
-      in a worktree of its own), saves them as `<subject>-before.png` and `<subject>-after.png` in the task's folder, and ends; then the review starts by itself and
-      its reviewers read the pictures like a reviewer of a task does (a wrong UI is a finding, missing pictures are not). The pictures stay with the task, on its **Images** tab (see
-      [UI testing](#ui-testing)); **they are not added to any pull request** and not to the posted review. A review that tests the UI is always a task of its own, even from a task's PRs tab,
+      base branch and tests the UI and the functions of each PR that changes what a user sees or does. It reads the PR, writes a short test plan, puts the PR's head in a worktree of its own,
+      and goes through the plan in a real browser with real user actions (clicking, typing, submitting, the keyboard), checking each outcome with an assertion: the working path, empty and invalid input,
+      save and reload, a narrow window when the layout changes, console errors and failed requests. What fails at the head it checks on the PR's target branch, so the report can tell a regression from an old fault.
+      It tests only an instance of the app that it started itself, with test data and test accounts, and does nothing that writes in a shared or production environment. The project's **Pull-request review** instructions tell it how to start the environments and how to make the data for the test (a copy of the database that it may add data to, say); for a pull request that fixes a bug it first makes the situation of the bug in that data, sees the bug on the target branch and then checks at the head that it is gone.
+      The pictures are evidence: it saves before and after pictures of the changed views and of each fault as `<subject>-before.png` and `<subject>-after.png` in the task's folder.
+      Its test report (the environment, what was tested with PASSED, FAILED or NOT TESTED for each path, the findings, what was not tested, the pictures) is written to `ui-test-report.md` in the task's grant folder and repeated in its reply. The office keeps one text of it, in that file and as the task's result comment:
+      what the tester wrote in the file (a regular file of at most 200 kB; a link, a folder or a larger file is replaced unread), followed by its reply when that is a report too (its `UI test report` heading) and says something the file does not; with no file, the reply as it is. The reviewers are pointed to the file only when it holds exactly what the office stored; when that path cannot be written, the whole report is kept beside it as `ui-test-report.<random>.md`, and only if no file can be written at all do they get the report's text in their prompt (its first 30 000 characters, with a note when that is not all of it). A file an earlier UI test left that could not be removed for a Retry is never taken for the new test's report. Then the review starts by itself. Its reviewers read the report first: each failed path and each finding is a candidate finding that they check against the diff (a fault that the
+      report says the target branch has too is mentioned, not a reason to ask for changes), and they look at the pictures like a reviewer of a task does (a wrong UI is a finding, missing pictures are not). The review's result has a section **UI testing**
+      (written by the main reviewer and by the combine, not by each additional reviewer): what was tested and how, what passed, what failed, and what could not be tested. It is in a posted review too, without picture files or local paths. The pictures stay with the task, on its **Images** tab (see
+      [UI testing](#ui-testing)); **they are not added to any pull request**. A review that tests the UI is always a task of its own, even from a task's PRs tab,
       so the task's pull requests are left alone. The tester's worktree of each repository starts from the **target branch of the first PR tested there** (fetched first; the configured base branch only when the PR's target is unknown or can't be fetched, which its line says), so the "before" pictures are the PR's own comparison; another PR of the repository with a different target gets its "before" pictures from a detached worktree of its own target, which the tester makes with the command its line gives (`git worktree add --detach ./base-<n> origin/<target>`; the target is fetched with the heads). A PR that is a fork's, or not confirmed not to be, is never checked out or run by the tester: it is left out of the test and named as such, and when no picked PR is confirmed no tester is hired, the task says why, and the review starts directly. The tester never commits or pushes, creates no branch and stops everything it started; with no UI change in the PRs, or an app that
-      won't start, it says so and the review goes on without pictures. If its run fails or is stopped the task fails or stops
-      like any run, no review starts, and Retry starts again from the UI test.
+      won't start, it says so and the review goes on without a test. An office or project that rewrote the *UI testing · before a pull-request review* prompt keeps its own text until it is reset to the default. If its run fails or is stopped the task fails or stops
+      like any run, no review starts, and Retry starts again from the UI test (an old report is removed first).
   - **Review panel** with **Just this PR** (or only the PR you opened the window on ticked) calls the floor's meeting room with the meeting form, as upstream does. On several PRs it opens the same form
     with the office's brief (the *Review panel of several pull requests* prompt, listing every PR) filled in: roles, number of workers, rounds, the token limit
     (empty means none, the default for a review panel) and the model are yours to set, and the meeting starts when you press the form's button. The brief is
@@ -996,7 +1005,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
 
 Every prompt the kanban sends is editable: plan, replan, branch naming, checkout, implement,
 implement (folder project), investigate, review, next review round, fix, comment, acceptance
-criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs together (and its combine, the UI test before it and the pictures it lists to the reviewers), the review panel of several PRs (the meeting form's brief), carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
+criteria, the task prompt drafted from an issue, open PRs, fix PRs, review PRs together (and its combine, the UI test before it, the block that gives the reviewers its report and pictures, and the review's own *UI testing* section), the review panel of several PRs (the meeting form's brief), carry on, language (used only while no language is set in Settings, see [Languages](agents.md#languages)), reading other tasks
 and handoff, and the smaller texts they're built from (Continue without answers, what the user said
 since, the ticket line and its note on reading a Jira ticket, attached files, the project's instructions and their parts, the referenced
 tasks file, the accepted plan (as a file reference, and as text), the reviewer's conversation (as a file reference, and as text) and the implementer's summary, what the task did, and the handoff's summary and comments). Each lists
@@ -1224,8 +1233,9 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/hosting-secrets.json`, `<data>/homes/<account>/hosting.json` | The office's and each account's Azure DevOps and Bitbucket tokens (mode 600; [hosting](hosting.md#tokens)). Never sent to a browser. |
 | `<data>/kanban/uploads/` | Attached files (mode 600); ones never attached are removed after a day. |
 | `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700), and the files the office keeps for them: `accepted-plan.md` (the accepted plan) and `conversation.md` (the conversation the reviewer reads; both read-only, rewritten by the office before the runs that name them); removed with the task. |
+| `<data>/kanban/grants/task-<id>/ui-test-report.md` | The test report of the UI test before a pull-request review (written by the tester, kept as the office's read-only copy; removed when the UI test starts again), see [Reviewing pull requests](#pull-requests). |
 | `<data>/kanban/grants/task-<id>/ui/` | The task's before and after screenshots (`<subject>-before.png`, `<subject>-after.png`, in a `<repo id>/` folder each in a task in several repositories; mode 700), see [UI testing](#ui-testing). |
-| `<data>/kanban/instructions/<project>/` | The project's instructions as files for its agents: `general.md`, `testing.md`, `repo-<repository id>.md` (read-only; rewritten from the settings, removed with the project), see [Projects and repositories](#projects-and-repositories). |
+| `<data>/kanban/instructions/<project>/` | The project's instructions as files for its agents: `general.md`, `testing.md`, `pr-review.md` (the pull-request review instructions, for the UI tester only), `repo-<repository id>.md` (read-only; rewritten from the settings, removed with the project), see [Projects and repositories](#projects-and-repositories). |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
 | `<data>/kanban/refs/task-<id>/` | The plan phase's referenced tasks. |
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |

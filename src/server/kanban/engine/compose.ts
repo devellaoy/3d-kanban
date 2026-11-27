@@ -29,10 +29,10 @@ import { languageRules } from '../../language.js';
 import { jiraReadAdvertised } from '../integrations/issues/agent-read-scope.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
-import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, type UiBlockKind } from './uitesting.js';
-import { instructionsBlock } from './instructions-block.js';
+import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, uiTestReportLine, type UiBlockKind } from './uitesting.js';
+import { instructionsBlock, prReviewInstructionsPart } from './instructions-block.js';
 import { historyBlock, planBlock } from './taskfiles-block.js';
-import { syncPlanFile } from '../taskfiles.js';
+import { syncPlanFile, uiTestReportPath } from '../taskfiles.js';
 import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
@@ -432,7 +432,7 @@ export class Composer {
         return seal(ins('kanban.review', hist('kanban.review', this.withUi('kanban.review', def, task, 'review', { ...v, history: h, summary }), h)) + this.reviewerText(x, p));
       }
       case 'rereview': {
-        if (x.panel === 'combine' && x.phase === 'pr-review') return seal(this.posted(ins('kanban.pr.review.combine', this.text('kanban.pr.review.combine', p, { prs: x.prs ?? '', reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })), x));
+        if (x.panel === 'combine' && x.phase === 'pr-review') return seal(this.posted(this.prUiTested(ins('kanban.pr.review.combine', this.text('kanban.pr.review.combine', p, { prs: x.prs ?? '', reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })), task, def, x), x));
         if (x.panel === 'combine') return seal(ins('kanban.review.combine', this.text('kanban.review.combine', p, { taskId: task.id, round: v.round, rounds: v.rounds, reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })));
         const h = history();
         return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', plan: v.plan, history: h, instructions: v.instructions, language: v.language }), h)) + this.reviewerText(x, p));
@@ -486,10 +486,12 @@ export class Composer {
       case 'pr.review': {
         // What the user said to a reviewer that asked (a fresh reviewer starts the review again with the answer).
         const text = [ins('kanban.pr.review', this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, instructions: v.instructions, language: v.language })), x.text ? this.text('kanban.sinceSaid', p, { text: x.text }) : ''].filter(Boolean).join('\n\n');
-        return seal(this.posted(this.prPictures(text + this.reviewerText(x, p), task, def, x), x));
+        return seal(this.posted(this.prUiTested(text + this.reviewerText(x, p), task, def, x), x));
       }
       case 'pr.uitest': {
-        const body = ins('kanban.pr.uiTest', this.text('kanban.pr.uiTest', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, imagesDir: uiImagesDir(this.ctx.filesDir, task.id), instructions: v.instructions, language: v.language }));
+        // The tester also gets the project's pull-request review instructions, in its {{instructions}} or at the end of a rewritten prompt without it.
+        const insUi = [String(v.instructions), prReviewInstructionsPart(this.ctx, p)].filter(Boolean).join('\n\n');
+        const body = this.withBlock('kanban.pr.uiTest', p, this.text('kanban.pr.uiTest', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, imagesDir: uiImagesDir(this.ctx.filesDir, task.id), reportFile: uiTestReportPath(this.ctx.filesDir, task.id), instructions: insUi, language: v.language }), insUi, 'instructions');
         return seal(x.text ? `${body}\n\n${this.text('kanban.sinceSaid', p, { text: x.text })}` : body, 'prUiTest');
       }
     }
@@ -500,12 +502,22 @@ export class Composer {
     return x.post ? `${text.trimEnd()}\n\n${PR_POSTED}` : text;
   }
 
-  /** A pull-request review's prompt with the pictures its UI test saved (see ComposeExtra.uiTest), when it saved any. */
-  private prPictures(text: string, task: KanbanTask, def: FloorDef, x: ComposeExtra): string {
+  /**
+   * A pull-request review's prompt with what its UI test left (see ComposeExtra.uiTest): the block naming the tester's report and
+   * listing its pictures, when there is a report or any picture, then the review's own "UI testing" section for the main reviewer
+   * and the combine (not an additional reviewer). A rewritten block without {{report}} gets the report line at its end.
+   */
+  private prUiTested(text: string, task: KanbanTask, def: FloorDef, x: ComposeExtra): string {
     if (!x.uiTest) return text;
-    const dir = uiImagesDir(this.ctx.filesDir, task.id);
+    const dir = uiImagesDir(this.ctx.filesDir, task.id), line = uiTestReportLine(this.ctx.repo, this.ctx.filesDir, task.id);
     const images = listUiImages(dir, projectRepos(def).map((r) => r.id));
-    return images.length ? `${text.trimEnd()}\n\n${this.text('kanban.pr.uiTest.review', task.project, { imagesDir: dir, imageList: imageListText(dir, images) })}` : text;
+    if (!line && !images.length) return text;
+    const report = line ?? 'The tester left no report.';
+    const id = 'kanban.pr.uiTest.review';
+    let block = this.text(id, task.project, { imagesDir: dir, imageList: imageListText(dir, images), report });
+    if (block && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('report')) block = `${block}\n${report}`;
+    const section = x.panel === 'co' ? '' : this.text('kanban.pr.uiTest.section', task.project);
+    return [text.trimEnd(), block, section].filter(Boolean).join('\n\n');
   }
 
   /** What a reviewer's prompt has after the ordinary review prompt: its focus, then an additional reviewer's rule (see ComposeExtra.panel); empty for any other. */

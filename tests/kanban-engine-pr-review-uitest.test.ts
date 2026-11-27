@@ -1,16 +1,21 @@
 // The UI test before a pull-request review (the request's `uiTest`, engine/prreview-ui.ts): a review task of its own, an implementer-role
-// agent in a fresh worktree on the base branch who takes the pictures into the task's images folder, then the review by itself; the
-// tester's worktree is removed, the reviewers' prompts list the pictures, and none of them is added to any pull request.
+// agent in a fresh worktree on the base branch who tests the UI, takes the pictures into the task's images folder and writes a report, then the review by itself; the
+// tester's worktree is removed, the reviewers' prompts name the report and list the pictures, and none of them is added to any pull request.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import fs, { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { syncBuiltinESMExports } from 'node:module';
+import { putOfficeFile, replaceOfficeFile } from '../src/server/kanban/officefile.js';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { GitRunner } from '../src/server/kanban/engine/prheads.js';
-import { uiImagesDir } from '../src/server/kanban/engine/uitesting.js';
+import { uiImagesDir, uiTestReportFor } from '../src/server/kanban/engine/uitesting.js';
 import { checkScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { closingsIdle } from '../src/server/kanban/integrations/pulls/closes.js';
+import { dropUiTestReport, readUiTestReport, storeUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
+import { uiTestReport } from '../src/server/kanban/engine/prreview-ui.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
@@ -20,7 +25,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const noFetch: GitRunner = async () => {
   throw new Error('no network');
 };
-const TESTER = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Test the UI of these pull requests', reply, ...more });
+const TESTER = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Test the UI and the functionality of these pull requests', reply, ...more });
 const MAIN = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Review these pull requests', reply, ...more });
 const APPROVED = 'The UI looks right.\nREVIEW: APPROVED';
 const pr = (n: number) => ({ repo: 'acme/proj', number: n, title: `PR ${n}`, base: 'main', fork: false }) as never;
@@ -49,6 +54,16 @@ async function uiReview(fx: EngineFixture, more: object = {}) {
   if (typeof got === 'string') throw new Error(got);
   return { id: got.taskId, tester: got.workerId! };
 }
+
+/** Whether anything, a dangling link too, is at `p`. */
+const lstatExists = (p: string) => {
+  try {
+    lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const branchLeft = (fx: EngineFixture, wt: string) => git(fx.dir, 'branch', '--list', 'office/*').includes(path.basename(wt));
 
@@ -85,7 +100,7 @@ test('uiTest: a task of its own even when one is named, the tester first (an imp
   // It has the implementer's flags (it runs a dev server and writes pictures), and may write in the task's folder.
   const start = await (async () => {
     for (let i = 0; i < 200; i++) {
-      const found = prompts(fx, /Test the UI of these pull requests/)[0];
+      const found = prompts(fx, /Test the UI and the functionality of these pull requests/)[0];
       if (found) return found;
       await sleep(25);
     }
@@ -119,7 +134,11 @@ test('uiTest: a task of its own even when one is named, the tester first (an imp
   assert.ok(comments.some((c) => c.kind === 'review' && /UI looks right/.test(c.text)));
   // The reviewer's prompt lists the saved pictures, and its folder is readable.
   const review = prompts(fx, /Review these pull requests/)[0];
-  assert.match(review.prompt!, /The UI of these pull requests was tested before your review/);
+  assert.match(review.prompt!, /The UI and the functionality of these pull requests were tested before your review/);
+  const reportFile = uiTestReportPath(fx.ctx.filesDir, id);
+  assert.ok(readFileSync(reportFile, 'utf8').includes('Saved the pictures of the login view'), 'its reply is kept in the report file');
+  assert.ok(review.prompt!.includes(`The tester's report is in ${reportFile}.`));
+  assert.ok(review.prompt!.includes('Your reply must have a section "UI testing"'), 'the main reviewer writes the section');
   assert.ok(review.prompt!.includes(`- login: before ${path.join(dir(), 'login-before.png')}, after ${path.join(dir(), 'login-after.png')}`), review.prompt);
   assert.ok(review.args.some((a, i) => a === '--add-dir' && review.args[i + 1] === grantDir(fx.ctx.filesDir, id)), 'the pictures can be read');
   assert.ok(review.args.includes('--disallowedTools'), 'the reviewer keeps its read-only flags');
@@ -163,15 +182,56 @@ test('uiTest: a tester whose agent exits fails the task like any run, and Retry 
   assert.deepEqual(prRuns(fx, id).map((r) => `${r.role}/${r.status}`), ['implementer/interrupted']);
   assert.equal(prompts(fx, /Review these pull requests/).length, 0, 'the review does not start behind a failed UI test');
   assert.match(failed.waitingText ?? '', /exited/);
-  fx.setRules([TESTER('Nothing to photograph: the pull requests change no UI.'), MAIN(APPROVED)]);
+  fx.setRules([TESTER('Nothing to photograph: the pull requests change no UI.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  // An old report (a read-only copy, as the office writes them) is gone when the UI test starts again.
+  const old = uiTestReportPath(fx.ctx.filesDir, id);
+  mkdirSync(path.dirname(old), { recursive: true });
+  writeFileSync(old, 'OLD REPORT', { mode: 0o444 });
   assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await until('the second tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 2);
+  assert.ok(!existsSync(old), 'no file is left for the tester to find');
   await fx.waitTask(id, inReview, 'the review column', 40_000);
   assert.deepEqual(prRuns(fx, id).map((r) => `${r.role}/${r.status}`), ['implementer/interrupted', 'implementer/succeeded', 'reviewer/succeeded']);
-  assert.equal(prompts(fx, /Test the UI of these pull requests/).length, 2);
+  assert.equal(prompts(fx, /Test the UI and the functionality of these pull requests/).length, 2);
   assert.equal(prompts(fx, /Review these pull requests/).length, 1, 'one review');
   assert.equal(fx.repo.listComments(id).comments.filter((c) => c.kind === 'review').length, 1);
   await until('the first tester’s worktree to be gone', () => !existsSync(wt), 15_000);
   assert.equal(fx.workers.list().length, 0);
+});
+
+test('uiTest: an old report that cannot be removed for a Retry is not the new test’s report: the result comment and the reviewers get the new reply', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([TESTER('unused', { exit: true }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  await fx.waitTask(id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'the interruption', 30_000);
+  // What the first, failed tester left in the file; removing it fails from here on.
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, '## UI test report\n### Tested\n- PR 3 login: PASSED (OLD)');
+  const realRm = fs.rmSync;
+  let refused = 0;
+  t.mock.method(fs, 'rmSync', ((p: fs.PathLike, o?: fs.RmOptions) => {
+    if (p === file) {
+      refused++;
+      throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+    }
+    return realRm(p, o);
+  }) as never);
+  syncBuiltinESMExports();
+  t.after(() => (t.mock.restoreAll(), syncBuiltinESMExports()));
+  fx.setRules([TESTER('The app does not start: nothing was tested.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await until('the second tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 2);
+  assert.ok(refused > 0, 'the removal was tried and refused');
+  assert.match(readFileSync(file, 'utf8'), /OLD/, 'the old file is still there while the new tester works');
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  const results = fx.repo.listComments(id).comments.filter((c) => c.kind === 'result').map((c) => c.text);
+  assert.deepEqual(results, ['The app does not start: nothing was tested.'], 'the new reply, not the old file');
+  const review = prompts(fx, /Review these pull requests/)[0].prompt!;
+  const named = /The tester's report is in (\S+\.md)\./.exec(review)?.[1];
+  assert.ok(named, review);
+  assert.equal(readFileSync(named!, 'utf8').trim(), 'The app does not start: nothing was tested.', 'the reviewers are given the new report');
+  assert.ok(!review.includes('OLD'));
 });
 
 test('uiTest: Stop during the UI test stops the task, no review starts, and Retry starts from the UI test again', async (t) => {
@@ -218,7 +278,7 @@ test('uiTest: a fork’s pull request is left out of the test and named as such;
   if (typeof mixed === 'string') return;
   const start = await (async () => {
     for (let i = 0; i < 200; i++) {
-      const f = prompts(fx, /Test the UI of these pull requests/)[0];
+      const f = prompts(fx, /Test the UI and the functionality of these pull requests/)[0];
       if (f) return f;
       await sleep(25);
     }
@@ -229,14 +289,14 @@ test('uiTest: a fork’s pull request is left out of the test and named as such;
   assert.ok(calls.every((a) => !a.some((x) => /pull\/3\//.test(x))), 'the fork’s head is never fetched');
   await fx.waitTask(mixed.taskId, inReview, 'the review column', 40_000);
 
-  const before = prompts(fx, /Test the UI of these pull requests/).length;
+  const before = prompts(fx, /Test the UI and the functionality of these pull requests/).length;
   const only = await fx.engine.reviewPrs({ project: 'proj', prs: [{ ...(pr(5) as object), fork: true }] as never, tool: 'claude', uiTest: true }, ADA);
   assert.ok(typeof only !== 'string', String(only));
   if (typeof only === 'string') return;
   assert.equal(fx.task(only.taskId).workerId, undefined, 'no tester');
   await fx.waitTask(only.taskId, inReview, 'the review column', 40_000);
   assert.deepEqual(prRuns(fx, only.taskId).map((r) => `${r.role}/${r.status}`), ['reviewer/succeeded']);
-  assert.equal(prompts(fx, /Test the UI of these pull requests/).length, before, 'no tester prompt');
+  assert.equal(prompts(fx, /Test the UI and the functionality of these pull requests/).length, before, 'no tester prompt');
   assert.ok(notes(fx, only.taskId).some((n) => /from a fork.*no UI to test: the review starts without it/.test(n)), notes(fx, only.taskId).join(' | '));
 });
 
@@ -267,7 +327,7 @@ test('uiTest: the tester’s worktree is cut from the target of the first pull r
   assert.ok(existsSync(path.join(wt, 'release.txt')));
   const start = await (async () => {
     for (let i = 0; i < 200; i++) {
-      const f = prompts(fx, /Test the UI of these pull requests/)[0];
+      const f = prompts(fx, /Test the UI and the functionality of these pull requests/)[0];
       if (f) return f;
       await sleep(25);
     }
@@ -296,4 +356,268 @@ test('uiTest: a pull request not confirmed not to be from a fork is not tested, 
   assert.ok(notes(fx, got.taskId).some((n) => /confirmed not to be from a fork.*no UI to test/.test(n)), notes(fx, got.taskId).join(' | '));
   assert.ok(!notes(fx, got.taskId).some((n) => /to test the UI of, and then review/.test(n)), 'a skipped UI test is not announced as started');
   assert.ok(notes(fx, got.taskId).some((n) => /asked \w+ to review acme\/proj#3/.test(n)));
+});
+
+test('uiTest: the report the tester wrote is kept and is the result comment when its reply holds no report', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([TESTER('Done. The UI test report is in the file named above.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  await until('the tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 1);
+  assert.ok(prompts(fx, /Test the UI and the functionality/)[0].prompt!.includes(`Write the report to ${file} as you go`));
+  const body = '## UI test report\n### Tested\n- PR 3 login: PASSED';
+  writeFileSync(file, body);
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.equal(readFileSync(file, 'utf8').trim(), body, 'the file keeps what the tester wrote');
+  const results = fx.repo.listComments(id).comments.filter((c) => c.kind === 'result');
+  assert.deepEqual(results.map((c) => c.text), [body], 'the conversation shows what the reviewers read');
+  assert.ok(prompts(fx, /Review these pull requests/)[0].prompt!.includes(`The tester's report is in ${file}.`));
+});
+
+test('uiTest: the file stays first and a reply that is a report too is kept after it, for the reviewers and the conversation alike', async (t) => {
+  const fx = await setup(t);
+  const full = '## UI test report\n### Tested\n- PR 3 login: FAILED\n### Findings\n- PR 3: the form submits twice';
+  fx.setRules([TESTER(full, { delayMs: 1500 }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  await until('the tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 1);
+  writeFileSync(file, '## UI test report\n### Tested\n- PR 3 login: NOT TESTED');
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  const kept = readFileSync(file, 'utf8');
+  assert.ok(kept.startsWith('## UI test report\n### Tested\n- PR 3 login: NOT TESTED'), 'what the tester wrote in the file comes first');
+  assert.match(kept, /The tester's final reply:[\s\S]*the form submits twice/, 'and the finding only its reply has is not lost');
+  const results = fx.repo.listComments(id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results.length, 1);
+  assert.equal(results[0].text.trim(), kept.trim(), 'one text in both places');
+});
+
+test('uiTestReport: the file is the report; a headed reply adds only what the file lacks, and without a file the reply is it', () => {
+  const file = '## UI test report\n### Tested\n- PR 3 login: FAILED\n### Findings\n- PR 3: the form submits twice. Steps: open /login, press Enter twice.';
+  // A short summary under the same heading never replaces the detailed report: it comes after it.
+  const summary = '## UI test report\nOne path failed, see the file.';
+  const both = uiTestReport(file, `${summary}\n\nWORK DONE`);
+  assert.ok(both.startsWith(file), 'the detailed report is kept, first');
+  assert.match(both, /press Enter twice[\s\S]*The tester's final reply:[\s\S]*One path failed/);
+  // A reply that repeats the file, whatever its spacing, adds nothing; nor does one that is no report.
+  assert.equal(uiTestReport(file, file.replace(/\n/g, '\n\n')), file);
+  assert.equal(uiTestReport(file, 'Done. The UI test report is in the file named above.'), file);
+  assert.equal(uiTestReport(file, ''), file);
+  assert.equal(uiTestReport(undefined, ' Nothing to test. \n'), 'Nothing to test.');
+  assert.equal(uiTestReport(undefined, ''), '');
+});
+
+test('uiTest: a file over the limit, a folder or a link at the report’s path is replaced unread by the reply, and a Retry clears a folder there', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([TESTER('Nothing changes the UI.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  await until('the tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 1);
+  writeFileSync(file, 'x'.repeat(5_000_000));
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.equal(readFileSync(file, 'utf8').trim(), 'Nothing changes the UI.', 'the large file is gone, the reply is the report');
+  assert.deepEqual(fx.repo.listComments(id).comments.filter((c) => c.kind === 'result').map((c) => c.text), ['Nothing changes the UI.']);
+  assert.ok(prompts(fx, /Review these pull requests/)[0].prompt!.includes(`The tester's report is in ${file}.`));
+
+  // The same three wrong things, through the helpers the run uses: none is a report, and the reset leaves nothing of any.
+  const secret = path.join(path.dirname(file), 'secret.txt');
+  writeFileSync(secret, 'secret');
+  for (const wrong of [() => mkdirSync(path.join(file, 'inner'), { recursive: true }), () => symlinkSync(secret, file), () => symlinkSync(path.dirname(file), file)]) {
+    rmSync(file, { recursive: true, force: true });
+    wrong();
+    assert.deepEqual(Object.keys(uiTestReportFor(fx.repo, fx.ctx.filesDir, id)), ['text'], 'no prompt names it: the kept text is given');
+    assert.equal(readUiTestReport(fx.ctx.filesDir, id), undefined);
+    dropUiTestReport(fx.ctx.filesDir, id);
+    assert.ok(!existsSync(file) && !lstatExists(file), 'the reset removes it');
+    assert.equal(storeUiTestReport(fx.ctx.filesDir, id, 'next'), file, 'and the next report can be written');
+  }
+  assert.equal(readFileSync(secret, 'utf8'), 'secret', 'a link is removed, never followed');
+});
+
+test('readUiTestReport: what is read is the file that was checked, even when the path becomes a link meanwhile', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  mkdirSync(path.dirname(file), { recursive: true });
+  const secret = path.join(root, 'secret.txt');
+  writeFileSync(secret, 'secret');
+  writeFileSync(file, 'the report');
+  let swapped = false;
+  const got = readUiTestReport(root, 7, {
+    opened: () => {
+      rmSync(file);
+      symlinkSync(secret, file);
+      swapped = true;
+    },
+  });
+  assert.ok(swapped);
+  assert.equal(got, 'the report', 'the open file, not what the path points at now');
+  assert.equal(readUiTestReport(root, 7), undefined, 'and the link itself is never opened');
+  // A file that grows past the limit after it was checked is no report either.
+  rmSync(file);
+  writeFileSync(file, 'x'.repeat(200_000));
+  assert.equal(readUiTestReport(root, 7, { opened: () => writeFileSync(file, 'y'.repeat(300_000)) }), undefined);
+});
+
+test('readUiTestReport: a path that becomes a link between the check and the open is refused, with or without the platform’s no-follow flag', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  mkdirSync(path.dirname(file), { recursive: true });
+  const secret = path.join(root, 'secret.txt');
+  writeFileSync(secret, 'secret');
+  // 0: a platform without O_NOFOLLOW, where the open follows the link; undefined: this platform's own flag.
+  for (const noFollow of [0, undefined]) {
+    rmSync(file, { force: true });
+    writeFileSync(file, 'the report');
+    let swapped = false;
+    const got = readUiTestReport(root, 7, {
+      noFollow,
+      beforeOpen: () => {
+        rmSync(file);
+        symlinkSync(secret, file);
+        swapped = true;
+      },
+    });
+    assert.ok(swapped);
+    assert.equal(got, undefined, `the link's target is not the report (noFollow ${noFollow})`);
+  }
+  // Swapped to a link for the open and back to a file after it: still not the file that was checked.
+  rmSync(file, { force: true });
+  writeFileSync(file, 'the report');
+  const back = readUiTestReport(root, 7, {
+    noFollow: 0,
+    beforeOpen: () => (rmSync(file), symlinkSync(secret, file)),
+    opened: () => (rmSync(file), writeFileSync(file, 'the report')),
+  });
+  assert.equal(back, undefined);
+  assert.equal(readFileSync(secret, 'utf8'), 'secret');
+});
+
+test('storeUiTestReport: what is at the path is never read, also when it cannot be removed first; a temporary name that is a link is not written through', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, 'x'.repeat(5_000_000));
+  // Every read of the report's path through fs is counted, and removing it fails: the store must still replace it, unread.
+  const reads: string[] = [];
+  const watch = <K extends 'readFileSync' | 'readSync' | 'openSync'>(name: K) => {
+    const real = fs[name] as (...a: unknown[]) => unknown;
+    t.mock.method(fs, name, ((...a: unknown[]) => {
+      if (name === 'readSync' || (typeof a[0] === 'string' && a[0] === file)) reads.push(name);
+      return real(...a);
+    }) as never);
+  };
+  watch('readFileSync');
+  watch('readSync');
+  watch('openSync');
+  const realRm = fs.rmSync;
+  let refused = 0;
+  t.mock.method(fs, 'rmSync', ((p: fs.PathLike, o?: fs.RmOptions) => {
+    if (p === file) {
+      refused++;
+      throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+    }
+    return realRm(p, o);
+  }) as never);
+  syncBuiltinESMExports();
+  try {
+    assert.equal(storeUiTestReport(root, 7, 'the report'), file);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.deepEqual(reads, [], 'the old file was not opened or read');
+  assert.equal(refused, 0, 'a file is renamed over: it needs no removal that could fail');
+  assert.equal(readFileSync(file, 'utf8'), 'the report\n');
+
+  // A folder there cannot be renamed over: with its removal refused the report is kept beside it, under a name of its own.
+  rmSync(file);
+  mkdirSync(path.join(file, 'inner'), { recursive: true });
+  t.mock.method(fs, 'rmSync', ((p: fs.PathLike, o?: fs.RmOptions) => {
+    if (p === file) {
+      refused++;
+      throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+    }
+    return realRm(p, o);
+  }) as never);
+  syncBuiltinESMExports();
+  let spare: string | undefined;
+  try {
+    spare = storeUiTestReport(root, 7, 'the report');
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.ok(lstatSync(file).isDirectory(), 'the folder is left as it is');
+  assert.match(path.basename(spare ?? ''), /^ui-test-report\.[0-9a-f]{16}\.md$/);
+  assert.equal(readFileSync(spare!, 'utf8'), 'the report\n');
+  assert.equal(readUiTestReport(root, 7, {}, path.basename(spare!)), 'the report', 'read by its name');
+  assert.equal(readUiTestReport(root, 7, {}, '../../secret.txt'), undefined, 'no other name is ever read');
+  rmSync(spare!);
+  assert.ok(refused > 0, 'the removal was tried and refused');
+  rmSync(file, { recursive: true });
+
+  // The temporary file: a link waiting at its name is left alone, target and all, and another name is used.
+  const target = path.join(root, 'target.txt');
+  writeFileSync(target, 'untouched');
+  const trap = `${file}.trap.tmp`;
+  symlinkSync(target, trap);
+  const names = [trap, `${file}.free.tmp`];
+  replaceOfficeFile(file, 'safe\n', () => names.shift()!);
+  assert.equal(readFileSync(target, 'utf8'), 'untouched');
+  assert.equal(readFileSync(file, 'utf8'), 'safe\n');
+  assert.ok(lstatSync(trap).isSymbolicLink(), 'the link itself is not removed or replaced');
+  assert.ok(!existsSync(`${file}.free.tmp`), 'the temporary file became the report');
+  // A write that takes only a part at a time still leaves the whole text, multi-byte characters too; one that takes nothing fails and leaves the old file.
+  const whole = `${'äö€ '.repeat(3000)}end\n`;
+  const realWrite = fs.writeSync as (...a: unknown[]) => number;
+  let calls = 0;
+  t.mock.method(fs, 'writeSync', ((fd: number, buf: Uint8Array, at: number, len: number) => (calls++, realWrite(fd, buf, at, Math.min(len, 1000)))) as never);
+  syncBuiltinESMExports();
+  try {
+    replaceOfficeFile(file, whole);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.ok(calls > 10, 'written in parts');
+  assert.equal(readFileSync(file, 'utf8'), whole);
+  t.mock.method(fs, 'writeSync', (() => 0) as never);
+  syncBuiltinESMExports();
+  try {
+    assert.throws(() => replaceOfficeFile(file, 'short\n'), /bytes could be written/);
+  } finally {
+    t.mock.restoreAll();
+    syncBuiltinESMExports();
+  }
+  assert.equal(readFileSync(file, 'utf8'), whole, 'a half-written file never replaces the old one');
+  assert.deepEqual(fs.readdirSync(path.dirname(file)).filter((n) => /\.tmp$/.test(n) && !/trap/.test(n)), [], 'and its temporary file is removed');
+  // The old, guessable name too, through the ordinary writer.
+  const guess = `${file}.${process.pid}.tmp`;
+  symlinkSync(target, guess);
+  assert.equal(putOfficeFile(file, 'again'), true);
+  assert.equal(readFileSync(target, 'utf8'), 'untouched');
+  // With every name taken it gives up rather than write through one.
+  assert.throws(() => replaceOfficeFile(file, 'no\n', () => trap), /EEXIST/);
+  assert.equal(readFileSync(target, 'utf8'), 'untouched');
+});
+
+test('readUiTestReport: only a regular file with text, up to 200 kB; a link, an empty or a large file is no report', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  assert.equal(readUiTestReport(root, 7), undefined, 'none');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, '  \n ');
+  assert.equal(readUiTestReport(root, 7), undefined, 'blank');
+  writeFileSync(file, 'x'.repeat(200_001));
+  assert.equal(readUiTestReport(root, 7), undefined, 'too large');
+  writeFileSync(file, ' report \n');
+  assert.equal(readUiTestReport(root, 7), 'report');
+  const secret = path.join(root, 'secret.txt');
+  writeFileSync(secret, 'secret');
+  rmSync(file);
+  symlinkSync(secret, file);
+  assert.equal(readUiTestReport(root, 7), undefined, 'a link is not read');
 });

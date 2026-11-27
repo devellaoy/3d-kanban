@@ -98,10 +98,10 @@ test('ids that could leave the folder are refused', (t) => {
 
 test("projectInstructionTexts reads the project's settings and every repository", () => {
   const ctx = {
-    settings: { project: (id: string) => ({ generalInstructions: `g-${id}`, testingInstructions: 't' }) },
+    settings: { project: (id: string) => ({ generalInstructions: `g-${id}`, testingInstructions: 't', prReviewInstructions: 'pr' }) },
     repos: () => [{ id: 'web', instructions: 'p' }, { id: 'api' }],
   } as never;
-  assert.deepEqual(projectInstructionTexts(ctx, 'web'), { general: 'g-web', testing: 't', repos: [{ id: 'web', instructions: 'p' }, { id: 'api', instructions: undefined }] });
+  assert.deepEqual(projectInstructionTexts(ctx, 'web'), { general: 'g-web', testing: 't', prReview: 'pr', repos: [{ id: 'web', instructions: 'p' }, { id: 'api', instructions: undefined }] });
 });
 
 test('an installed kanban keeps the files in step with the settings, the repositories and the floors', (t) => {
@@ -150,6 +150,11 @@ test('an installed kanban keeps the files in step with the settings, the reposit
   assert.ok(!existsSync(path.join(dir, 'repo-api.md')), 'a removed repository takes its file');
   kanban.ctx.settings.setProject('web', { generalInstructions: '' });
   assert.ok(!existsSync(path.join(dir, 'general.md')));
+  kanban.ctx.settings.setProject('web', { prReviewInstructions: 'Copy the database first.' });
+  assert.equal(readFileSync(path.join(dir, 'pr-review.md'), 'utf8'), 'Copy the database first.\n');
+  assert.ok(existsSync(path.join(dir, 'pr-review.md')), 'other settings and the repository clean-up leave it');
+  kanban.ctx.settings.setProject('web', { prReviewInstructions: '' });
+  assert.ok(!existsSync(path.join(dir, 'pr-review.md')), 'blank text removes it');
   defs.push({ id: 'new', name: 'new', dir: root, palette: 1, addedBy: 'Sam', addedAt: 2 });
   kanban.projectsChanged();
   assert.ok(existsSync(instructionsDir(kanban.ctx.filesDir, 'new')), 'a new floor gets its folder');
@@ -193,4 +198,16 @@ test("a link whose text already matches is replaced too, so a later change of wh
   writeFileSync(other, 'Changed elsewhere.\n');
   assert.equal(readFileSync(got.general!, 'utf8'), 'Be kind.\n');
   assert.equal(statSync(other).mode & 0o777, 0o600);
+});
+
+test('the pull-request review instructions are a file of their own, and pruning and the repository clean-up leave it', (t) => {
+  const root = files(t);
+  const got = syncInstructionFiles(root, 'web', { prReview: 'Start it with make dev.', repos: [{ id: 'a', instructions: 'x' }] });
+  assert.equal(got.prReview, path.join(instructionsDir(root, 'web'), 'pr-review.md'));
+  assert.equal(readFileSync(got.prReview!, 'utf8'), 'Start it with make dev.\n');
+  syncInstructionFiles(root, 'web', { prReview: 'Start it with make dev.', repos: [] });
+  pruneInstructionDirs(root, ['web']);
+  assert.ok(existsSync(got.prReview!));
+  assert.equal(syncInstructionFiles(root, 'web', { prReview: '  ' }).prReview, undefined);
+  assert.ok(!existsSync(got.prReview!));
 });

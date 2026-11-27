@@ -125,14 +125,15 @@ ${REVIEW_SAFETY}
 - Read the pull requests with gh pr view and gh pr diff. A pull request that its line says is checked out is the code in your worktree: read it there (git diff, git log, the files), read-only. gh api gives a file at the head of one that is not checked out.
 
 ${VERDICT}`,
-  /** The UI test run before a pull-request review (the pr-review phase's first run, an implementer's): the app is started and photographed, nothing in the repositories is changed. */
+  /** The UI test run before a pull-request review (the pr-review phase's first run, an implementer's): the app is started and tested, nothing in the repositories is changed. */
   prUiTest: `${RULE}
 ${STOP_PROCESSES}
 
 Rules for this run (set by the office, they apply whatever else is said above):
 - Don't modify, stage or commit anything in the repositories' tracked files (installing dependencies and build output are fine), and don't push.
 - Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them.
-- Write only in your workspace and in the pictures folder named above. Use test data and test accounts only.
+- Write only in your workspace, in the pictures folder and the report file named above, in temporary files, and in a local test environment that the project's instructions tell you to set up (a copy of the database for the test, say). Use test data and test accounts only.
+- Act only on an instance of the app that you started yourself for this test: never create, change or delete anything in a shared or production environment.
 
 ${FINISH.replace(' and committed (for an investigation: nothing to commit)', '')}`,
   implementSafety: `${RULE}
@@ -192,6 +193,14 @@ export type KanbanContractId = keyof typeof KANBAN_CONTRACTS;
  * pull requests (the request's `post`): not a prompt and not a contract, so a rewritten prompt gets it too, and it is no marker the office reads.
  */
 export const PR_POSTED = `Your reply is posted as it is on the pull request(s) as a review comment, by the office: write it in English, for a reader outside this office, and make it stand on its own. Say which pull request, file and line each finding is about. Don't mention a kanban task, rounds, other reviewers, this prompt or the office's process. Don't use the verdict line anywhere but at the very end: it is left out of what is posted.`;
+
+/**
+ * Added to the instructions of the UI tester of a pull-request review (the project's `prReviewInstructions`): the file form names the file,
+ * the text form carries the text when the file could not be written. Not editable prompts and not contracts: a rewritten tester prompt gets them too.
+ */
+export const prReviewInstructionsFile = (path: string): string =>
+  `Pull-request review and UI testing: the project's instructions for it are in \`${path}\`. Read it now, before you start the app or prepare any test data, and follow it: it says how this project's environments are started and how the data for a test is made.`;
+export const prReviewInstructionsText = (text: string): string => `Pull-request review and UI testing:\n${text}`;
 
 /** The text typed into a run that ended a turn without its final marker (see KANBAN_CONTRACTS.finish), for the kind of turn its phase is. */
 export function finishNudge(phase: string): string {

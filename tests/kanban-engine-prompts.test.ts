@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
+import fs, { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, realpathSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { FloorDef } from '../src/server/building.js';
@@ -19,6 +19,9 @@ import type { RunPhase } from '../src/shared/kanban/types.js';
 import type { LanguageSettings } from '../src/shared/language.js';
 import { makeRepo } from './kanban-engine-fixture.js';
 import { conversationFilePath, planFilePath } from '../src/server/kanban/taskfiles.js';
+import { keepUiTestReport, resetUiTestReport } from '../src/server/kanban/engine/uitesting.js';
+import { uiTestReport } from '../src/server/kanban/engine/prreview-ui.js';
+import { syncBuiltinESMExports } from 'node:module';
 import { HISTORY_TEXT_MAX } from '../src/server/kanban/engine/taskfiles-block.js';
 
 function setup(t: { after(fn: () => void): void }, office: Record<string, { text: string }> = {}, langs: LanguageSettings = {}) {
@@ -993,19 +996,30 @@ test('post: the block telling the reply is posted goes after the pr.review and t
   assert.deepEqual(Object.keys(PROMPTS).filter((id) => PROMPTS[id as PromptId].text.includes(PR_POSTED)), [], 'it is in no editable prompt');
 });
 
+test('kanban.pr.uiTest.review: a rewritten block without {{report}} gets the report line at its end, and an emptied one adds nothing but the section', (t) => {
+  const { def: floorDef, dir, repo, compose, ctx } = setup(t, { 'kanban.pr.uiTest.review': { text: 'Pictures: {{imageList}}' } });
+  const task = repo.createTask({ project: 'proj', title: 'PR review', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const grant = path.join(ctx.filesDir, 'grants', `task-${task.id}`);
+  keepUiTestReport(repo, ctx.filesDir, task.id, 'x');
+  const text = compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
+  assert.ok(text.includes(`Pictures: none yet\n${"The tester's report is in " + path.join(grant, 'ui-test-report.md')}.\n\nYour reply must have a section "UI testing"`));
+});
+
 test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images folder and the rules, and ends with the UI test contract; the pictures are listed to the reviewers', (t) => {
   const def = KANBAN_PROMPT_DEFS['kanban.pr.uiTest'];
-  assert.deepEqual(placeholders(def.text).sort(), ['imagesDir', 'instructions', 'language', 'project', 'prs', 'repos', 'task']);
+  assert.deepEqual(placeholders(def.text).sort(), ['imagesDir', 'instructions', 'language', 'project', 'prs', 'reportFile', 'repos', 'task']);
   assert.equal(PROMPT_CONTRACT['kanban.pr.uiTest'], 'prUiTest');
   assert.equal(PROMPTS['kanban.pr.uiTest'].group, 'kanban');
-  assert.ok(placeholders(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.review'].text).every((n) => ['imagesDir', 'imageList'].includes(n)));
+  assert.ok(placeholders(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.review'].text).every((n) => ['imagesDir', 'imageList', 'report'].includes(n)));
+  assert.deepEqual(placeholders(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.section'].text), []);
   const { def: floorDef, dir, repo, compose, ctx } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
   const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const report = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui-test-report.md');
   const x = { phase: 'implement' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3 — its head is fetched as origin/office-pr/3', prRepos: '- `.`: Proj' };
   const text = compose.build('pr.uitest', floorDef, task, 'claude', dir, x);
   assert.doesNotMatch(text, /\{\{/);
-  for (const part of ['its head is fetched as origin/office-pr/3', `Save the pictures in ${images}`, '<subject>-before.png or <subject>-after.png', 'under its Images tab: they are not added to any pull request', 'git worktree add --detach', 'git fetch origin pull/<number>/head', 'Never create, move or delete a branch, never commit', 'is from a fork is not tested', "Don't commit, push or change any file of the repositories", 'stop every process you started', 'say so in your reply and end', 'Use test data and test accounts only']) assert.ok(text.includes(part), part);
+  for (const part of ['its head is fetched as origin/office-pr/3', `Save the pictures in ${images}`, '<subject>-before.png or <subject>-after.png', 'under its Images tab: they are not added to any pull request', 'git worktree add --detach', 'git fetch origin pull/<number>/head', 'Never create, move or delete a branch, never commit', 'is from a fork is not tested', "Don't commit, push or change any file of the repositories", 'stop every process you started', 'say so in your report and end', 'Use test data and test accounts only', 'Test the UI and the functionality of these pull requests', 'real user actions', `Write the report to ${report} as you go`, '## UI test report', 'a shared or production backend']) assert.ok(text.includes(part), part);
   assert.ok(text.endsWith(KANBAN_CONTRACTS.prUiTest), 'the UI test contract');
   assert.match(KANBAN_CONTRACTS.prUiTest, /Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them/);
   assert.match(KANBAN_CONTRACTS.prUiTest, /How to end your work/, 'the work-done ending of an investigation');
@@ -1013,15 +1027,171 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   assert.ok(text.includes('WORK DONE'));
   // What the user said to a tester that asked goes after it.
   assert.match(compose.build('pr.uitest', floorDef, task, 'claude', dir, { ...x, text: 'Use the staging login.' }), /Use the staging login\./);
-  // The reviewers list the pictures, when the UI was tested and some were saved.
+  // The reviewers get the report and the pictures, when the UI was tested and the tester left either.
   const base = { phase: 'pr-review' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3' };
-  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), /was tested before your review/, 'no pictures, nothing to list');
+  const SECTION = 'Your reply must have a section "UI testing"';
+  const TESTED = /were tested before your review/;
+  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), TESTED, 'no report and no pictures, nothing to add');
+  // A report without pictures.
+  keepUiTestReport(repo, ctx.filesDir, task.id, '## UI test report\nPASSED');
+  const only = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
+  assert.match(only, TESTED);
+  assert.ok(only.includes(`The tester's report is in ${report}.`));
+  assert.ok(only.includes(`${images}:\nnone yet`));
+  // A file there that is not what the office stored (changed since, or left by the tester when the store failed) is never named: the kept text is given.
+  rmSync(report);
+  writeFileSync(report, 'x'.repeat(5_000_000));
+  const foreign = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
+  assert.ok(!foreign.includes("The tester's report is in") && foreign.includes("The tester's report could not be kept as a file. It is:\n## UI test report\nPASSED"));
+  // A new UI test starts: the earlier report is not its.
+  rmSync(report);
+  resetUiTestReport(repo, ctx.filesDir, task.id);
+  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), TESTED);
+  // Pictures without a report.
   mkdirSync(images, { recursive: true });
   writeFileSync(path.join(images, 'login-before.png'), 'b');
   writeFileSync(path.join(images, 'login-after.png'), 'a');
   const listed = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
   assert.ok(listed.includes(`- login: before ${path.join(images, 'login-before.png')}, after ${path.join(images, 'login-after.png')}`));
   assert.match(listed, /A wrong UI in the pictures is a finding\. Pictures that are missing are not/);
-  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, base), /was tested before your review/, 'only a review that had the UI tested');
-  assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true, panel: 'co' }).includes('login-before.png'), 'the additional reviewers too');
+  assert.ok(listed.includes('The tester left no report.'));
+  // A folder, or a file nobody stored, at the report's path is no report to name.
+  mkdirSync(report);
+  const folder = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
+  assert.ok(folder.includes('The tester left no report.') && !folder.includes("The tester's report is in"));
+  rmSync(report, { recursive: true });
+  writeFileSync(report, 'written by the tester, never taken in by the office');
+  const stray = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
+  assert.ok(stray.includes('The tester left no report.') && !stray.includes("The tester's report is in"));
+  rmSync(report);
+  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, base), TESTED, 'only a review that had the UI tested');
+  // The review's own section: the main reviewer and the combine, not an additional reviewer.
+  assert.ok(listed.includes(SECTION), 'the main reviewer');
+  const co = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true, panel: 'co' });
+  assert.ok(co.includes('login-before.png') && !co.includes(SECTION), 'the additional reviewers get the block, not the section');
+  const combine = compose.build('rereview', floorDef, task, 'claude', dir, { ...base, uiTest: true, panel: 'combine', reviews: 'r' });
+  assert.ok(combine.includes('login-before.png') && combine.includes(SECTION), 'the combine gets both');
+  assert.ok(combine.indexOf(SECTION) < combine.indexOf(KANBAN_CONTRACTS.prReview), 'before the contract');
+  keepUiTestReport(repo, ctx.filesDir, task.id, 'x');
+  assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }).includes(`The tester's report is in ${report}.`));
+});
+
+test('kanban.pr.uiTest.review: a report that is the tester’s file and its reply together, larger than the tester’s own file may be, is still named whole to the reviewers', (t) => {
+  const { def: floorDef, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const report = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui-test-report.md');
+  // The tester's file, near its limit, and a reply as large that holds the last finding: what uiEnded keeps of the two.
+  const own = `## UI test report\n### Tested\n${'- PR 3 a path in the file: PASSED\n'.repeat(3600)}`;
+  const reply = `## UI test report\n### Tested\n${'- PR 3 a path in the reply: PASSED\n'.repeat(3600)}### Findings\n- PR 3: the last finding, only in the reply`;
+  const whole = uiTestReport(own.trim(), reply);
+  assert.ok(Buffer.byteLength(own) < 200_000 && Buffer.byteLength(whole) > 200_000, `${Buffer.byteLength(own)} and ${Buffer.byteLength(whole)} bytes`);
+  keepUiTestReport(repo, ctx.filesDir, task.id, whole);
+  const build = () => compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
+  const text = build();
+  assert.ok(text.includes(`The tester's report is in ${report}.`), 'the file is named');
+  assert.ok(!text.includes('The report is cut here') && !text.includes('could not be kept as a file'));
+  assert.match(readFileSync(report, 'utf8'), /the last finding, only in the reply\n$/, 'and it holds the reply’s finding at its end');
+  // One byte more in it than the office gave it, or other text of the same size, and it is not named.
+  const stored = readFileSync(report, 'utf8');
+  rmSync(report);
+  writeFileSync(report, `${stored}x`);
+  assert.ok(!build().includes("The tester's report is in"), 'grown');
+  rmSync(report);
+  writeFileSync(report, stored.replace('the last finding', 'THE LAST FINDING'));
+  assert.ok(!build().includes("The tester's report is in"), 'changed');
+  rmSync(report);
+  writeFileSync(report, stored);
+  assert.ok(build().includes(`The tester's report is in ${report}.`));
+});
+
+test('kanban.pr.uiTest.review: when the report file can be neither replaced nor removed, the file left there is not named: the whole report is kept beside it, and with no file at all its text is given, marked as cut when it is', (t) => {
+  const { def: floorDef, dir, repo, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const report = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui-test-report.md');
+  const folder = path.dirname(report);
+  mkdirSync(folder, { recursive: true });
+  // What the tester left, over the limit and so refused as a report: an ordinary file.
+  writeFileSync(report, 'x'.repeat(5_000_000));
+  // The only finding is far past what a prompt could carry as text.
+  const long = `## UI test report\n### Tested\n${'- PR 3 a path: PASSED\n'.repeat(2000)}### Findings\n- PR 3: the form submits twice`;
+  assert.ok(long.indexOf('the form submits twice') > 30_000);
+  const refusing = (every: boolean, run: () => void) => {
+    const refuse = (name: 'renameSync' | 'rmSync', at: number) => {
+      const real = fs[name] as (...a: unknown[]) => unknown;
+      t.mock.method(fs, name, ((...a: unknown[]) => {
+        if (a[at] === report || (every && name === 'renameSync' && path.dirname(String(a[at])) === folder)) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+        return real(...a);
+      }) as never);
+    };
+    refuse('renameSync', 1);
+    refuse('rmSync', 0);
+    syncBuiltinESMExports();
+    try {
+      run();
+    } finally {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    }
+  };
+  const build = () => compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
+
+  // Its own path refused: the whole report is kept under another name, and that file is what the reviewers are pointed to.
+  refusing(false, () => keepUiTestReport(repo, ctx.filesDir, task.id, long));
+  assert.equal(statSync(report).size, 5_000_000, 'the refused file is still there');
+  const spare = readdirSync(folder).filter((n) => n !== 'ui-test-report.md');
+  assert.equal(spare.length, 1, 'one more file, and no temporary one');
+  assert.match(spare[0], /^ui-test-report\.[0-9a-f]{16}\.md$/);
+  assert.match(readFileSync(path.join(folder, spare[0]), 'utf8'), /the form submits twice/, 'the whole report, the finding at its end too');
+  const kept = build();
+  assert.ok(kept.includes(`The tester's report is in ${path.join(folder, spare[0])}.`) && !kept.includes(`${report}.`), 'the refused file is not named');
+  assert.ok(kept.includes('Your reply must have a section "UI testing"'));
+  // A new UI test clears the spare file too.
+  resetUiTestReport(repo, ctx.filesDir, task.id);
+  assert.deepEqual(readdirSync(folder), []);
+
+  // No file can be written at all: the text is given, and said to be cut where it is.
+  writeFileSync(report, 'x'.repeat(5_000_000));
+  refusing(true, () => keepUiTestReport(repo, ctx.filesDir, task.id, long));
+  assert.deepEqual(readdirSync(folder), ['ui-test-report.md'], 'no temporary file is left');
+  const cut = build();
+  assert.ok(!cut.includes("The tester's report is in") && !cut.includes(report), 'the file is not named');
+  assert.ok(cut.includes("The tester's report could not be kept as a file. It is:\n## UI test report\n### Tested"));
+  assert.match(cut, new RegExp(`\\[The report is cut here: this is its first 30000 of ${long.length} characters\\. The rest, which may hold findings, could not be given to you`));
+  assert.ok(!cut.includes('the form submits twice'));
+  // A short one is given whole, with no such note.
+  refusing(true, () => keepUiTestReport(repo, ctx.filesDir, task.id, '## UI test report\n### Findings\n- PR 3: the form submits twice'));
+  const whole = build();
+  assert.ok(whole.includes("It is:\n## UI test report\n### Findings\n- PR 3: the form submits twice") && !whole.includes('The report is cut here'));
+});
+
+test('the project’s pull-request review instructions go to the UI tester of a pull-request review only', (t) => {
+  const MARK = 'Pull-request review and UI testing';
+  const { def, dir, repo, settings, compose, ctx } = setup(t);
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const x = { phase: 'implement' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', prRepos: '- `.`: Proj' };
+  const file = path.join(ctx.filesDir, 'instructions', 'proj', 'pr-review.md');
+  assert.ok(KANBAN_PROMPT_DEFS['kanban.pr.uiTest'].text.includes("When the project's instructions below have a part for pull-request review and UI testing, follow it"));
+  assert.doesNotMatch(compose.build('pr.uitest', def, task, 'claude', dir, x), new RegExp(MARK));
+  settings.setProject('proj', { prReviewInstructions: 'Copy the database.' });
+  const text = compose.build('pr.uitest', def, task, 'claude', dir, x);
+  assert.ok(text.includes(`${MARK}: the project's instructions for it are in \`${file}\`. Read it now, before you start the app or prepare any test data`));
+  assert.equal(readFileSync(file, 'utf8'), 'Copy the database.\n');
+  assert.ok(text.includes('Keep it small.') || text.includes('general.md'), 'with the general instructions too');
+  assert.ok(text.includes(file));
+  for (const kind of ['pr.review', 'implement', 'review'] as const) {
+    const other = compose.build(kind, def, task, 'claude', dir, kind === 'pr.review' ? { ...x, phase: 'pr-review' as const } : { phase: kind === 'review' ? ('review' as const) : ('implement' as const) });
+    assert.ok(!other.includes(MARK), kind);
+  }
+  // Alone, without the general and the testing instructions.
+  settings.setProject('proj', { generalInstructions: '', testingInstructions: '' });
+  assert.ok(compose.build('pr.uitest', def, task, 'claude', dir, x).includes(`${MARK}: the project's`));
+});
+
+test('a rewritten kanban.pr.uiTest without {{instructions}} still gets the pull-request review instructions at its end', (t) => {
+  const { def, dir, repo, settings, compose, ctx } = setup(t, { 'kanban.pr.uiTest': { text: 'Test {{prs}} only.' } });
+  const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  settings.setProject('proj', { prReviewInstructions: 'Copy the database.' });
+  const text = compose.build('pr.uitest', def, task, 'claude', dir, { phase: 'implement', prs: 'P1', prRepos: '- `.`: Proj' });
+  assert.ok(text.includes(`Test P1 only.`));
+  assert.ok(text.includes(path.join(ctx.filesDir, 'instructions', 'proj', 'pr-review.md')));
 });

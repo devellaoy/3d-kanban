@@ -19,5 +19,5 @@ export const KANBAN_DEFAULTS: Readonly<Pick<KanbanSettings, 'defaults' | 'review
 
 /** defaultProjectSettings(), a fresh copy each time. */
 export function projectDefaults(): ProjectSettings {
-  return { branchInstructions: '', generalInstructions: '', testingInstructions: '', maxConcurrent: 2, issueSources: [], prompts: {}, skills: {} };
+  return { branchInstructions: '', generalInstructions: '', testingInstructions: '', prReviewInstructions: '', maxConcurrent: 2, issueSources: [], prompts: {}, skills: {} };
 }
