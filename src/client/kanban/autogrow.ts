@@ -58,18 +58,29 @@ export function autoGrow(ta: HTMLTextAreaElement, box: HTMLElement = ta): () => 
   ta.addEventListener('input', fit);
   // No DOM (the tests): typing still fits it.
   if (typeof ResizeObserver === 'undefined' || typeof window === 'undefined') return fit;
-  // A new width wraps the text anew, and the first size comes when the box is put on the page. Only
-  // the width counts, so setting the height above never loops. The window's size moves the cap: it
-  // is followed while the box is on the page, so a closed task leaves no listener behind.
-  let width = 0;
-  new ResizeObserver((entries) => {
-    const now = entries[entries.length - 1]?.contentRect.width ?? 0;
-    if (now === width) return;
-    width = now;
+  // What the fit depends on besides the text: the box's width (a new one wraps the text anew, and the
+  // first comes when the box is put on the page), the pane's height (a footer that gains a row leaves
+  // less room, with no window resize) and the toolbar's (its notes wrap, files are listed in it).
+  // Only a change in one of those fits again, so setting the height above never loops. The window's
+  // size is followed while the box is on the page, so a closed task leaves no listener behind.
+  let key = '';
+  let pane: HTMLElement | null = null;
+  const ro = new ResizeObserver(() => {
+    const on = ta.isConnected && ta.clientWidth > 0;
+    const scroller = on ? scrollerOf(box) : null;
+    if (scroller !== pane) {
+      if (pane) ro.unobserve(pane);
+      if (scroller) ro.observe(scroller);
+      pane = scroller;
+    }
+    const now = on ? `${ta.clientWidth}|${scroller?.clientHeight ?? 0}|${box.offsetHeight - ta.offsetHeight}` : '';
+    if (now === key) return;
     // The visual viewport has its own event: a phone's keyboard resizes it and not the window.
-    for (const t of [window, window.visualViewport]) t?.[now ? 'addEventListener' : 'removeEventListener']('resize', fit);
-    if (!now) return;
-    fit();
-  }).observe(ta);
+    if (!now || !key) for (const t of [window, window.visualViewport]) t?.[now ? 'addEventListener' : 'removeEventListener']('resize', fit);
+    key = now;
+    if (now) fit();
+  });
+  ro.observe(ta);
+  if (box !== ta) ro.observe(box);
   return fit;
 }
