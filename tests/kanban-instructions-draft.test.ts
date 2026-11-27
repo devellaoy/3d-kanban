@@ -180,6 +180,12 @@ test('nothing inside a quoted, multi-line value is taken for a key name', () => 
   // A quote never closed: the value is the rest of its line, as dotenv reads it, and the following lines are lines again.
   assert.deepEqual(envKeys('OPEN="no end\nREAL_KEY=1\n'), ['OPEN', 'REAL_KEY']);
   assert.deepEqual(envKeys('A=plain # KEY2=x\n=nokey\n1BAD=x\nB=\n'), ['A', 'B']);
+  // A byte order mark before the first name, and a backslash before the quote in each kind of quote.
+  assert.deepEqual(envKeys('\uFEFFPRIVATE_KEY="first\nabc123==\nlast"\nAFTER=1\n'), ['PRIVATE_KEY', 'AFTER']);
+  assert.deepEqual(envKeys("TOKEN='first \\' quote\nabc123==\nlast'\nAFTER=1\n"), ['TOKEN', 'AFTER']);
+  assert.deepEqual(envKeys('TOKEN=`first \\` tick\nabc123==\nlast`\nAFTER=1\n'), ['TOKEN', 'AFTER']);
+  // The value starts on the line after its `=`, and the `KEY: value` form.
+  assert.deepEqual(envKeys('KEY=\n"a\nabc123==\n"\nYAMLISH: "x\nhidden=1\n"\nEND=1'), ['KEY', 'YAMLISH', 'END']);
 });
 
 test('the search for example env files follows no link, stops at its caps and when its request has ended', { skip: process.platform === 'win32' }, async () => {
@@ -200,7 +206,15 @@ test('the search for example env files follows no link, stops at its caps and wh
   for (let i = 0; i < 30; i++) writeFileSync(path.join(repo, `a${i}.txt`), '');
   assert.equal(await envExampleKeys([repo], { entriesMax: 10 }), '');
   assert.equal(await envExampleKeys([repo], { stopped: () => true }), '');
-  assert.equal(await envExampleKeys([repo], { timeMs: -1 }), '');
+  // A disk call that never comes back: the search still answers in its time, with nothing.
+  const t0 = Date.now();
+  assert.equal(await envExampleKeys([repo], { timeMs: 30, opendir: (() => new Promise(() => {})) as never }), '');
+  assert.ok(Date.now() - t0 < 1000);
+  // A folder is read entry by entry: with the cap reached, no more of it is read.
+  let reads = 0;
+  const big = { read: async () => (reads++, { name: `f${reads}`, isDirectory: () => false, isFile: () => true }), close: async () => {} };
+  assert.equal(await envExampleKeys(['/big'], { entriesMax: 50, opendir: (async () => big) as never }), '');
+  assert.equal(reads, 50);
   assert.equal(await envExampleKeys(['/nonexistent/repo-dir']), '');
 });
 
