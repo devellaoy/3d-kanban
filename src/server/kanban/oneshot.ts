@@ -1,6 +1,6 @@
 // One-shot Claude runs: a single prompt to Claude Code, no session, one answer (the task prompt drafted from
 // an issue). Like the worker-naming run in server/tasks.ts. Tool-less by default; a caller may ask for read-only
-// tools (Read, Glob, Grep), extra directories they may look in and permission deny rules, and nothing more.
+// tools (Read, Glob, Grep) and extra directories they may look in, and nothing more.
 // Claude only: Codex can't switch its tools off (`exec --sandbox read-only` still runs shell commands), and the
 // text it is given is not to be trusted.
 
@@ -15,7 +15,7 @@ export const ONESHOT_TIMEOUT_MS = 45_000;
 const REASON_MAX = 200;
 
 /** The arguments of a run; the prompt goes in on stdin and the system text in `systemFile`, so every argument is a plain token. */
-export function oneShotCommand(model: string | undefined, systemFile: string, extra: { tools?: string[]; addDirs?: string[]; settingsFile?: string } = {}): { args: string[] } {
+export function oneShotCommand(model: string | undefined, systemFile: string, extra: { tools?: string[]; addDirs?: string[] } = {}): { args: string[] } {
   return {
     args: [
       '-p',
@@ -24,7 +24,6 @@ export function oneShotCommand(model: string | undefined, systemFile: string, ex
       '--system-prompt-file', systemFile,
       '--tools', extra.tools?.length ? extra.tools.join(',') : '',
       ...(extra.addDirs ?? []).flatMap((d) => ['--add-dir', d]),
-      ...(extra.settingsFile ? ['--settings', extra.settingsFile] : []),
       // Not the user's or the project's settings: no hooks, no MCP servers, no plugins, no transcript.
       '--setting-sources', '',
       '--strict-mcp-config',
@@ -61,8 +60,6 @@ export interface OneShotOptions {
   tools?: string[];
   /** Directories the tools may reach besides the temp folder the run starts in. */
   addDirs?: string[];
-  /** Permission deny rules (e.g. `Read(**\/.env)`), written to a settings file of the run's temp folder. */
-  deny?: string[];
 }
 
 export interface OneShotRun {
@@ -88,14 +85,7 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
       const file = path.join(dir, 'system.txt');
       await writeFile(file, o.system, 'utf8');
       if (cancelled) return { error: 'cancelled' };
-      let settingsFile: string | undefined;
-      if (o.deny?.length) {
-        settingsFile = path.join(dir, 'settings.json');
-        await writeFile(settingsFile, JSON.stringify({ permissions: { deny: o.deny } }), 'utf8');
-        // A cancel that came while this file was being written found no process to end: nothing is started for it.
-        if (cancelled) return { error: 'cancelled' };
-      }
-      const plan = spawnPlan(o.cmd, oneShotCommand(o.model, file, { tools: o.tools, addDirs: o.addDirs, settingsFile }).args);
+      const plan = spawnPlan(o.cmd, oneShotCommand(o.model, file, { tools: o.tools, addDirs: o.addDirs }).args);
       if ('error' in plan) return plan;
       const res = await new Promise<{ code: number | null; out: string; err: string; error?: string }>((resolve) => {
         let out = '';

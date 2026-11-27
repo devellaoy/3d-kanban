@@ -7,9 +7,7 @@ import { childEnv } from '../../../workers/env.js';
 import { runOneShot, type OneShotRun } from '../../oneshot.js';
 import type { KanbanContext, KanbanPlugin } from '../../registry.js';
 import { fail } from '../util.js';
-import { envExampleKeys } from './envexamples.js';
 import { draftInput, draftSystem } from './prompt.js';
-import { findSecrets } from './secrets.js';
 
 /** A run may take this long: it reads a whole project. */
 export const INSTRUCTIONS_DRAFT_TIMEOUT_MS = 5 * 60_000;
@@ -19,13 +17,6 @@ export const INSTRUCTIONS_DRAFT_RUNS_MAX = 2;
 export const INSTRUCTIONS_DRAFT_MAX = 20_000;
 
 const TOOLS = ['Read', 'Glob', 'Grep'];
-/**
- * Files the agent can't read, though they lie in the repositories: every env file whatever its suffix (`.env.ci`
- * or `.env.backup` may hold real values), and key files. The example env files' key names reach it through the
- * input instead (envexamples.ts). Claude Code applies Read rules to Grep and Glob too.
- */
-export const INSTRUCTIONS_DRAFT_DENY = ['Read(**/.env)', 'Read(**/.env.*)', 'Read(**/*.pem)', 'Read(**/*.key)', 'Read(**/id_rsa*)', 'Read(**/id_ed25519*)'];
-
 export interface InstructionsDraftDeps {
   /** Stand-in for the agent, for tests. */
   run?: typeof runOneShot;
@@ -47,17 +38,10 @@ const isDir = (p: string) => {
   }
 };
 
-/** A browser's newest request: its run once it has one, and whether it was cancelled before that. */
-interface Entry {
-  project: string;
-  run?: OneShotRun;
-  cancelled?: boolean;
-}
-
 export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: InstructionsDraftDeps = {}): KanbanPlugin {
   const run = deps.run ?? runOneShot;
   /** The newest request of each browser (by clientId), with its run once it has one. */
-  const newest = new Map<string, Entry>();
+  const newest = new Map<string, { project: string; run?: OneShotRun }>();
   let stopped = false;
   const runs = () => [...newest.values()].filter((e) => e.run).length;
 
@@ -81,7 +65,7 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
         if (!dirs.length) return fail(c, m.rid, "None of the project's repository folders exists on the office's machine");
         // This request is the browser's newest from here on: the earlier one's run, if it has one, ends now.
         const key = c.clientId;
-        const mine: Entry = { project: m.project };
+        const mine: { project: string; run?: OneShotRun } = { project: m.project };
         newest.get(key)?.run?.kill();
         newest.set(key, mine);
         try {
@@ -90,11 +74,6 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
           const settings = ctx.settings.get();
           const saved = ctx.settings.project(m.project);
           const model = settings.defaults.tool === 'claude' ? settings.defaults.model : undefined;
-          // The search of the repositories takes a moment: a cancel or a newer request meanwhile ends this one before any agent starts.
-          const ended = () => stopped || !!mine.cancelled || newest.get(key) !== mine;
-          const envExamples = await envExampleKeys(dirs, { stopped: ended });
-          if (ended()) return fail(c, m.rid, 'cancelled');
-          if (runs() >= INSTRUCTIONS_DRAFT_RUNS_MAX) return fail(c, m.rid, 'The office is busy writing instructions, try again in a moment');
           const one = run({
             cmd,
             ...(model ? { model } : {}),
@@ -105,22 +84,19 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
               general: saved.generalInstructions,
               other: m.field === 'testing' ? saved.prReviewInstructions : saved.testingInstructions,
               current: m.text,
-              envExamples,
               field: m.field,
             }),
             env,
             timeoutMs: INSTRUCTIONS_DRAFT_TIMEOUT_MS,
             tools: TOOLS,
             addDirs: dirs,
-            deny: INSTRUCTIONS_DRAFT_DENY,
           });
           mine.run = one;
           const res = await one.done;
           if ('error' in res) return fail(c, m.rid, res.error);
           const text = cleanInstructions(res.text);
           if (!text) return fail(c, m.rid, 'The agent wrote nothing');
-          const warnings = findSecrets(text);
-          c.send({ t: 'kanban.instructionsDraft', ...(m.rid ? { rid: m.rid } : {}), text, ...(warnings.length ? { warnings } : {}) });
+          c.send({ t: 'kanban.instructionsDraft', ...(m.rid ? { rid: m.rid } : {}), text });
         } catch (err) {
           fail(c, m.rid, (err as Error)?.message ?? String(err));
         } finally {
@@ -131,10 +107,7 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
       'kanban.instructions.draft.cancel': (c, m) => {
         if (!c.admin) return fail(c, m.rid, 'Only an admin can change that');
         const e = newest.get(c.clientId);
-        if (e && e.project === m.project) {
-          e.cancelled = true;
-          e.run?.kill();
-        }
+        if (e && e.project === m.project) e.run?.kill();
         c.send({ t: 'kanban.ok', ...(m.rid ? { rid: m.rid } : {}) });
       },
     },

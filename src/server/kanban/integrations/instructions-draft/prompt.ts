@@ -8,7 +8,7 @@ import type { ProjectRepo } from '../../../../shared/kanban/types.js';
 /** The longest instruction text the output may be told to hold. */
 export const DRAFT_LENGTH_HINT = 12_000;
 
-const COMMON = `You write an instruction file that the office hands to AI coding agents working on this project. Inspect the project's repositories read-only (your tools are Read, Glob and Grep, and they only reach the repositories) and economically: look at the README, CLAUDE.md or AGENTS.md, package manifests and the lockfile type, docker-compose files, CI workflows, test configurations and appsettings, and read at most about 40 files in all. You cannot read any env file (.env, .env.*): the key names of the example env files are listed in the input, and that is all you know of them.
+const COMMON = `You write an instruction file that the office hands to AI coding agents working on this project. Inspect the project's repositories read-only (your tools are Read, Glob and Grep, and they only reach the repositories) and economically: look at the README, CLAUDE.md or AGENTS.md, package manifests and the lockfile type, docker-compose files, example env files, CI workflows, test configurations and appsettings, and read at most about 40 files in all.
 
 Rules:
 - Cover every repository by its name and say what each one is (backend, frontend, background jobs and so on) and in which order things start.
@@ -45,8 +45,6 @@ export interface DraftInput {
   /** The field's current text (maybe unsaved). */
   current: string;
   field: InstructionsDraftField;
-  /** The example env files with their key names (envexamples.ts), or '' when there is none. */
-  envExamples?: string;
 }
 
 const block = (title: string, body: string) => (body.trim() ? `## ${title}\n${body.trim()}\n\n` : '');
@@ -62,7 +60,6 @@ export function draftInput(i: DraftInput): string {
   return (
     `Project: ${i.projectName}\n\n## Repositories\n${repos}\n\n` +
     block('General instructions (saved, for consistency)', i.general) +
-    block('Example env files (key names only, read by the office; the values are not given)', i.envExamples ?? '') +
     block(otherName, i.other) +
     `## The field's current text\n${i.current.trim() ? i.current : '(empty)'}\n\n${mode}`
   );

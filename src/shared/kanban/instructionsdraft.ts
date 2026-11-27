@@ -15,8 +15,8 @@ export type InstructionsDraftClientMsg =
   | Req<{ t: 'kanban.instructions.draft.cancel'; project: string }>;
 
 export type InstructionsDraftServerMsg =
-  /** The proposal; `warnings` name lines that may hold a secret (never the secret itself). */
-  { t: 'kanban.instructionsDraft'; rid?: string; text: string; warnings?: string[] };
+  /** The proposal. */
+  { t: 'kanban.instructionsDraft'; rid?: string; text: string };
 
 export const INSTRUCTIONS_DRAFT_CLIENT_TYPE_LIST: Readonly<Record<InstructionsDraftClientMsg['t'], true>> = {
   'kanban.instructions.draft': true,

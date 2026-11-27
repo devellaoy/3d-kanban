@@ -22,19 +22,16 @@ import type { Cleanups } from './settingsflow';
 type Draft = Extract<KanbanServerMsg, { t: 'kanban.instructionsDraft' }>;
 
 /** The window the proposal is checked in before it goes anywhere. */
-function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, text: string, warnings: readonly string[]) {
+function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, text: string) {
   const box = h('textarea.kb-insd-box', { 'aria-label': 'The proposed text', spellcheck: 'false' }) as HTMLTextAreaElement;
   if (field.maxLength >= 0) box.maxLength = field.maxLength;
   box.value = clipToField(text, field.maxLength);
   // The caret at the start, so the focus the window gives the box shows the text from its first line.
   box.setSelectionRange(0, 0);
   const lead = h('p.kb-insd-lead');
-  const warn = warnings.length
-    ? h('div.kb-insd-warn', { role: 'note' }, h('b', {}, icon('triangle-alert', { size: 14 }), 'These lines may hold a secret. Check them, and take out what must not be given to the agents:'), h('ul', {}, ...warnings.map((w) => h('li', {}, w))))
-    : null;
   const discard = btn('Discard', { kind: 'quiet', attrs: { title: 'Close this window and leave the field as it is.' } });
   const use = btn('Use this text', { kind: 'primary' });
-  const shell = modalShell({ cls: 'kb-insd-review', icon: 'sparkles', title: reviewTitle(which), body: [lead, warn, box], footerRight: [discard, use] });
+  const shell = modalShell({ cls: 'kb-insd-review', icon: 'sparkles', title: reviewTitle(which), body: [lead, box], footerRight: [discard, use] });
   // A press beside the window must not throw away what took minutes to write.
   const modal = openShell(shell, { backdropCloses: false });
 
@@ -111,7 +108,7 @@ export function attachInstructionsDraft(api: Pick<KanbanApi, 'request'>, project
       (answer) => {
         if (!over()) return;
         if (!answer.text?.trim()) return void toast(draftFailure('the answer was empty') ?? '', 'error');
-        openReview(which, field, answer.text, answer.warnings ?? []);
+        openReview(which, field, answer.text);
       },
       (err) => {
         const why = over() ? draftFailure(err) : null;

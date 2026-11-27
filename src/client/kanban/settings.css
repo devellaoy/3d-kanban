@@ -130,10 +130,6 @@
 .modal.kb-insd-review > .shell-body { overflow: hidden; }
 .modal.kb-insd-review > .shell-body > .shell-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
 .kb-insd-review .kb-insd-lead { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
-.kb-insd-review .kb-insd-warn { flex: none; max-height: 30%; overflow-y: auto; padding: 8px 10px; font-size: var(--fs-sm); color: var(--warn-ink); background: var(--warn-wash); border: var(--bw-sm) solid var(--warn-ink); border-radius: var(--radius-sm); }
-.kb-insd-review .kb-insd-warn > b { display: flex; align-items: flex-start; gap: 6px; font-weight: var(--fw-bold); }
-.kb-insd-review .kb-insd-warn > b > svg { flex: none; margin-top: 2px; }
-.kb-insd-review .kb-insd-warn > ul { margin: 6px 0 0; padding-left: 24px; overflow-wrap: anywhere; }
 .modal.kb-insd-review textarea.kb-insd-box { flex: 1 1 auto; min-height: 120px; width: 100%; font-size: var(--fs-md); line-height: 1.55; resize: none; }
 /* A phone: the whole screen, and 16px text so iOS doesn't zoom in on the box. */
 @media (max-width: 700px) {
