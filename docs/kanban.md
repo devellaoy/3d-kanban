@@ -672,16 +672,19 @@ Saving the form keeps the field empty; type an `owner/name` to pin one.
 A task gets a worktree of each git repository it works in, all on the same branch (named by the
 project's *Branch naming* instructions, else `kanban/<ticket or task id>-<slug>`; with a public language set the default prompt also asks for the slug in that language, and a rewrite of the *Branch naming* prompt can use `{{slugNote}}` for that line, which is empty otherwise and then leaves no blank line). A *folder*
 repository has no worktree: the agent works in the folder itself. The same page has the project's
-general and testing instructions, *tasks at once*, and the project's own
+general, testing and pull-request review instructions, *tasks at once*, and the project's own
 plan approval, implementation mode and review settings.
 
 The project's general and testing instructions and each repository's instructions are written to files
-under `<data>/kanban/instructions/<project>/` (`general.md`, `testing.md`, `repo-<id>.md`; read-only, and
+under `<data>/kanban/instructions/<project>/` (`general.md`, `testing.md`, `pr-review.md`, `repo-<id>.md`; read-only, and
 only for the parts that have text), and every prompt that starts or continues work names them: the agent
 is told to read the general file first, the testing file before it tests or verifies anything, and a
 repository's file before it works there (a pull request review gets those of the repositories in the
 pull requests). The prompts carry the paths, not the text, so an edit in the settings reaches a task
-that is already under way the next time its agent reads the file. The files are brought up to date when
+that is already under way the next time its agent reads the file.
+
+The **Pull-request review** instructions (Projects → Project → Instructions) are meant for the UI test of a pull-request review: how to start the project's environments and how to prepare the data for a test, for example to take a copy of the database that the tester may add data to, so that the situation of a bug can be made there and tested against. They are written to `instructions/<project>/pr-review.md` (only when they have text) and are given only to the UI tester of a pull-request review (the *Also test the UI* tick), which is told to read the file before it starts the app or prepares any data: no other agent, and no other prompt, mentions them. If the file cannot be written, the text goes into the tester's prompt instead.
+ The files are brought up to date when
 the settings are saved and again whenever a prompt is composed. If a file cannot be written, that part
 goes into the prompt as text instead. A comment typed into an agent that is at work carries the same
 reference, after the comment's text. After upgrading, a Claude session started before this change is
@@ -976,7 +979,7 @@ reads its own. A kanban task made from a card keeps the description as its own, 
       base branch and tests the UI and the functions of each PR that changes what a user sees or does. It reads the PR, writes a short test plan, puts the PR's head in a worktree of its own,
       and goes through the plan in a real browser with real user actions (clicking, typing, submitting, the keyboard), checking each outcome with an assertion: the working path, empty and invalid input,
       save and reload, a narrow window when the layout changes, console errors and failed requests. What fails at the head it checks on the PR's target branch, so the report can tell a regression from an old fault.
-      It tests only an instance of the app that it started itself, with test data and test accounts, and does nothing that writes in a shared or production environment.
+      It tests only an instance of the app that it started itself, with test data and test accounts, and does nothing that writes in a shared or production environment. The project's **Pull-request review** instructions tell it how to start the environments and how to make the data for the test (a copy of the database that it may add data to, say); for a pull request that fixes a bug it first makes the situation of the bug in that data, sees the bug on the target branch and then checks at the head that it is gone.
       The pictures are evidence: it saves before and after pictures of the changed views and of each fault as `<subject>-before.png` and `<subject>-after.png` in the task's folder.
       Its test report (the environment, what was tested with PASSED, FAILED or NOT TESTED for each path, the findings, what was not tested, the pictures) is written to `ui-test-report.md` in the task's grant folder and repeated in its reply. The office keeps one text of it, in that file and as the task's result comment:
       the reply when it holds the report (its `UI test report` heading), else what the tester wrote in the file, else the reply as it is. Then the review starts by itself. Its reviewers read the report first: each failed path and each finding is a candidate finding that they check against the diff (a fault that the
@@ -1226,7 +1229,7 @@ implementation runs, review, the board's columns), not as a plain one-off worker
 | `<data>/kanban/grants/task-<id>/` | Copies of a task's attached files, the one folder its agents may read (mode 700), and the files the office keeps for them: `accepted-plan.md` (the accepted plan) and `conversation.md` (the conversation the reviewer reads; both read-only, rewritten by the office before the runs that name them); removed with the task. |
 | `<data>/kanban/grants/task-<id>/ui-test-report.md` | The test report of the UI test before a pull-request review (written by the tester, kept as the office's read-only copy; removed when the UI test starts again), see [Reviewing pull requests](#pull-requests). |
 | `<data>/kanban/grants/task-<id>/ui/` | The task's before and after screenshots (`<subject>-before.png`, `<subject>-after.png`, in a `<repo id>/` folder each in a task in several repositories; mode 700), see [UI testing](#ui-testing). |
-| `<data>/kanban/instructions/<project>/` | The project's instructions as files for its agents: `general.md`, `testing.md`, `repo-<repository id>.md` (read-only; rewritten from the settings, removed with the project), see [Projects and repositories](#projects-and-repositories). |
+| `<data>/kanban/instructions/<project>/` | The project's instructions as files for its agents: `general.md`, `testing.md`, `pr-review.md` (the pull-request review instructions, for the UI tester only), `repo-<repository id>.md` (read-only; rewritten from the settings, removed with the project), see [Projects and repositories](#projects-and-repositories). |
 | `<data>/kanban/reports/task-<id>/` | An investigation's report files. |
 | `<data>/kanban/refs/task-<id>/` | The plan phase's referenced tasks. |
 | `<data>/kanban/skills/` | Generated Claude skill plugins. |
