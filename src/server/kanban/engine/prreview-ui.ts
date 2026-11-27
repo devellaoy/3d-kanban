@@ -1,8 +1,9 @@
 // The UI test before a pull-request review (the request's `uiTest`): the pr-review phase's first run, by an implementer-role agent in
 // a fresh worktree of the involved repositories on their configured base branches (so the app starts as it is before the pull
-// requests), who takes before and after pictures into the task's images folder. The pictures stay with the task: none is added to a
-// pull request. When its turn ends the tester goes home with its worktree, and the review starts by itself (machine event
-// `prUiTested`). Split out of prreview-launch.ts; PrReviews hands it the request and the engine's deps.
+// requests), who tests the UI and the functionality the pull requests change with real browser actions, takes before and after
+// pictures into the task's images folder and writes a test report in the task's grant folder (ui-test-report.md; the reply is the
+// fallback when it left none). The pictures stay with the task: none is added to a pull request; the reviewers read the report.
+// When its turn ends the tester goes home with its worktree, and the review starts by itself (machine event `prUiTested`). Split out of prreview-launch.ts; PrReviews hands it the request and the engine's deps.
 
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
@@ -20,8 +21,11 @@ import { typeable } from './turnhold.js';
 import { ensureUiImagesDir, uiImagesDir } from './uitesting.js';
 import { instructionReadDirs, prReviewRepoIds } from './launchdirs.js';
 import { grantDir } from '../uploads.js';
+import { dropUiTestReport, readUiTestReport, syncUiTestReport } from '../taskfiles.js';
 
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
+/** The heading the tester's prompt asks its report to start with. */
+const REPORT_HEADING = /^#{1,6}\s*UI test report\b/im;
 
 /**
  * Hires the tester: it never carries on an earlier one (a Retry, an office restart or an answer to its question starts the UI test
@@ -37,6 +41,8 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
   const prev = slot(task, 'implementer').workerId ? floor.workers.get(slot(task, 'implementer').workerId!) : undefined;
   if (prev) await floor.sendHome(prev.id, 'all', ENGINE);
   d.update(task.id, slotPatch('implementer', { workerId: null, sessionId: null }));
+  // An earlier tester's report is not this one's; and no file is left, so the tester can create it itself (the office's copies are read-only).
+  dropUiTestReport(d.ctx.filesDir, task.id);
 
   const owner = d.hireOwner(task, via.who);
   const signIn = owner && tool === 'claude' && d.ctx.runAs && !d.ctx.runAs.claudeReady(owner) ? d.signInMissing(task, owner, via.who) : undefined;
@@ -113,11 +119,17 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
 }
 
 /**
- * The tester's turn ended with its reply: it is a `result` comment of the task, the tester goes home with its worktree removed (a
+ * The tester's turn ended with its reply. The report is its reply when that has the report's heading, else what it wrote in its
+ * file, else the reply as it is: that one text is kept in the file the reviewers read (the office's own copy from here on) and is
+ * the `result` comment of the task, the tester goes home with its worktree removed (a
  * worker that is not a reviewer would keep it), and the review starts. Returns the machine event for that.
  */
 export async function uiEnded(d: PrReviewDeps, task: KanbanTask, live: Live, text: string, say: (kind: 'result', text: string) => void): Promise<{ type: 'prUiTested' }> {
-  say('result', text);
+  // One text for the reviewers' file and the conversation: the reply when it holds the report (it is the tester's last word), else the file.
+  const own = readUiTestReport(d.ctx.filesDir, task.id);
+  const report = own && !REPORT_HEADING.test(text) ? own : text;
+  say('result', report);
+  syncUiTestReport(d.ctx.filesDir, task.id, report);
   const floor = d.ctx.floor(live.floorId);
   if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'all', ENGINE);
   d.update(task.id, slotPatch('implementer', { workerId: null, sessionId: null }));

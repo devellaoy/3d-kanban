@@ -125,14 +125,15 @@ ${REVIEW_SAFETY}
 - Read the pull requests with gh pr view and gh pr diff. A pull request that its line says is checked out is the code in your worktree: read it there (git diff, git log, the files), read-only. gh api gives a file at the head of one that is not checked out.
 
 ${VERDICT}`,
-  /** The UI test run before a pull-request review (the pr-review phase's first run, an implementer's): the app is started and photographed, nothing in the repositories is changed. */
+  /** The UI test run before a pull-request review (the pr-review phase's first run, an implementer's): the app is started and tested, nothing in the repositories is changed. */
   prUiTest: `${RULE}
 ${STOP_PROCESSES}
 
 Rules for this run (set by the office, they apply whatever else is said above):
 - Don't modify, stage or commit anything in the repositories' tracked files (installing dependencies and build output are fine), and don't push.
 - Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them.
-- Write only in your workspace and in the pictures folder named above. Use test data and test accounts only.
+- Write only in your workspace, in the pictures folder and the report file named above, and in temporary files. Use test data and test accounts only.
+- Act only on an instance of the app that you started yourself for this test: never create, change or delete anything in a shared or production environment.
 
 ${FINISH.replace(' and committed (for an investigation: nothing to commit)', '')}`,
   implementSafety: `${RULE}

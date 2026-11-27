@@ -1,16 +1,18 @@
 // The UI test before a pull-request review (the request's `uiTest`, engine/prreview-ui.ts): a review task of its own, an implementer-role
-// agent in a fresh worktree on the base branch who takes the pictures into the task's images folder, then the review by itself; the
-// tester's worktree is removed, the reviewers' prompts list the pictures, and none of them is added to any pull request.
+// agent in a fresh worktree on the base branch who tests the UI, takes the pictures into the task's images folder and writes a report, then the review by itself; the
+// tester's worktree is removed, the reviewers' prompts name the report and list the pictures, and none of them is added to any pull request.
 
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { GitRunner } from '../src/server/kanban/engine/prheads.js';
 import { uiImagesDir } from '../src/server/kanban/engine/uitesting.js';
 import { checkScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { closingsIdle } from '../src/server/kanban/integrations/pulls/closes.js';
+import { readUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
@@ -20,7 +22,7 @@ const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const noFetch: GitRunner = async () => {
   throw new Error('no network');
 };
-const TESTER = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Test the UI of these pull requests', reply, ...more });
+const TESTER = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Test the UI and the functionality of these pull requests', reply, ...more });
 const MAIN = (reply: string, more: Partial<Rule> = {}): Rule => ({ when: 'Review these pull requests', reply, ...more });
 const APPROVED = 'The UI looks right.\nREVIEW: APPROVED';
 const pr = (n: number) => ({ repo: 'acme/proj', number: n, title: `PR ${n}`, base: 'main', fork: false }) as never;
@@ -85,7 +87,7 @@ test('uiTest: a task of its own even when one is named, the tester first (an imp
   // It has the implementer's flags (it runs a dev server and writes pictures), and may write in the task's folder.
   const start = await (async () => {
     for (let i = 0; i < 200; i++) {
-      const found = prompts(fx, /Test the UI of these pull requests/)[0];
+      const found = prompts(fx, /Test the UI and the functionality of these pull requests/)[0];
       if (found) return found;
       await sleep(25);
     }
@@ -119,7 +121,11 @@ test('uiTest: a task of its own even when one is named, the tester first (an imp
   assert.ok(comments.some((c) => c.kind === 'review' && /UI looks right/.test(c.text)));
   // The reviewer's prompt lists the saved pictures, and its folder is readable.
   const review = prompts(fx, /Review these pull requests/)[0];
-  assert.match(review.prompt!, /The UI of these pull requests was tested before your review/);
+  assert.match(review.prompt!, /The UI and the functionality of these pull requests were tested before your review/);
+  const reportFile = uiTestReportPath(fx.ctx.filesDir, id);
+  assert.ok(readFileSync(reportFile, 'utf8').includes('Saved the pictures of the login view'), 'its reply is kept in the report file');
+  assert.ok(review.prompt!.includes(`The tester's report is in ${reportFile}.`));
+  assert.ok(review.prompt!.includes('Your reply must have a section "UI testing"'), 'the main reviewer writes the section');
   assert.ok(review.prompt!.includes(`- login: before ${path.join(dir(), 'login-before.png')}, after ${path.join(dir(), 'login-after.png')}`), review.prompt);
   assert.ok(review.args.some((a, i) => a === '--add-dir' && review.args[i + 1] === grantDir(fx.ctx.filesDir, id)), 'the pictures can be read');
   assert.ok(review.args.includes('--disallowedTools'), 'the reviewer keeps its read-only flags');
@@ -163,11 +169,17 @@ test('uiTest: a tester whose agent exits fails the task like any run, and Retry 
   assert.deepEqual(prRuns(fx, id).map((r) => `${r.role}/${r.status}`), ['implementer/interrupted']);
   assert.equal(prompts(fx, /Review these pull requests/).length, 0, 'the review does not start behind a failed UI test');
   assert.match(failed.waitingText ?? '', /exited/);
-  fx.setRules([TESTER('Nothing to photograph: the pull requests change no UI.'), MAIN(APPROVED)]);
+  fx.setRules([TESTER('Nothing to photograph: the pull requests change no UI.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  // An old report (a read-only copy, as the office writes them) is gone when the UI test starts again.
+  const old = uiTestReportPath(fx.ctx.filesDir, id);
+  mkdirSync(path.dirname(old), { recursive: true });
+  writeFileSync(old, 'OLD REPORT', { mode: 0o444 });
   assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await until('the second tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 2);
+  assert.ok(!existsSync(old), 'no file is left for the tester to find');
   await fx.waitTask(id, inReview, 'the review column', 40_000);
   assert.deepEqual(prRuns(fx, id).map((r) => `${r.role}/${r.status}`), ['implementer/interrupted', 'implementer/succeeded', 'reviewer/succeeded']);
-  assert.equal(prompts(fx, /Test the UI of these pull requests/).length, 2);
+  assert.equal(prompts(fx, /Test the UI and the functionality of these pull requests/).length, 2);
   assert.equal(prompts(fx, /Review these pull requests/).length, 1, 'one review');
   assert.equal(fx.repo.listComments(id).comments.filter((c) => c.kind === 'review').length, 1);
   await until('the first tester’s worktree to be gone', () => !existsSync(wt), 15_000);
@@ -218,7 +230,7 @@ test('uiTest: a fork’s pull request is left out of the test and named as such;
   if (typeof mixed === 'string') return;
   const start = await (async () => {
     for (let i = 0; i < 200; i++) {
-      const f = prompts(fx, /Test the UI of these pull requests/)[0];
+      const f = prompts(fx, /Test the UI and the functionality of these pull requests/)[0];
       if (f) return f;
       await sleep(25);
     }
@@ -229,14 +241,14 @@ test('uiTest: a fork’s pull request is left out of the test and named as such;
   assert.ok(calls.every((a) => !a.some((x) => /pull\/3\//.test(x))), 'the fork’s head is never fetched');
   await fx.waitTask(mixed.taskId, inReview, 'the review column', 40_000);
 
-  const before = prompts(fx, /Test the UI of these pull requests/).length;
+  const before = prompts(fx, /Test the UI and the functionality of these pull requests/).length;
   const only = await fx.engine.reviewPrs({ project: 'proj', prs: [{ ...(pr(5) as object), fork: true }] as never, tool: 'claude', uiTest: true }, ADA);
   assert.ok(typeof only !== 'string', String(only));
   if (typeof only === 'string') return;
   assert.equal(fx.task(only.taskId).workerId, undefined, 'no tester');
   await fx.waitTask(only.taskId, inReview, 'the review column', 40_000);
   assert.deepEqual(prRuns(fx, only.taskId).map((r) => `${r.role}/${r.status}`), ['reviewer/succeeded']);
-  assert.equal(prompts(fx, /Test the UI of these pull requests/).length, before, 'no tester prompt');
+  assert.equal(prompts(fx, /Test the UI and the functionality of these pull requests/).length, before, 'no tester prompt');
   assert.ok(notes(fx, only.taskId).some((n) => /from a fork.*no UI to test: the review starts without it/.test(n)), notes(fx, only.taskId).join(' | '));
 });
 
@@ -267,7 +279,7 @@ test('uiTest: the tester’s worktree is cut from the target of the first pull r
   assert.ok(existsSync(path.join(wt, 'release.txt')));
   const start = await (async () => {
     for (let i = 0; i < 200; i++) {
-      const f = prompts(fx, /Test the UI of these pull requests/)[0];
+      const f = prompts(fx, /Test the UI and the functionality of these pull requests/)[0];
       if (f) return f;
       await sleep(25);
     }
@@ -296,4 +308,56 @@ test('uiTest: a pull request not confirmed not to be from a fork is not tested, 
   assert.ok(notes(fx, got.taskId).some((n) => /confirmed not to be from a fork.*no UI to test/.test(n)), notes(fx, got.taskId).join(' | '));
   assert.ok(!notes(fx, got.taskId).some((n) => /to test the UI of, and then review/.test(n)), 'a skipped UI test is not announced as started');
   assert.ok(notes(fx, got.taskId).some((n) => /asked \w+ to review acme\/proj#3/.test(n)));
+});
+
+test('uiTest: the report the tester wrote is kept and is the result comment when its reply holds no report', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([TESTER('Done. The UI test report is in the file named above.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  await until('the tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 1);
+  assert.ok(prompts(fx, /Test the UI and the functionality/)[0].prompt!.includes(`Write the report to ${file} as you go`));
+  const body = '## UI test report\n### Tested\n- PR 3 login: PASSED';
+  writeFileSync(file, body);
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.equal(readFileSync(file, 'utf8').trim(), body, 'the file keeps what the tester wrote');
+  const results = fx.repo.listComments(id).comments.filter((c) => c.kind === 'result');
+  assert.deepEqual(results.map((c) => c.text), [body], 'the conversation shows what the reviewers read');
+  assert.ok(prompts(fx, /Review these pull requests/)[0].prompt!.includes(`The tester's report is in ${file}.`));
+});
+
+test('uiTest: a reply that holds the whole report goes over an earlier draft in the file, for the reviewers and the conversation alike', async (t) => {
+  const fx = await setup(t);
+  const full = '## UI test report\n### Tested\n- PR 3 login: FAILED\n### Findings\n- PR 3: the form submits twice';
+  fx.setRules([TESTER(full, { delayMs: 1500 }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  await until('the tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 1);
+  writeFileSync(file, '## UI test report\n### Tested\n- PR 3 login: NOT TESTED');
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  const kept = readFileSync(file, 'utf8');
+  assert.match(kept, /the form submits twice/, 'the reviewers read the finished report, not the draft');
+  assert.doesNotMatch(kept, /NOT TESTED/);
+  const results = fx.repo.listComments(id).comments.filter((c) => c.kind === 'result');
+  assert.equal(results.length, 1);
+  assert.equal(results[0].text.trim(), kept.trim(), 'one text in both places');
+});
+
+test('readUiTestReport: only a regular file with text, up to 200 kB; a link, an empty or a large file is no report', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  assert.equal(readUiTestReport(root, 7), undefined, 'none');
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, '  \n ');
+  assert.equal(readUiTestReport(root, 7), undefined, 'blank');
+  writeFileSync(file, 'x'.repeat(200_001));
+  assert.equal(readUiTestReport(root, 7), undefined, 'too large');
+  writeFileSync(file, ' report \n');
+  assert.equal(readUiTestReport(root, 7), 'report');
+  const secret = path.join(root, 'secret.txt');
+  writeFileSync(secret, 'secret');
+  rmSync(file);
+  symlinkSync(secret, file);
+  assert.equal(readUiTestReport(root, 7), undefined, 'a link is not read');
 });

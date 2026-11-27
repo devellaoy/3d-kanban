@@ -1,6 +1,6 @@
-// A task's files in its grant folder that prompts name by path: the accepted plan and the conversation.
+// A task's files in its grant folder that prompts name by path: the accepted plan, the conversation and the UI test's report.
 
-import { mkdirSync, rmSync } from 'node:fs';
+import { lstatSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { failOnce, putOfficeFile } from './officefile.js';
 import { grantDir } from './uploads.js';
@@ -43,4 +43,36 @@ export function syncPlanFile(filesDir: string, taskId: number, text: string | un
 
 export function syncConversationFile(filesDir: string, taskId: number, markdown: string | undefined): string | undefined {
   return sync(conversationFilePath(filesDir, taskId), 'the conversation', markdown);
+}
+
+/** The report the UI tester of a pull-request review writes (the tester itself creates it; the office only resets, reads and normalises it). */
+export function uiTestReportPath(filesDir: string, taskId: number): string {
+  return path.join(grantDir(filesDir, taskId), 'ui-test-report.md');
+}
+
+export function syncUiTestReport(filesDir: string, taskId: number, text: string | undefined): string | undefined {
+  return sync(uiTestReportPath(filesDir, taskId), 'the UI test report', text);
+}
+
+/** Leaves no report at all, whatever is at its path (a file, a read-only copy, a link), so the next tester can create it. Never throws. */
+export function dropUiTestReport(filesDir: string, taskId: number): void {
+  try {
+    rmSync(uiTestReportPath(filesDir, taskId), { force: true });
+  } catch {
+    // it stays; nothing more to try
+  }
+}
+
+const REPORT_MAX_BYTES = 200_000;
+
+/** The tester's report: only a regular file (never a link) up to 200 kB with text in it; anything else, or any error, is no report. Never throws. */
+export function readUiTestReport(filesDir: string, taskId: number): string | undefined {
+  try {
+    const file = uiTestReportPath(filesDir, taskId);
+    const st = lstatSync(file);
+    if (!st.isFile() || st.size > REPORT_MAX_BYTES) return undefined;
+    return readFileSync(file, 'utf8').trim() || undefined;
+  } catch {
+    return undefined;
+  }
 }

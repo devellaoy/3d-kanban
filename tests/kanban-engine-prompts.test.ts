@@ -993,19 +993,31 @@ test('post: the block telling the reply is posted goes after the pr.review and t
   assert.deepEqual(Object.keys(PROMPTS).filter((id) => PROMPTS[id as PromptId].text.includes(PR_POSTED)), [], 'it is in no editable prompt');
 });
 
+test('kanban.pr.uiTest.review: a rewritten block without {{report}} gets the report line at its end, and an emptied one adds nothing but the section', (t) => {
+  const { def: floorDef, dir, repo, compose, ctx } = setup(t, { 'kanban.pr.uiTest.review': { text: 'Pictures: {{imageList}}' } });
+  const task = repo.createTask({ project: 'proj', title: 'PR review', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
+  const grant = path.join(ctx.filesDir, 'grants', `task-${task.id}`);
+  mkdirSync(grant, { recursive: true });
+  writeFileSync(path.join(grant, 'ui-test-report.md'), 'x');
+  const text = compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
+  assert.ok(text.includes(`Pictures: none yet\n${"The tester's report is in " + path.join(grant, 'ui-test-report.md')}.\n\nYour reply must have a section "UI testing"`));
+});
+
 test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images folder and the rules, and ends with the UI test contract; the pictures are listed to the reviewers', (t) => {
   const def = KANBAN_PROMPT_DEFS['kanban.pr.uiTest'];
-  assert.deepEqual(placeholders(def.text).sort(), ['imagesDir', 'instructions', 'language', 'project', 'prs', 'repos', 'task']);
+  assert.deepEqual(placeholders(def.text).sort(), ['imagesDir', 'instructions', 'language', 'project', 'prs', 'reportFile', 'repos', 'task']);
   assert.equal(PROMPT_CONTRACT['kanban.pr.uiTest'], 'prUiTest');
   assert.equal(PROMPTS['kanban.pr.uiTest'].group, 'kanban');
-  assert.ok(placeholders(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.review'].text).every((n) => ['imagesDir', 'imageList'].includes(n)));
+  assert.ok(placeholders(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.review'].text).every((n) => ['imagesDir', 'imageList', 'report'].includes(n)));
+  assert.deepEqual(placeholders(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.section'].text), []);
   const { def: floorDef, dir, repo, compose, ctx } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
   const images = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui');
+  const report = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui-test-report.md');
   const x = { phase: 'implement' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3 — its head is fetched as origin/office-pr/3', prRepos: '- `.`: Proj' };
   const text = compose.build('pr.uitest', floorDef, task, 'claude', dir, x);
   assert.doesNotMatch(text, /\{\{/);
-  for (const part of ['its head is fetched as origin/office-pr/3', `Save the pictures in ${images}`, '<subject>-before.png or <subject>-after.png', 'under its Images tab: they are not added to any pull request', 'git worktree add --detach', 'git fetch origin pull/<number>/head', 'Never create, move or delete a branch, never commit', 'is from a fork is not tested', "Don't commit, push or change any file of the repositories", 'stop every process you started', 'say so in your reply and end', 'Use test data and test accounts only']) assert.ok(text.includes(part), part);
+  for (const part of ['its head is fetched as origin/office-pr/3', `Save the pictures in ${images}`, '<subject>-before.png or <subject>-after.png', 'under its Images tab: they are not added to any pull request', 'git worktree add --detach', 'git fetch origin pull/<number>/head', 'Never create, move or delete a branch, never commit', 'is from a fork is not tested', "Don't commit, push or change any file of the repositories", 'stop every process you started', 'say so in your report and end', 'Use test data and test accounts only', 'Test the UI and the functionality of these pull requests', 'real user actions', `Write the report to ${report} as you go`, '## UI test report', 'a shared or production backend']) assert.ok(text.includes(part), part);
   assert.ok(text.endsWith(KANBAN_CONTRACTS.prUiTest), 'the UI test contract');
   assert.match(KANBAN_CONTRACTS.prUiTest, /Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them/);
   assert.match(KANBAN_CONTRACTS.prUiTest, /How to end your work/, 'the work-done ending of an investigation');
@@ -1013,15 +1025,36 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   assert.ok(text.includes('WORK DONE'));
   // What the user said to a tester that asked goes after it.
   assert.match(compose.build('pr.uitest', floorDef, task, 'claude', dir, { ...x, text: 'Use the staging login.' }), /Use the staging login\./);
-  // The reviewers list the pictures, when the UI was tested and some were saved.
+  // The reviewers get the report and the pictures, when the UI was tested and the tester left either.
   const base = { phase: 'pr-review' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3' };
-  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), /was tested before your review/, 'no pictures, nothing to list');
+  const SECTION = 'Your reply must have a section "UI testing"';
+  const TESTED = /were tested before your review/;
+  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), TESTED, 'no report and no pictures, nothing to add');
+  // A report without pictures.
+  mkdirSync(path.dirname(report), { recursive: true });
+  writeFileSync(report, '## UI test report\nPASSED');
+  const only = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
+  assert.match(only, TESTED);
+  assert.ok(only.includes(`The tester's report is in ${report}.`));
+  assert.ok(only.includes(`${images}:\nnone yet`));
+  rmSync(report);
+  // Pictures without a report.
   mkdirSync(images, { recursive: true });
   writeFileSync(path.join(images, 'login-before.png'), 'b');
   writeFileSync(path.join(images, 'login-after.png'), 'a');
   const listed = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
   assert.ok(listed.includes(`- login: before ${path.join(images, 'login-before.png')}, after ${path.join(images, 'login-after.png')}`));
   assert.match(listed, /A wrong UI in the pictures is a finding\. Pictures that are missing are not/);
-  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, base), /was tested before your review/, 'only a review that had the UI tested');
-  assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true, panel: 'co' }).includes('login-before.png'), 'the additional reviewers too');
+  assert.ok(listed.includes('The tester left no report.'));
+  assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, base), TESTED, 'only a review that had the UI tested');
+  // The review's own section: the main reviewer and the combine, not an additional reviewer.
+  assert.ok(listed.includes(SECTION), 'the main reviewer');
+  const co = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true, panel: 'co' });
+  assert.ok(co.includes('login-before.png') && !co.includes(SECTION), 'the additional reviewers get the block, not the section');
+  const combine = compose.build('rereview', floorDef, task, 'claude', dir, { ...base, uiTest: true, panel: 'combine', reviews: 'r' });
+  assert.ok(combine.includes('login-before.png') && combine.includes(SECTION), 'the combine gets both');
+  assert.ok(combine.indexOf(SECTION) < combine.indexOf(KANBAN_CONTRACTS.prReview), 'before the contract');
+  // The report file is read for its existence only: a block rewritten without {{report}} is covered in the next test.
+  writeFileSync(report, 'x');
+  assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }).includes(report));
 });
