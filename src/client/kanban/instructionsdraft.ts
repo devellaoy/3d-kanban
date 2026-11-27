@@ -8,14 +8,14 @@
 
 import type { InstructionsDraftField } from '../../shared/kanban/instructionsdraft.js';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
-import { h, toast } from '../ui/dom';
+import { closeAllModals, h, toast } from '../ui/dom';
 import { setFieldAction } from '../ui/fieldaction';
 import { icon } from '../ui/icons';
 import { btn } from '../ui/kit';
 import { modalShell, openShell } from '../ui/shell';
 import type { KanbanApi } from './api';
 import {
-  ACTION_LABEL, ACTION_TITLE, BUSY_TEXT, DraftRuns, INSTRUCTIONS_ANSWER_MS, RUNNING_TEXT, cancelRequest, clipToField, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle,
+  ACTION_LABEL, ACTION_TITLE, BUSY_TEXT, DraftRuns, INSTRUCTIONS_ANSWER_MS, RUNNING_TEXT, cancelRequest, clipToField, closesSettingsToo, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle,
 } from './instructionsdraftmodel';
 import type { Cleanups } from './settingsflow';
 
@@ -29,11 +29,21 @@ function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, t
   // The caret at the start, so the focus the window gives the box shows the text from its first line.
   box.setSelectionRange(0, 0);
   const lead = h('p.kb-insd-lead');
-  const discard = btn('Discard', { kind: 'quiet', attrs: { title: 'Close this window and leave the field as it is.' } });
+  const discard = btn('Discard', { kind: 'quiet', attrs: { title: 'Close this window and go back to the settings, with the field as it is.' } });
   const use = btn('Use this text', { kind: 'primary' });
   const shell = modalShell({ cls: 'kb-insd-review', icon: 'sparkles', title: reviewTitle(which), body: [lead, box], footerRight: [discard, use] });
   // A press beside the window must not throw away what took minutes to write.
-  const modal = openShell(shell, { backdropCloses: false });
+  /** Closed by one of the window's own buttons, which go back to the settings. */
+  let byButton = false;
+  const back = () => {
+    byButton = true;
+    modal.close();
+  };
+  const modal = openShell(shell, {
+    backdropCloses: false,
+    // The 3D office (the page with the scene): its ✕ and Esc leave every window, so the mouse is the game's again at once.
+    onClose: () => closesSettingsToo({ byButton, inOffice: !!document.getElementById('scene') }) && closeAllModals(),
+  });
 
   const mode = () => reviewMode({ connected: field.isConnected, locked: field.matches(':disabled') || field.readOnly });
   /** What the window says and offers, from the state of the field now (its pane may have been drawn anew underneath). */
@@ -65,11 +75,11 @@ function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, t
     field.value = clipToField(box.value, field.maxLength);
     // As if typed there: one event, which the field's view and the large editor both listen to.
     field.dispatchEvent(new Event('input', { bubbles: true }));
-    modal.close();
+    back();
     field.focus({ preventScroll: true });
     toast('The text is in the field: press Save to keep it');
   });
-  discard.addEventListener('click', () => modal.close());
+  discard.addEventListener('click', back);
 }
 
 /**

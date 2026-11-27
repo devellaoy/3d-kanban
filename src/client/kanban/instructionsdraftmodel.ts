@@ -95,3 +95,12 @@ export function reviewLead(field: InstructionsDraftField, mode: ReviewMode, curr
 export function clipToField(text: string, max: number): string {
   return max >= 0 && text.length > max ? text.slice(0, max) : text;
 }
+
+/**
+ * Whether closing the review window also closes the Settings under it. In the 3D office a window closed with
+ * its ✕ or Esc puts you straight back into mouse-look, which needs every window gone; the window's own buttons
+ * (Use this text, Discard) go back to the settings, where the text is saved. The kanban page has no mouse-look.
+ */
+export function closesSettingsToo(how: { byButton: boolean; inOffice: boolean }): boolean {
+  return how.inOffice && !how.byButton;
+}

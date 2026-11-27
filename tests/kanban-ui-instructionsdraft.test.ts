@@ -4,8 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DraftRuns, INSTRUCTIONS_ANSWER_MS, cancelRequest, clipToField, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle,
-} from '../src/client/kanban/instructionsdraftmodel.js';
+  DraftRuns, INSTRUCTIONS_ANSWER_MS, cancelRequest, clipToField, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle, closesSettingsToo } from '../src/client/kanban/instructionsdraftmodel.js';
 import { KanbanError } from '../src/client/kanban/api.js';
 import { parseKanbanClientMsg } from '../src/shared/kanban/protocol.js';
 
@@ -81,4 +80,10 @@ test('the text is cut to what the field takes', () => {
   assert.equal(clipToField('abcdef', 4), 'abcd');
   assert.equal(clipToField('abc', 4), 'abc');
   assert.equal(clipToField('abcdef', -1), 'abcdef', 'a field without a maxlength takes it all');
+});
+
+test('in the 3D office the review window\'s ✕ and Esc leave the settings too; its buttons and the kanban page do not', () => {
+  assert.equal(closesSettingsToo({ byButton: false, inOffice: true }), true);
+  assert.equal(closesSettingsToo({ byButton: true, inOffice: true }), false);
+  assert.equal(closesSettingsToo({ byButton: false, inOffice: false }), false);
 });

@@ -97,6 +97,15 @@ test('the run gets the repositories, the current text, and read-only tools', asy
   assert.match(draftInput({ projectName: 'P', repos: [], general: '', other: '', current: '', field: 'testing' }), /Project: P/);
 });
 
+test('every repository of the project is named to the agent, with its folder, kind and own instructions', () => {
+  const repo = (name: string, o: object = {}) => ({ id: name, name, kind: 'git', dir: `/src/${name}`, primary: false, ...o }) as never;
+  const input = draftInput({ projectName: 'shop', repos: [repo('api', { primary: true, remote: 'o/api' }), repo('web', { instructions: 'pnpm only' }), repo('jobs', { kind: 'folder' })], general: '', other: '', current: '', field: 'prReview' });
+  assert.match(input, /- api \(primary\), kind: git, dir: \/src\/api, remote: o\/api/);
+  assert.match(input, /- web, kind: git, dir: \/src\/web\n  Instructions for this repository: pnpm only/);
+  assert.match(input, /- jobs, kind: folder, dir: \/src\/jobs/);
+  assert.match(draftSystem('prReview', undefined), /Cover every repository by its name/);
+});
+
 test('the answer loses one fence, is clipped, and an empty one is an error', async () => {
   const run = (text: string) => setup({ answer: async () => ({ text }) });
   let s = run('```markdown\n# Setup\nPassword=hunter2x\n```');
