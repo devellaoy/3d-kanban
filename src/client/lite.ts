@@ -184,7 +184,7 @@ function promptWorker(id: string) {
 // ---- New work, the boards and the meeting room (shared/officeactions.ts) ---------------------------
 const { boardActions, sendToWorker } = officeActions(net, (id) => openWorker(id));
 
-setPullActions(boardActions); // a task's pull request opens in the pull request window
+setPullActions(boardActions, (floor) => net.send({ t: 'floor.go', floor })); // a task's pull request opens in the pull request window
 $('btn-issues').addEventListener('click', () => openBoard('issues', net, boardActions()));
 $('btn-pulls').addEventListener('click', () => openBoard('pulls', net, boardActions()));
 $('btn-queue').addEventListener('click', () => openQueue(net, { openTerminal: openWorker }));

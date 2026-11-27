@@ -367,7 +367,7 @@ const { boardActions, hireNew, openShell, showMeeting, newMeeting } = officeActi
   else showTerminal(id);
 });
 
-setPullActions(boardActions); // a task's pull request opens in the pull request window
+setPullActions(boardActions, (floor) => net.send({ t: 'floor.go', floor })); // a task's pull request opens in the pull request window
 
 /** The bottom bar: the floor's meeting rooms and plain workers as tabs (their windows as the 2D view opens them), and a new meeting, worker or shell. */
 const { openWorker: openPlainWorker, sendHome } = workerOpener(net, { keypad: () => window.matchMedia('(max-width: 700px)').matches });
