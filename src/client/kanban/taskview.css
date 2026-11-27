@@ -87,6 +87,8 @@
 .kb-tv .kb-agent-edit small { font-size: var(--fs-xs); }
 
 /* ---------- Conversation: the composer on top, newest first ---------- */
+/* The comment box grows with its text (autogrow.ts sets the height and the cap). */
+.kb-tv .kb-composer > textarea { min-height: calc(4.5em + 20px); }
 .kb-tv .kb-comments { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
 .kb-tv .kb-comment { padding: 8px 12px 10px; border: var(--bw-sm) solid var(--ink); border-radius: var(--radius-sm); background: var(--field); }
 .kb-tv .kb-comment.user { background: var(--info-wash); margin-left: 24px; }
