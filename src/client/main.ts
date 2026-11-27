@@ -82,11 +82,13 @@ import { installMergePlant } from './features/mergeplant';
 import { installMultiplayer } from './multiplayer';
 import { initAppearance } from './themes';
 import { installTooltips } from './ui/tooltip';
+import { installTextExpand } from './ui/textexpand';
 
 // The chosen appearance (⚙️ Settings → Theme), on the page and followed across tabs.
 initAppearance();
 // The buttons' tooltips, everywhere on the page (ui/tooltip.ts).
 installTooltips();
+installTextExpand();
 
 // The loading screen stays up until there's an office to see (see boot and whoami at the end).
 const loading = loadingScreen(onModelsProgress);

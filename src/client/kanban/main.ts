@@ -35,9 +35,11 @@ import { toolName } from './labels';
 import { projectSelect, run, select, textInput } from './ui';
 import { initAppearance } from '../themes';
 import { installTooltips } from '../ui/tooltip';
+import { installTextExpand } from '../ui/textexpand';
 
 initAppearance();
 installTooltips();
+installTextExpand();
 
 const link = parseDeepLink(location.search);
 const FILTER_KEY = 'kanban.filter';
