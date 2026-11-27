@@ -1,6 +1,6 @@
 import { mock, test } from 'node:test';
 import assert from 'node:assert/strict';
-import fs, { chmodSync, existsSync, mkdirSync, mkdtempSync, writeFileSync } from 'node:fs';
+import fs, { chmodSync, existsSync, mkdirSync, mkdtempSync, symlinkSync, writeFileSync } from 'node:fs';
 import { syncBuiltinESMExports } from 'node:module';
 import os from 'node:os';
 import path from 'node:path';
@@ -34,6 +34,11 @@ function setup(over: { answer?: (o: Opts) => Promise<{ text: string } | { error:
   return { ctx, calls, killed, p, dir, go: p.ws!['kanban.instructions.draft']!, cancel: p.ws!['kanban.instructions.draft.cancel']! };
 }
 const last = (c: { got: unknown[] }) => c.got.at(-1) as any;
+/** Waits until the stand-in agent has been started `n` times (the handler looks through the repositories first). */
+async function started(s: { calls: unknown[] }, n: number) {
+  for (let i = 0; i < 500 && s.calls.length < n; i++) await new Promise((r) => setTimeout(r, 2));
+  assert.ok(s.calls.length >= n, `run ${n} never started`);
+}
 
 test('oneShotCommand: tools, extra directories and the settings file only on request', () => {
   const plain = oneShotCommand(undefined, '/t/system.txt').args;
@@ -149,7 +154,7 @@ test('a cancel that lands while the settings file is being written starts no age
   }
 });
 
-test('every env file is denied, and the example ones reach the agent as key names only', () => {
+test('every env file is denied, and the example ones reach the agent as key names only', async () => {
   assert.ok(INSTRUCTIONS_DRAFT_DENY.includes('Read(**/.env)') && INSTRUCTIONS_DRAFT_DENY.includes('Read(**/.env.*)'));
   assert.deepEqual(envKeys('# c\nAPI_URL=http://x\nexport DB_PASSWORD="s3cret"\n  TOKEN = abc\nAPI_URL=again\nnot a key'), ['API_URL', 'DB_PASSWORD', 'TOKEN']);
   const repo = mkdtempSync(path.join(os.tmpdir(), 'instr-env-'));
@@ -160,12 +165,43 @@ test('every env file is denied, and the example ones reach the agent as key name
   writeFileSync(path.join(repo, '.env.ci'), 'CI_TOKEN=realValue99\n');
   writeFileSync(path.join(repo, '.env'), 'REAL=realValue98\n');
   writeFileSync(path.join(repo, 'node_modules', '.env.example'), 'SKIPPED=1\n');
-  const out = envExampleKeys([repo]);
-  assert.equal(out, `- ${path.join(repo, '.env.example')}: PORT, DB_PASSWORD\n- ${path.join(repo, 'api', '.env.local.sample')}: REDIS_URL`);
+  const out = await envExampleKeys([repo]);
+  assert.equal(out, `- ${path.join(repo, 'api', '.env.local.sample')}: REDIS_URL\n- ${path.join(repo, '.env.example')}: PORT, DB_PASSWORD`.split('\n').sort().join('\n'));
   assert.ok(!/exampleValue1|realValue|CI_TOKEN|REAL|SKIPPED/.test(out));
   const input = draftInput({ projectName: 'p', repos: [], general: '', other: '', current: '', field: 'testing', envExamples: out });
   assert.ok(input.includes('key names only') && input.includes('PORT, DB_PASSWORD'));
   assert.ok(!draftInput({ projectName: 'p', repos: [], general: '', other: '', current: '', field: 'testing' }).includes('key names only'));
+});
+
+test('nothing inside a quoted, multi-line value is taken for a key name', () => {
+  const pem = 'PRIVATE_KEY="-----BEGIN KEY-----\nabc123==\nline=two\n say \\" quote=inside\n-----END KEY-----"\nAFTER=1\n';
+  assert.deepEqual(envKeys(pem), ['PRIVATE_KEY', 'AFTER']);
+  assert.deepEqual(envKeys("CERT='first\nsecretPart=xyz\nlast'\nNEXT=2\nTICK=`a\nhidden=1\nb`\nEND=3"), ['CERT', 'NEXT', 'TICK', 'END']);
+  // A quote never closed: the value is the rest of its line, as dotenv reads it, and the following lines are lines again.
+  assert.deepEqual(envKeys('OPEN="no end\nREAL_KEY=1\n'), ['OPEN', 'REAL_KEY']);
+  assert.deepEqual(envKeys('A=plain # KEY2=x\n=nokey\n1BAD=x\nB=\n'), ['A', 'B']);
+});
+
+test('the search for example env files follows no link, stops at its caps and when its request has ended', { skip: process.platform === 'win32' }, async () => {
+  const other = mkdtempSync(path.join(os.tmpdir(), 'instr-other-'));
+  mkdirSync(path.join(other, 'conf'));
+  writeFileSync(path.join(other, '.env.example'), 'OTHER_PROJECT_KEY=1\n');
+  writeFileSync(path.join(other, 'conf', '.env.sample'), 'OTHER_FOLDER_KEY=1\n');
+  const repo = mkdtempSync(path.join(os.tmpdir(), 'instr-env-'));
+  mkdirSync(path.join(repo, 'sub'));
+  writeFileSync(path.join(repo, 'sub', '.env.example'), 'OWN_KEY=1\n');
+  // A file link and a folder link out of the repository.
+  symlinkSync(path.join(other, '.env.example'), path.join(repo, '.env.example'));
+  symlinkSync(path.join(other, 'conf'), path.join(repo, 'linked'));
+  const out = await envExampleKeys([repo]);
+  assert.equal(out, `- ${path.join(repo, 'sub', '.env.example')}: OWN_KEY`);
+  assert.ok(!out.includes('OTHER_'));
+  // The caps: the file lies behind more entries than may be looked at; a request that has ended; no time left.
+  for (let i = 0; i < 30; i++) writeFileSync(path.join(repo, `a${i}.txt`), '');
+  assert.equal(await envExampleKeys([repo], { entriesMax: 10 }), '');
+  assert.equal(await envExampleKeys([repo], { stopped: () => true }), '');
+  assert.equal(await envExampleKeys([repo], { timeMs: -1 }), '');
+  assert.equal(await envExampleKeys(['/nonexistent/repo-dir']), '');
 });
 
 test('findSecrets', () => {
@@ -185,17 +221,35 @@ test('findSecrets', () => {
   assert.deepEqual(findSecrets('DB_PASSWORD=<the password>\nThe password is in appsettings.Development.json (key ConnectionStrings:Default)\nhttps://example.com/docs\nmysql -u root -p app'), []);
 });
 
+test('a cancel or a newer request during the search of the repositories starts no agent', async () => {
+  const s = setup();
+  const a = client();
+  // Cancelled before the search (asynchronous) has come back.
+  const first = s.go(a, MSG);
+  await s.cancel(client(), { t: 'kanban.instructions.draft.cancel', project: 'app', rid: 'c1' });
+  await first;
+  assert.deepEqual(last(a), { t: 'kanban.error', rid: 'r1', message: 'cancelled' });
+  assert.equal(s.calls.length, 0);
+  // Replaced by a newer one at the same point: only the newer one runs.
+  const old = s.go(a, { ...MSG, rid: 'r2' });
+  const newer = s.go(a, { ...MSG, rid: 'r3' });
+  await Promise.all([old, newer]);
+  assert.equal(s.calls.length, 1);
+  assert.deepEqual(a.got.filter((g: any) => g.rid === 'r2'), [{ t: 'kanban.error', rid: 'r2', message: 'cancelled' }]);
+  assert.equal((a.got.find((g: any) => g.rid === 'r3') as any).t, 'kanban.instructionsDraft');
+});
+
 test('a newer request or the cancel message ends the older run; at most two run at once', async () => {
   const hold = () => new Promise<{ text: string }>(() => {});
   const s = setup({ answer: hold });
   const a = client();
   const first = s.go(a, MSG);
-  await new Promise((r) => setImmediate(r));
+  await started(s, 1);
   const second = s.go(a, { ...MSG, rid: 'r2' });
   await first;
   assert.deepEqual(s.killed, [1]);
   assert.deepEqual(last(a), { t: 'kanban.error', rid: 'r1', message: 'cancelled' });
-  await new Promise((r) => setImmediate(r));
+  await started(s, 2);
   const cancelAck = client();
   await s.cancel(cancelAck, { t: 'kanban.instructions.draft.cancel', project: 'app', rid: 'c1' });
   assert.deepEqual(last(cancelAck), { t: 'kanban.ok', rid: 'c1' });
@@ -208,7 +262,7 @@ test('a newer request or the cancel message ends the older run; at most two run 
   const d = { ...client(), clientId: 'd' };
   void s.go(b, MSG);
   void s.go(c, MSG);
-  await new Promise((r) => setImmediate(r));
+  await started(s, 4);
   await s.go(d, MSG);
   assert.match(last(d).message, /busy writing instructions/);
   s.p.stop?.();

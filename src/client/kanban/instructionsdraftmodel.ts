@@ -14,7 +14,7 @@ export const FIELD_NAMES: Record<InstructionsDraftField, string> = { testing: 'D
 
 export const ACTION_LABEL = 'Write with AI';
 export const ACTION_TITLE =
-  'Write with AI: Claude reads the project’s repositories. An empty field is written from them; a field with text is completed and put under headings. You check the text first, and nothing is saved until you press Save (Alt+Shift+Enter).';
+  'Write with AI (Alt+Shift+Enter): Claude reads the project’s repositories. An empty field is written from them; a field with text is completed and put under headings. You check the text first, and nothing is saved until you press Save.';
 export const RUNNING_TEXT = 'Writing the instructions from the repositories… this can take a few minutes';
 export const BUSY_TEXT = 'The instructions are already being written: wait for them, or press Cancel first';
 

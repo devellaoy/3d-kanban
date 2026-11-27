@@ -47,10 +47,17 @@ const isDir = (p: string) => {
   }
 };
 
+/** A browser's newest request: its run once it has one, and whether it was cancelled before that. */
+interface Entry {
+  project: string;
+  run?: OneShotRun;
+  cancelled?: boolean;
+}
+
 export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: InstructionsDraftDeps = {}): KanbanPlugin {
   const run = deps.run ?? runOneShot;
   /** The newest request of each browser (by clientId), with its run once it has one. */
-  const newest = new Map<string, { project: string; run?: OneShotRun }>();
+  const newest = new Map<string, Entry>();
   let stopped = false;
   const runs = () => [...newest.values()].filter((e) => e.run).length;
 
@@ -74,7 +81,7 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
         if (!dirs.length) return fail(c, m.rid, "None of the project's repository folders exists on the office's machine");
         // This request is the browser's newest from here on: the earlier one's run, if it has one, ends now.
         const key = c.clientId;
-        const mine: { project: string; run?: OneShotRun } = { project: m.project };
+        const mine: Entry = { project: m.project };
         newest.get(key)?.run?.kill();
         newest.set(key, mine);
         try {
@@ -83,6 +90,11 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
           const settings = ctx.settings.get();
           const saved = ctx.settings.project(m.project);
           const model = settings.defaults.tool === 'claude' ? settings.defaults.model : undefined;
+          // The search of the repositories takes a moment: a cancel or a newer request meanwhile ends this one before any agent starts.
+          const ended = () => stopped || !!mine.cancelled || newest.get(key) !== mine;
+          const envExamples = await envExampleKeys(dirs, { stopped: ended });
+          if (ended()) return fail(c, m.rid, 'cancelled');
+          if (runs() >= INSTRUCTIONS_DRAFT_RUNS_MAX) return fail(c, m.rid, 'The office is busy writing instructions, try again in a moment');
           const one = run({
             cmd,
             ...(model ? { model } : {}),
@@ -93,7 +105,7 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
               general: saved.generalInstructions,
               other: m.field === 'testing' ? saved.prReviewInstructions : saved.testingInstructions,
               current: m.text,
-              envExamples: envExampleKeys(dirs),
+              envExamples,
               field: m.field,
             }),
             env,
@@ -119,7 +131,10 @@ export function createInstructionsDraftPlugin(ctx: KanbanContext, deps: Instruct
       'kanban.instructions.draft.cancel': (c, m) => {
         if (!c.admin) return fail(c, m.rid, 'Only an admin can change that');
         const e = newest.get(c.clientId);
-        if (e && e.project === m.project) e.run?.kill();
+        if (e && e.project === m.project) {
+          e.cancelled = true;
+          e.run?.kill();
+        }
         c.send({ t: 'kanban.ok', ...(m.rid ? { rid: m.rid } : {}) });
       },
     },
