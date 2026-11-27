@@ -141,7 +141,7 @@ Look at the ones that are there (open the image files) and check that they show 
     vars: {},
     needs: [],
     optional: true,
-    text: `Don't write a section about the test, and don't recount what was tested, how, or what passed. Put what the test found among your other findings, in the same list and the same form: the pull request, file:line when you found the cause, else the observed behaviour with the steps to reproduce it. Only when a view, an endpoint or a function the pull requests change could not be tested at all, say so in one line. Refer to views, endpoints and functions by name: never cite picture files or local paths in your text, the reader cannot open them.`,
+    text: `Don't write a section about the test, and don't recount what was tested, how, or what passed. Put each fault the test found that the pull requests cause or make worse and that has to be fixed before the merge among your other findings, in the same list and the same form: the pull request, file:line when you found the cause, else the observed behaviour with the steps to reproduce it. Whatever else the test found that is worth saying (a fault the target branch has too, a remark that blocks nothing) goes with your other observations, apart from the findings, not in that list. Only when a view, an endpoint or a function the pull requests change could not be tested at all, say so in one line. Refer to views, endpoints and functions by name: never cite picture files or local paths in your text, the reader cannot open them.`,
   },
   'kanban.uiTesting.fix': {
     group: 'kanban',
