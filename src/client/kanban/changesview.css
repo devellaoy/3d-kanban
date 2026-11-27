@@ -23,6 +23,22 @@
 .kb-cv .kb-cv-commits small { grid-column: 2; font-size: var(--fs-2xs); font-weight: var(--fw-medium); color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .kb-cv footer code, .kb-cv .kb-cv-foot code { font: var(--fw-bold) var(--fs-2xs) var(--font-mono); }
 
+/* The files (changeslist.ts): how many and the Tree / List switch in one row, over the list. The box
+   takes the list's place in upstream's column, and the list in it is still what scrolls. */
+.kb-cv .kb-cv-files { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+.kb-cv .kb-cv-fhead { flex: none; display: flex; align-items: center; gap: 8px; padding-right: 8px; border-bottom: var(--bw-sm) solid color-mix(in srgb, var(--text) 15%, transparent); }
+.kb-cv .kb-cv-fhead h4 { flex: 1; min-width: 0; border-bottom: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.kb-cv .kb-cv-fhead .segmented { flex: none; font-size: var(--fs-2xs); }
+.kb-cv .kb-cv-fhead .segmented > button { height: 20px; padding: 0 8px; }
+/* The list holds the focus for the keys once a row in it was clicked; the selected row shows where you are. */
+.kb-cv .kb-cv-files ul:focus-visible { outline: 0; }
+/* The tree: a level is 14px, as in the PR window's Files tab, and the rows sit closer than the flat list's. */
+.kb-cv .kb-cv-files ul[role=tree] { gap: 1px; }
+.kb-cv .kb-cv-files ul[role=tree] li { gap: 6px; padding: 2px 8px 2px calc(8px + var(--depth, 0) * 14px); }
+.kb-cv .kb-cv-files ul[role=tree] li.empty { padding: 5px 8px; }
+.kb-cv .kb-cv-files .kb-cv-dir { min-height: 26px; color: var(--text-2); }
+.kb-cv .kb-cv-files .kb-cv-dir > svg { flex: none; color: var(--muted); }
+
 /* Embedded: fills its container; the footer is upstream's .modal footer, by hand. */
 .kb-changes-view { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; background: var(--paper); color: var(--text); container-type: inline-size; }
 .kb-changes-view .changes-tabs { padding: 8px 10px; }
@@ -38,8 +54,9 @@
   .kb-changes-view .changes-body { flex-direction: column; }
   .kb-changes-view .changes-files { width: auto; max-height: 42%; border-right: 0; border-bottom: var(--bw) solid var(--ink); }
   /* Per commit, the commits and their files share the panel: give them more of it, half each. */
-  .kb-changes-view .changes-files:has(.kb-cv-commits) { max-height: 60%; }
-  .kb-changes-view .kb-cv-commits { max-height: 50%; }
+  .kb-changes-view .changes-files:has(.kb-cv-commits) { max-height: 64%; }
+  /* A little under half for the commits: the files under them are a tree, whose folders take rows too. */
+  .kb-changes-view .kb-cv-commits { max-height: 44%; }
   .kb-changes-view .img-preview { flex-direction: column; }
   .kb-changes-view .kb-cv-modes { margin-left: 0; }
 }

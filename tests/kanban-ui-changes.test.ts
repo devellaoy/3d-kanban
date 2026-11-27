@@ -5,6 +5,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { LatestReads, branchMoved, changesModes, floorOfRepo, httpNeeds, liveFloor, liveRow, prOfRepo, uncommittedNow, repoOfFloor, sortRepos, stepRow, taskRow } from '../src/client/kanban/changesmodel.js';
+import { buildTree, treeOrder } from '../src/client/ui/filetree.js';
 import { parseRepoFloorId, repoFloorId } from '../src/shared/kanban/repofloor.js';
 import { repoFloorId as serverRepoFloorId } from '../src/server/kanban/projects.js';
 import type { ChangedFile, WorkerRepo } from '../src/shared/protocol.js';
@@ -141,4 +142,14 @@ test('an older HTTP answer never overwrites a newer one, nor one forgotten since
   const other = r.start('whole:web');
   r.clear();
   assert.equal(r.take('whole:web', other), false);
+});
+
+test('stepRow over the tree order walks the files as the tree shows them', () => {
+  const rows = [{ path: 'z.ts' }, { path: 'b/x.ts' }, { path: 'a/y.ts' }];
+  const shown = treeOrder(buildTree(rows));
+  assert.deepEqual(shown.map((r) => r.path), ['a/y.ts', 'b/x.ts', 'z.ts']);
+  assert.equal(stepRow(shown, 'a/y.ts', 1), 'b/x.ts');
+  assert.equal(stepRow(shown, 'b/x.ts', 1), 'z.ts');
+  assert.equal(stepRow(shown, 'b/x.ts', -1), 'a/y.ts');
+  assert.equal(stepRow(rows, 'z.ts', 1), 'b/x.ts');
 });
