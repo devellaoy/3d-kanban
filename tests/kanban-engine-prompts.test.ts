@@ -996,6 +996,17 @@ test('post: the block telling the reply is posted goes after the pr.review and t
   // The fixture sets no public language: the block points at the prompt's own language rule.
   assert.match(prPosted(), /in the language this prompt's language rule sets for what is posted on pull requests, in English when it sets none, for a reader outside this office/);
   assert.match(prPosted(), /Don't mention a kanban task, rounds, other reviewers/);
+  // What doesn't block the merge is kept apart from the findings, in the posted review and in both editable prompts.
+  assert.match(prPosted(), /it goes after them under a heading `### Other observations`, written in the language of your reply/);
+  for (const id of ['kanban.pr.review', 'kanban.pr.review.combine'] as const) {
+    assert.match(KANBAN_PROMPT_DEFS[id].text, /under a heading of its own, "Other observations"/, id);
+    assert.match(KANBAN_PROMPT_DEFS[id].text, /the order to merge and deploy in/i, id);
+    assert.match(KANBAN_PROMPT_DEFS[id].text, /A migration that looks missing from these pull requests is not a finding by itself either/, id);
+  }
+  assert.match(prPosted(), /a pull request description that doesn't spell those out\) is never listed among the findings/);
+  assert.match(prPosted(), /A migration that looks missing from these pull requests is not a finding by itself either/);
+  assert.match(prPosted(), /whatever else the test found that is worth saying goes among the other observations/);
+  assert.match(KANBAN_PROMPT_DEFS['kanban.pr.uiTest.section'].text, /goes with your other observations, apart from the findings/);
   assert.match(prPosted('Finnish'), /write it in Finnish, for a reader outside this office/);
   assert.ok(!prPosted('Finnish').includes('in English'));
   assert.match(prPosted('Finnish'), /don't write a section about testing/);
@@ -1005,6 +1016,8 @@ test('post: the block telling the reply is posted goes after the pr.review and t
   settings.setProject('proj', { prompts: { 'kanban.pr.review': 'Mine', 'kanban.pr.review.combine': 'Mine too {{reviews}}' } });
   const mine = compose.build('pr.review', def, task, 'claude', dir, { ...common, post: true });
   assert.ok(mine.startsWith('Mine') && mine.includes(`${prPosted()}\n\n${KANBAN_CONTRACTS.prReview}`));
+  // The rewritten prompt has none of the default's rules: what is no finding still reaches its reviewer, in the block.
+  assert.ok(!mine.includes('under a heading of its own, "Other observations"') && /a pull request description that doesn't spell those out\) is never listed among the findings/.test(mine));
   assert.ok(compose.build('rereview', def, task, 'claude', dir, { ...common, panel: 'combine', post: true }).includes(prPosted()));
   assert.deepEqual(Object.keys(PROMPTS).filter((id) => PROMPTS[id as PromptId].text.includes(prPosted())), [], 'it is in no editable prompt');
 });
