@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createServer } from 'node:http';
 import { spawn } from 'node:child_process';
-import { mkdtemp, writeFile, readFile, rm, stat } from 'node:fs/promises';
+import { mkdtemp, writeFile, readFile, readdir, rm, stat } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -136,4 +136,69 @@ test('real browser: actions, persistence, fault recovery, reports and legacy CLI
   artifacts.add(image);
   assert.match(image, /\.png$/);
   assert.ok((await stat(image)).size > 0);
+});
+
+test('real browser: flow suite with a failing job, and before/after runs into an out dir', { timeout: 180000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'kanban-ui-suite-test-'));
+  const artifacts = new Set();
+  const listen = async heading => {
+    const server = createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end(`<!doctype html><title>x</title><main><h1>${heading}</h1><button id="go">Go</button></main>`); });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    return { server, url: `http://127.0.0.1:${server.address().port}` };
+  };
+  const before = await listen('Old heading');
+  const after = await listen('New heading');
+  t.after(async () => {
+    for (const { server } of [before, after]) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+    for (const file of artifacts) await rm(file, { force: true });
+    await rm(directory, { recursive: true, force: true });
+  });
+  const note = (stderr, pattern) => {
+    for (const m of stderr.matchAll(pattern)) artifacts.add(m[1]);
+  };
+  const writeFlow = async (name, steps) => {
+    const path = join(directory, name + '.json');
+    await writeFile(path, JSON.stringify({ name, baseUrl: before.url, steps }));
+    return path;
+  };
+
+  // Two flows in one call: one passes, one fails on a missing element.
+  const good = await writeFlow('suite-good', [{ goto: '/', waitSelector: 'main', assertions: [{ type: 'visible', locator: 'main h1' }], shot: 'home' }]);
+  const bad = await writeFlow('suite-bad', [{ goto: '/', waitSelector: 'main' }, { actions: [{ type: 'click', locator: '#missing-button', timeout: 300 }] }]);
+  const suite = await execute(['--flow', good, '--flow', bad, '--timeout', '3000']);
+  note(suite.stderr, /REPORT (.+)$/gm);
+  note(suite.stderr, /SUITE-REPORT (.+)$/gm);
+  assert.equal(suite.code, 2, suite.stderr);
+  const flowLines = suite.stderr.split('\n').filter(line => line.startsWith('FLOW '));
+  assert.equal(flowLines.length, 2, suite.stderr);
+  assert.ok(flowLines.some(line => /^FLOW suite-good passed shots=1 /.test(line)));
+  const badLine = flowLines.find(line => line.startsWith('FLOW suite-bad failed'));
+  assert.match(badLine, /failed-step=2 action 1 click: not-found, matches=0$/);
+  assert.match(suite.stderr, /^SUITE 1\/2 passed, 1 failed, 0 capture-only, \d+ ms$/m);
+  const paths = suite.stdout.trim().split('\n').filter(Boolean);
+  assert.equal(paths.length, 2);
+  for (const path of paths) { artifacts.add(path); assert.match(path, /\.png$/); }
+  const badReport = JSON.parse(await readFile(suite.stderr.match(/\[suite-bad\] REPORT (.+)$/m)[1], 'utf8'));
+  assert.equal(badReport.steps[1].failure.reason, 'not-found');
+  assert.equal(badReport.steps[1].failure.matches, 0);
+  assert.ok(!JSON.stringify(badReport).includes('missing-button'));
+
+  // The same flow against two addresses, shots named by side in --out-dir.
+  const outDir = join(directory, 'out');
+  const flow = await writeFlow('compare', [{ goto: '/', waitSelector: 'main h1', assertions: [{ type: 'url', expected: '/' }], shot: 'Home Page' }]);
+  const compare = await execute(['--flow', flow, '--before-url', before.url, '--after-url', after.url, '--out-dir', outDir, '--timeout', '3000']);
+  note(compare.stderr, /REPORT (.+)$/gm);
+  note(compare.stderr, /SUITE-REPORT (.+)$/gm);
+  assert.equal(compare.code, 0, compare.stderr);
+  assert.deepEqual((await readdir(outDir)).sort(), ['home-page-after.png', 'home-page-before.png']);
+  assert.deepEqual(compare.stdout.trim().split('\n').map(path => path.split('/').pop()).sort(), ['home-page-after.png', 'home-page-before.png']);
+  assert.match(compare.stderr, /^FLOW compare@before passed shots=1 /m);
+  assert.match(compare.stderr, /^FLOW compare@after passed shots=1 /m);
+  for (const name of await readdir(outDir)) assert.ok((await stat(join(outDir, name))).size > 0);
+
+  // Two shots that would write the same side-named file are refused before any browser starts.
+  const clash = await writeFlow('clash', [{ goto: '/', waitSelector: 'main', shot: 'Same' }, { shot: 'same' }]);
+  const refused = await execute(['--flow', clash, '--side', 'after', '--out-dir', outDir]);
+  assert.equal(refused.code, 2);
+  assert.equal(refused.stdout, '');
 });

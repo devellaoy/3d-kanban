@@ -98,15 +98,64 @@
 //   Näkymän vaihto kesken flowin säilyttää istunnon: jos vaihto vaatii uuden
 //   kontekstin (mobiili↔työpöytä, dpr), evästeet ja storaget siirretään mukana.
 //
+// -- Waiting (settle), several flows, before/after, output (English) ----------------
+//   Settle: after a navigation the networkidle wait is capped at min(timeout, 2000) ms
+//   (it never fires on pages with a permanent connection). It is skipped when the step
+//   has a waitSelector (--wait-selector in single mode) or only assertions (no
+//   click/actions/eval); the load state is then awaited instead (2 s cap). The 800 ms
+//   default delay is not run when a waitSelector is given; --delay and a step's own
+//   "delay" always run. A page that fits the viewport skips the lazy-load scroll.
+//   --no-settle / flow "settle": false   skip all settle waits (also the load wait)
+//   --settle / "settle": true            force the networkidle wait (also per step)
+//   --settle-timeout <ms> / "settleTimeout"   cap of the networkidle wait
+//   Flags without a value (--mobile, --viewport-only, --list-devices, --no-settle,
+//   --settle) only take the next token as a value when it is true/false/1/0/yes/no/on/off.
+//
+//   Several flows in ONE call and ONE browser (separate contexts, --concurrency <n>,
+//   default 4): repeat --flow, give a folder (its *.json, sorted, not recursive; a JSON
+//   file without a "steps" array is skipped with a note) or list .json files after --flow
+//   (shell globs). A failed or invalid flow fails only its own job; exit code 2 if any
+//   job failed. One FLOW line per job on stderr:
+//     FLOW <name>[@before|@after] <passed|failed|capture-only> shots=<n> report=<path>
+//       [failed-step=<i> <action|assertion|step> <j> <type>: <reason>, matches=<k>]
+//   and after a multi-job run: SUITE <p>/<total> passed, <f> failed, <c> capture-only,
+//   <ms> ms and SUITE-REPORT <path> (JSON in the tmp dir). Progress lines of a multi-job
+//   run are prefixed with [name]. stdout stays image paths only, printed as each image is
+//   taken. A single-job run keeps the old stderr lines and exit codes.
+//
+//   Addresses: --base-url <url> overrides every flow's baseUrl. --before-url <url> and
+//   --after-url <url> run every flow against each given side (one or both); --side
+//   before|after names a one-address run (also single-URL mode). An absolute goto warns
+//   in such runs. A "url" assertion whose expected starts with "/" is resolved against
+//   the job's base URL.
+//
+//   Output: --out-dir <dir> (created, resolved dir printed as OUT-DIR on stderr) receives
+//   the requested shots. With a side the file is <subject>-<side>.png (subject = the
+//   step's "shot" name, or --name in single mode; lower-case [a-z0-9._-]; no timestamp,
+//   overwritten); a "shot": true becomes <flowname>-shot-<n>; two shots resolving to
+//   the same file are an error before the browser starts. Without a side the old
+//   <flow>-<shot>-<timestamp>.png naming is used. Reports, traces and -failure.png
+//   always stay in the tmp dir.
+//
+//   Session state: --state is written back only when exactly one job uses that file; a
+//   shared file is read-only. In a run with both sides, --state s.json (and a flow's
+//   "state") means s.before.json / s.after.json. A loaded state without a cookie or
+//   origin entry for the job's address warns and adds state=missing-origin to its FLOW
+//   line. Saved atomically (tmp file + rename).
+//
 // Käyttää järjestelmän selainta (oletus Chrome, sitten Edge) playwright-coren kautta,
 // joten erillistä Chromium-latausta ei tarvita. Riippuvuus playwright-core resolvoituu
 // tämän tiedoston sijainnista, joten skripti toimii vaikka se ajetaan kohderepon
 // worktreessä jossa sitä ei ole asennettu.
 
-import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { mkdir, readFile, rename, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, isAbsolute, join, resolve } from 'node:path'
-import { validateTestSteps, runActions, runAssertions } from './ui-test.mjs'
+import { validateTestSteps, runActions, runAssertions, classifyFailure } from './ui-test.mjs'
+import {
+  DEFAULT_DELAY_MS, assignStatePaths, boolFlag, buildJobs, expandFlowArgs, findNameCollisions, parseArgs,
+  labelName, nonNegNum, posNum, runPool, settlePlan, shotFileName, slug, stateMissingOrigin, subjectSlug, suiteLine, summaryLine,
+} from './flow-suite.mjs'
 
 /** Kaikki ei-polkutuloste menee stderriin, jotta stdout pysyy pelkkinä kuvapolkuina. */
 function note(msg) {
@@ -122,58 +171,6 @@ class UserError extends Error {}
 /** Kuvan polku stdoutiin — tämä on skriptin ainoa stdout-tuloste. */
 function emitPath(p) {
   process.stdout.write(p + '\n')
-}
-
-function parseArgs(argv) {
-  const args = { _: [] }
-  for (let i = 0; i < argv.length; i++) {
-    const a = argv[i]
-    if (a.startsWith('--')) {
-      let key = a.slice(2)
-      let val
-      const eq = key.indexOf('=')
-      if (eq >= 0) {
-        val = key.slice(eq + 1)
-        key = key.slice(0, eq)
-      } else {
-        const next = argv[i + 1]
-        // Seuraava token on arvo, ellei se itse näytä lipulta (--xxx).
-        if (next !== undefined && !/^--/.test(next)) {
-          val = next
-          i++
-        } else {
-          val = true
-        }
-      }
-      // Toistettu lippu (esim. usea --click) kerätään taulukoksi.
-      if (key in args) {
-        if (Array.isArray(args[key])) args[key].push(val)
-        else args[key] = [args[key], val]
-      } else {
-        args[key] = val
-      }
-    } else {
-      args._.push(a)
-    }
-  }
-  return args
-}
-
-function posNum(v, def) {
-  const n = Number(v)
-  return Number.isFinite(n) && n > 0 ? n : def
-}
-
-/** Lippu ilman arvoa (--mobile) tai eksplisiittinen --mobile=false. */
-function boolFlag(v, def = false) {
-  if (v === undefined) return def
-  if (v === true) return true
-  if (typeof v === 'string') return !/^(false|0|no|off)$/i.test(v)
-  return def
-}
-
-function slug(s) {
-  return s.replace(/[^a-z0-9]+/gi, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'shot'
 }
 
 /** Palauttaa lipun arvot aina taulukkona (lippu voi toistua tai puuttua).
@@ -395,7 +392,15 @@ async function saveStateFile(context, page, path) {
     const base = await context.storageState()
     const sessionStorage = await readSessionStorage(page)
     await mkdir(dirname(path), { recursive: true })
-    await writeFile(path, JSON.stringify({ ...base, sessionStorage }, null, 2), 'utf-8')
+    // Atomic: write a tmp file in the same folder, then rename over the state file.
+    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
+    try {
+      await writeFile(tmp, JSON.stringify({ ...base, sessionStorage }, null, 2), 'utf-8')
+      await rename(tmp, path)
+    } catch (err) {
+      await rm(tmp, { force: true }).catch(() => {})
+      throw err
+    }
     note(`Istunto tallennettu: ${path}`)
   } catch (err) {
     note(`Varoitus: istunnon tallennus epäonnistui (${path}): ${err?.message ?? err}`)
@@ -455,6 +460,9 @@ async function createContext(browser, vp, session, persisted, targetUrl) {
 // Vierittää sivun pohjalle ja takaisin, jotta lazy-load-kuvat (loading="lazy" /
 // IntersectionObserver) ehtivät latautua ennen full-page-kuvaa.
 async function triggerLazyLoad(page) {
+  // A page that fits the viewport has nothing lazy below the fold.
+  const fits = await page.evaluate(() => document.documentElement.scrollHeight <= window.innerHeight)
+  if (fits) return
   await page.evaluate(async () => {
     await new Promise((resolve) => {
       let total = 0
@@ -524,14 +532,27 @@ async function navigate(page, url, timeout) {
   throw new Error(`Navigointi epäonnistui: ${url}`)
 }
 
-/** Antaa verkon rauhoittua, mutta ei kaadu jos networkidle ei koskaan laukea. */
-async function settle(page, timeout, delay) {
+/**
+ * Antaa verkon rauhoittua, mutta ei kaadu jos networkidle ei koskaan laukea.
+ * plan = settlePlan(...): networkidle (idleMs) tai, kun se ohitetaan, load-tila (loadMs),
+ * sitten viive (delayMs).
+ */
+async function settle(page, plan) {
+  let idleTimedOut = false
   try {
-    await page.waitForLoadState('networkidle', { timeout: Math.min(timeout, 8000) })
+    if (plan.idleMs > 0) await page.waitForLoadState('networkidle', { timeout: plan.idleMs })
+    else if (plan.loadMs > 0) await page.waitForLoadState('load', { timeout: plan.loadMs })
   } catch {
     // SPA:lla voi olla pysyviä yhteyksiä — jatketaan silti.
+    idleTimedOut = plan.idleMs > 0
   }
-  if (delay > 0) await page.waitForTimeout(delay)
+  if (plan.delayMs > 0) await page.waitForTimeout(plan.delayMs)
+  return idleTimedOut ? plan.idleMs : 0
+}
+
+/** One stderr note when a picture is taken after the idle wait ran into its cap. */
+function idleNote(ms) {
+  return `Note: the page was still loading data when the idle wait ended (${ms} ms); the picture may be incomplete: add a waitSelector, or "settle": true with a longer settleTimeout.`
 }
 
 /**
@@ -612,9 +633,11 @@ async function elementBox(page, selector, padding) {
  * Ottaa kuvan ja palauttaa polun.
  * clipSelector → lähikuva elementistä, viewportOnly → vain näkymä, muuten koko sivu.
  */
-async function capture(page, outPath, { clipSelector, clipPadding, viewportOnly }) {
+async function capture(page, outPath, { clipSelector, clipPadding, viewportOnly, classifyClip = false }) {
   if (clipSelector) {
-    const clip = await elementBox(page, clipSelector, clipPadding)
+    const clip = classifyClip
+      ? await legacyStep('clipSelector', page, clipSelector, () => elementBox(page, clipSelector, clipPadding))
+      : await elementBox(page, clipSelector, clipPadding)
     await page.screenshot({ path: outPath, fullPage: true, clip })
   } else if (viewportOnly) {
     await page.screenshot({ path: outPath, fullPage: false })
@@ -636,25 +659,85 @@ function joinUrl(baseUrl, target) {
   return new URL(target, normalizeUrl(baseUrl)).toString()
 }
 
-async function runFlow(flow, ctx) {
-  const { browser, session, deviceRegistry, outDir, timeout, delay } = ctx
-  const flowName = slug(flow.name || 'flow')
-  const statePath = flow.state ? resolve(flow.state) : ctx.statePath
+/** A legacy step key (waitSelector, click, clipSelector, goto) failed; failure is classified. */
+class StepFailure extends Error {
+  constructor(type, classified) {
+    super(`Step failed: ${type}`)
+    this.failure = { type, ...classified }
+  }
+}
+
+/** Runs fn; on failure throws a StepFailure with a classified reason (no selector or page text). */
+async function legacyStep(type, page, selector, fn, opts = {}) {
+  try {
+    return await fn()
+  } catch (error) {
+    const locator = selector ? page.locator(selector) : null
+    throw new StepFailure(type, await classifyFailure(locator, error, { single: false, ...opts }))
+  }
+}
+
+const FLOW_STEP_KEYS = new Set(['goto', 'viewport', 'waitSelector', 'wait', 'click', 'eval', 'evalFile', 'postDelay', 'scrollTo', 'measure', 'shot', 'clipSelector', 'clipPadding', 'viewportOnly', 'delay', 'actions', 'assertions', 'settle'])
+
+/** Maps a step failure record to the compact form used by FLOW lines and the suite report. */
+function summarizeFailure(f) {
+  if (!f) return null
+  return {
+    kind: f.kind ?? 'step',
+    index: f.kind && f.index != null ? f.index + 1 : null,
+    type: f.type ?? null,
+    reason: f.reason ?? null,
+    matches: f.matches ?? null,
+  }
+}
+
+/**
+ * Runs one job (one flow against one address) in its own browser context.
+ * Never throws for a failed or invalid flow: returns
+ * { name, side, status, failedStep, failure, shots, reportPath, error }.
+ * Only an unexpected crash of a single-job run is rethrown (exit code 1).
+ */
+async function runFlow(job, ctx) {
+  const result = {
+    name: job.name, side: job.side, baseUrl: job.baseUrl ?? null, status: 'failed', failedStep: null,
+    failure: null, shots: [], reportPath: null, error: null, stateMissingOrigin: false,
+  }
+  try {
+    await runFlowInner(job, ctx, result)
+  } catch (err) {
+    if (!(err instanceof UserError) && !job.multi) throw err
+    result.status = 'failed'
+    result.error = err instanceof UserError ? err.message : `Unexpected error: ${err?.message ?? err}`
+  }
+  return result
+}
+
+async function runFlowInner(job, ctx, result) {
+  const flow = job.flow
+  const { browser, session, deviceRegistry, outDir, shotDir, timeout, delay } = ctx
+  const log = (msg) => note(job.multi ? `[${job.label}] ${msg}` : msg)
+  if (job.loadError) throw new UserError(job.loadError)
+  const flowName = slug(flow.name || job.name || 'flow')
+  const statePath = job.statePath ?? null
+  const baseUrl = job.baseUrl
 
   let vp = resolveViewport(flow.viewport ?? {}, deviceRegistry)
   let persisted = statePath ? await loadStateFile(statePath) : null
 
   const steps = Array.isArray(flow.steps) ? flow.steps : []
   if (!steps.length) throw new UserError('Flow-tiedostossa ei ole yhtään askelta ("steps").')
-  const stepKeys = new Set(['goto', 'viewport', 'waitSelector', 'wait', 'click', 'eval', 'evalFile', 'postDelay', 'scrollTo', 'measure', 'shot', 'clipSelector', 'clipPadding', 'viewportOnly', 'delay', 'actions', 'assertions'])
   for (const step of steps) {
-    if (!step || typeof step !== 'object' || Array.isArray(step) || Object.keys(step).some(key => !stepKeys.has(key))) {
+    if (!step || typeof step !== 'object' || Array.isArray(step) || Object.keys(step).some(key => !FLOW_STEP_KEYS.has(key))) {
       throw new UserError('Invalid flow step or unknown step key')
     }
+    if (step.settle !== undefined && typeof step.settle !== 'boolean') throw new UserError('step settle must be boolean')
   }
   try { validateTestSteps(steps) } catch (error) { throw new UserError(error.message) }
-  for (const key of ['trace', 'includeValues', 'failOnPageError']) {
+  for (const key of ['trace', 'includeValues', 'failOnPageError', 'settle']) {
     if (flow[key] !== undefined && typeof flow[key] !== 'boolean') throw new UserError(`${key} must be boolean`)
+  }
+  if (flow.settleTimeout !== undefined && !(Number.isFinite(flow.settleTimeout) && flow.settleTimeout > 0)) {
+    throw new UserError('settleTimeout must be a positive number of milliseconds')
   }
   const faults = flow.networkFailures ?? []
   if (!Array.isArray(faults) || faults.some(f => !f || typeof f.url !== 'string' || !f.url
@@ -666,15 +749,42 @@ async function runFlow(flow, ctx) {
   // Ensimmäinen goto tarvitaan kontekstin evästedomainia varten.
   const firstGoto = steps.find((s) => typeof s.goto === 'string')
   if (!firstGoto) throw new UserError('Flow-tiedoston pitää sisältää vähintään yksi "goto"-askel.')
-  const firstUrl = joinUrl(flow.baseUrl, firstGoto.goto)
+  const firstUrl = joinUrl(baseUrl, firstGoto.goto)
+
+  if (job.side || job.overridden) {
+    for (const [i, s] of steps.entries()) {
+      if (typeof s.goto === 'string' && /^[a-z][a-z0-9+.-]*:\/\//i.test(s.goto)) {
+        log(`Warning: step ${i + 1} has an absolute goto, so the ${job.side ? 'before/after' : 'base-url'} address does not apply to it`)
+      }
+    }
+  }
+  if (stateMissingOrigin(persisted, firstUrl)) {
+    result.stateMissingOrigin = true
+    log('Warning: the state file has no cookie or origin entry for this address; the session may not be logged in here (state=missing-origin)')
+  }
+
+  const planFor = (step) => settlePlan({
+    timeout,
+    hasWaitSelector: typeof step.waitSelector === 'string',
+    hasAssertions: Array.isArray(step.assertions) && step.assertions.length > 0,
+    hasInteraction: asStringList(step.click).length > 0 || (Array.isArray(step.actions) && step.actions.length > 0)
+      || typeof step.eval === 'string' || typeof step.evalFile === 'string',
+    setting: ctx.settleCli ?? step.settle ?? flow.settle,
+    settleTimeout: ctx.settleTimeoutCli ?? flow.settleTimeout,
+    delay: step.delay != null ? nonNegNum(step.delay, delay) : delay,
+    delayExplicit: step.delay != null || ctx.delayExplicit,
+  })
 
   let context = await createContext(browser, vp, session, persisted, firstUrl)
   let page = await context.newPage()
   let shotIndex = 0
-  const runId = `${flowName}-${Date.now()}-${process.pid}`
+  const runId = `${flowName}-${job.side || job.multi ? `${job.side ? job.side + '-' : ''}${job.seq}-` : ''}${Date.now()}-${process.pid}`
   const reportPath = join(outDir, `${runId}-report.json`)
   const report = { status: 'running', steps: [], diagnostics: [], screenshots: [], traces: [], simulatedNetworkFailures: faults.length, droppedDiagnostics: 0, pageErrorCount: 0 }
   let currentStep = null
+  let activeStep = steps[0]
+  let idleMs = 0 // idle wait cap that timed out since the last goto (0 = none)
+  let idleNoted = false
   let traceIndex = 0
   let traceActive = false
   const record = data => {
@@ -705,7 +815,7 @@ async function runFlow(flow, ctx) {
       })
     }
     if (flow.trace) {
-      note('TRACE: may contain DOM, network data and secrets; use test accounts only.')
+      log('TRACE: may contain DOM, network data and secrets; use test accounts only.')
       await context.tracing.start({ screenshots: true, snapshots: true, sources: false })
       traceActive = true
     }
@@ -733,7 +843,7 @@ async function runFlow(flow, ctx) {
     await setupContext()
     if (currentUrl && !/^about:/.test(currentUrl)) {
       await navigate(page, currentUrl, timeout)
-      await settle(page, timeout, delay)
+      idleMs = (await settle(page, planFor(activeStep))) || idleMs
     }
   }
 
@@ -742,29 +852,31 @@ async function runFlow(flow, ctx) {
     for (const [i, step] of steps.entries()) {
       const label = `askel ${i + 1}/${steps.length}`
       currentStep = { index: i + 1, status: 'running', actions: [], assertions: [] }
+      activeStep = step
       report.steps.push(currentStep)
 
       if (typeof step.goto === 'string') {
-        const url = joinUrl(flow.baseUrl, step.goto)
-        note(`${label}: goto ${url}`)
-        await navigate(page, url, timeout)
-        await settle(page, timeout, step.delay != null ? posNum(step.delay, delay) : delay)
+        const url = joinUrl(baseUrl, step.goto)
+        log(`${label}: goto ${url}`)
+        await legacyStep('goto', page, null, () => navigate(page, url, timeout))
+        idleMs = await settle(page, planFor(step))
       }
 
       if (step.viewport) {
         const nextVp = resolveViewport({ ...step.viewport }, deviceRegistry)
         if (needsNewContext(vp, nextVp)) {
-          note(`${label}: näkymä vaihtuu (uusi konteksti, istunto siirretään)`)
+          log(`${label}: näkymä vaihtuu (uusi konteksti, istunto siirretään)`)
           await recreateContext(nextVp)
         } else {
           await page.setViewportSize(nextVp.viewport)
         }
         vp = nextVp
-        note(`${label}: viewport ${vp.viewport.width}x${vp.viewport.height} mobile=${vp.isMobile} dpr=${vp.deviceScaleFactor}`)
+        log(`${label}: viewport ${vp.viewport.width}x${vp.viewport.height} mobile=${vp.isMobile} dpr=${vp.deviceScaleFactor}`)
       }
 
       if (typeof step.waitSelector === 'string') {
-        await page.waitForSelector(step.waitSelector, { timeout })
+        await legacyStep('waitSelector', page, step.waitSelector, () => page.waitForSelector(step.waitSelector, { timeout }))
+        idleMs = 0
       }
 
       if (step.wait != null) {
@@ -772,8 +884,8 @@ async function runFlow(flow, ctx) {
       }
 
       for (const sel of asStringList(step.click)) {
-        note(`${label}: click ${sel}`)
-        await page.click(sel, { timeout })
+        log(`${label}: click ${sel}`)
+        await legacyStep('click', page, sel, () => page.click(sel, { timeout }))
       }
 
       currentStep.actions = await runActions(page, step.actions ?? [], { timeout, flowDir: ctx.flowDir })
@@ -782,7 +894,7 @@ async function runFlow(flow, ctx) {
       if (typeof step.evalFile === 'string') js = await readFile(step.evalFile, 'utf-8')
       if (js) {
         const value = await page.evaluate(`(async () => { ${js}\n})()`)
-        if (value !== undefined) note(`${label}: eval -> ${JSON.stringify(value)}`)
+        if (value !== undefined) log(`${label}: eval -> ${JSON.stringify(value)}`)
       }
 
       if (step.postDelay != null) await page.waitForTimeout(posNum(step.postDelay, 0))
@@ -796,53 +908,60 @@ async function runFlow(flow, ctx) {
 
       for (const sel of asStringList(step.measure)) {
         const m = await measureElement(page, sel)
-        note(`MEASURE ${JSON.stringify(m)}`)
+        log(`MEASURE ${JSON.stringify(m)}`)
       }
 
-      currentStep.assertions = await runAssertions(page, step.assertions ?? [], { timeout, includeValues: flow.includeValues === true })
+      currentStep.assertions = await runAssertions(page, step.assertions ?? [], { timeout, includeValues: flow.includeValues === true, baseUrl: baseUrl ? normalizeUrl(baseUrl) : undefined })
 
       if (step.shot) {
         shotIndex++
-        const shotName = typeof step.shot === 'string' ? slug(step.shot) : `shot-${shotIndex}`
-        const outPath = join(outDir, `${flowName}-${shotName}-${Date.now()}.png`)
+        if (idleMs && !idleNoted) { idleNoted = true; log(idleNote(idleMs)) }
+        const outPath = join(shotDir, shotFileName(job, typeof step.shot === 'string' ? step.shot : null, shotIndex, Date.now()))
         await capture(page, outPath, {
           clipSelector: typeof step.clipSelector === 'string' ? step.clipSelector : null,
           clipPadding: step.clipPadding != null ? Number(step.clipPadding) : 16,
           viewportOnly: !!step.viewportOnly,
+          classifyClip: true,
         })
         emitPath(outPath)
         report.screenshots.push(outPath)
+        result.shots.push(outPath)
       }
       currentStep.status = 'passed'
     }
 
     if (flow.failOnPageError && report.pageErrorCount > 0) throw new Error('Page JavaScript error')
     report.status = report.steps.some(s => s.assertions.length > 0) ? 'passed' : 'capture-only'
+    result.status = report.status
 
-    if (statePath) await saveStateFile(context, page, statePath)
+    if (statePath && job.stateWritable) await saveStateFile(context, page, statePath)
   } catch (error) {
     report.status = 'failed'
     if (currentStep) {
       currentStep.status = 'failed'
       currentStep.failure = error.failure ?? { type: 'browser-operation', message: 'Browser operation failed; inspect screenshot and diagnostics.' }
       if (error.records) currentStep.partialResults = error.records
+      result.failure = summarizeFailure(error.failure ?? { type: 'browser-operation' })
     }
+    result.failedStep = currentStep?.index ?? 0
     const path = join(outDir, `${runId}-failure.png`)
     try {
       await page.screenshot({ path, fullPage: false, timeout: Math.min(timeout, 5000) })
       report.screenshots.push(path)
       emitPath(path)
     } catch { report.failureScreenshotUnavailable = true }
+    result.reportPath = reportPath
     throw new UserError(`UI flow failed at step ${currentStep?.index ?? 0}; report: ${reportPath}`)
   } finally {
     try { await stopTrace() } catch { report.traceUnavailable = true }
     await context.close().catch(() => {})
     await writeFile(reportPath, JSON.stringify(report, null, 2), { mode: 0o600 })
-    note(`REPORT ${reportPath}`)
+    result.reportPath = reportPath
+    log(`REPORT ${reportPath}`)
   }
 
   if (shotIndex === 0) {
-    note('Varoitus: flow ei ottanut yhtään kuvaa (lisää askel jossa on "shot").')
+    log('Varoitus: flow ei ottanut yhtään kuvaa (lisää askel jossa on "shot").')
   }
 }
 
@@ -850,8 +969,8 @@ async function runFlow(flow, ctx) {
 // Yhden kuvan ajo
 // ---------------------------------------------------------------------------------
 
-async function runSingle(args, ctx) {
-  const { browser, session, deviceRegistry, outDir, timeout, delay } = ctx
+async function runSingle(args, ctx, job) {
+  const { browser, session, deviceRegistry, outDir, shotDir, timeout, delay } = ctx
   const rawUrl = args._[0]
   const url0 = new URL(normalizeUrl(rawUrl)).toString()
 
@@ -866,8 +985,11 @@ async function runSingle(args, ctx) {
     deviceRegistry,
   )
 
-  const statePath = typeof args.state === 'string' ? resolve(args.state) : null
+  const statePath = job.statePath ?? null
   const persisted = statePath ? await loadStateFile(statePath) : null
+  if (stateMissingOrigin(persisted, url0)) {
+    note('Warning: the state file has no cookie or origin entry for this address; the session may not be logged in here (state=missing-origin)')
+  }
 
   const waitSelector = typeof args['wait-selector'] === 'string' ? args['wait-selector'] : null
   const postDelay = posNum(args['post-delay'], 0)
@@ -880,17 +1002,31 @@ async function runSingle(args, ctx) {
   }
 
   const namePart = typeof args.name === 'string' ? slug(args.name) : slug(new URL(url0).hostname)
-  const outPath = join(outDir, `${namePart}-${Date.now()}.png`)
+  const outPath = join(
+    shotDir,
+    job.side && job.namedBySide
+      ? `${subjectSlug(args.name)}-${job.side}.png`
+      : `${namePart}${job.side ? `-${job.side}` : ''}-${Date.now()}.png`,
+  )
 
   const context = await createContext(browser, vp, session, persisted, url0)
   try {
     const { page } = await openPage(context, url0, timeout)
-    await settle(page, timeout, 0)
+    const plan = settlePlan({
+      timeout,
+      hasWaitSelector: !!waitSelector,
+      setting: ctx.settleCli,
+      settleTimeout: ctx.settleTimeoutCli,
+      delay,
+      delayExplicit: ctx.delayExplicit,
+    })
+    const idleMs = await settle(page, { ...plan, delayMs: 0 })
 
     if (waitSelector) await page.waitForSelector(waitSelector, { timeout })
 
-    // Pieni lisäviive client-renderöinnin / hydraation viimeistelyyn.
-    if (delay > 0) await page.waitForTimeout(delay)
+    // Pieni lisäviive client-renderöinnin / hydraation viimeistelyyn
+    // (ei ajeta kun --wait-selector on annettu, ellei --delay ole annettu erikseen).
+    if (plan.delayMs > 0) await page.waitForTimeout(plan.delayMs)
 
     // Injektoidut toiminnot ennen kuvaa (esim. avaa valikko/modaali): ensin klikkaukset,
     // sitten mahdollinen oma JS sivun kontekstissa.
@@ -912,14 +1048,15 @@ async function runSingle(args, ctx) {
       note(`MEASURE ${JSON.stringify(await measureElement(page, sel))}`)
     }
 
+    if (idleMs && !waitSelector) note(idleNote(idleMs))
     await capture(page, outPath, {
       clipSelector: typeof args['clip-selector'] === 'string' ? args['clip-selector'] : null,
       clipPadding: posNum(args['clip-padding'], 16),
       viewportOnly: boolFlag(args['viewport-only']),
     })
 
-    if (statePath) await saveStateFile(context, page, statePath)
     emitPath(outPath)
+    if (statePath && job.stateWritable) await saveStateFile(context, page, statePath)
   } finally {
     await context.close().catch(() => {})
   }
@@ -935,10 +1072,19 @@ const USAGE =
   '        [--scroll-to sel] [--clip-selector sel] [--clip-padding 16] [--measure sel ...]\n' +
   '        [--cookie nimi=arvo ...] [--local-storage avain=arvo ...]\n' +
   '        [--session-storage avain=arvo ...] [--storage-file polku] [--state polku.json]\n' +
-  '   tai: node screenshot.mjs --flow polku.json\n' +
+  '        [--settle | --no-settle] [--settle-timeout ms] [--side before|after]\n' +
+  '        [--out-dir kansio]\n' +
+  '   tai: node screenshot.mjs --flow polku.json|kansio [--flow toinen.json ...] [flow.json ...]\n' +
+  '        [--base-url url | --before-url url --after-url url] [--side before|after]\n' +
+  '        [--out-dir kansio] [--concurrency 4] [--state polku.json] [--settle | --no-settle]\n' +
   '   tai: node screenshot.mjs --list-devices\n' +
   '\n' +
-  'stdout = kuvien polut (yksi per rivi). Mittaukset ja lokit menevät stderriin.'
+  'stdout = kuvien polut (yksi per rivi). Mittaukset, FLOW-/SUITE-yhteenvedot ja lokit menevät stderriin.'
+
+function fail(msg) {
+  note(msg)
+  process.exit(2)
+}
 
 async function main() {
   const args = parseArgs(process.argv.slice(2))
@@ -962,35 +1108,69 @@ async function main() {
     return
   }
 
-  const flowPath = typeof args.flow === 'string' ? args.flow : null
-  if (!flowPath && !args._[0]) {
-    note(USAGE)
-    process.exit(2)
-    return
-  }
+  const flowMode = asStringList(args.flow).length > 0
+  if (!flowMode && !args._[0]) fail(USAGE)
 
-  let flow = null
-  if (flowPath) {
+  const urlOption = (name) => {
+    const v = args[name]
+    if (v === undefined) return undefined
+    if (typeof v !== 'string') fail(`--${name} needs a value`)
     try {
-      flow = JSON.parse(await readFile(flowPath, 'utf-8'))
+      return new URL(normalizeUrl(v)).toString()
+    } catch {
+      return fail(`Virheellinen URL: ${v}`)
+    }
+  }
+  const baseUrlOpt = urlOption('base-url')
+  const beforeUrl = urlOption('before-url')
+  const afterUrl = urlOption('after-url')
+  const side = args.side === undefined ? undefined : args.side
+  if (side !== undefined && side !== 'before' && side !== 'after') fail('--side must be before or after')
+
+  let jobs
+  if (flowMode) {
+    const { files, notes } = await expandFlowArgs(args)
+    for (const n of notes) note(n)
+    if (!files.length) fail('No flow files found for --flow')
+    const entries = []
+    for (const path of files) {
+      try {
+        let flow
+        try {
+          flow = JSON.parse(await readFile(path, 'utf-8'))
+        } catch (e) {
+          // Node's JSON error quotes a snippet of the file; keep it out of messages.
+          throw new Error(e instanceof SyntaxError ? `invalid JSON in ${path}` : String(e?.code ?? 'read error'))
+        }
+        if (!flow || typeof flow !== 'object' || Array.isArray(flow)) throw new Error('the flow file must contain a JSON object')
+        // Flow'n suhteelliset evalFile-polut tulkitaan flow-tiedoston sijainnista.
+        const base = dirname(resolve(path))
+        for (const s of Array.isArray(flow.steps) ? flow.steps : []) {
+          if (s && typeof s.evalFile === 'string' && !isAbsolute(s.evalFile)) s.evalFile = join(base, s.evalFile)
+        }
+        entries.push({ path, flow, flowDir: base })
+      } catch (err) {
+        const loadError = `Flow-tiedostoa ei voitu lukea/jäsentää: ${path}\n${err?.message ?? err}`
+        if (files.length === 1) fail(loadError)
+        entries.push({ path, loadError })
+      }
+    }
+    try {
+      jobs = buildJobs(entries, { baseUrl: baseUrlOpt, beforeUrl, afterUrl, side })
     } catch (err) {
-      note(`Flow-tiedostoa ei voitu lukea/jäsentää: ${flowPath}\n${err?.message ?? err}`)
-      process.exit(2)
-      return
+      return fail(err.message)
     }
-    // Flow'n suhteelliset evalFile-polut tulkitaan flow-tiedoston sijainnista.
-    const base = dirname(resolve(flowPath))
-    for (const s of Array.isArray(flow.steps) ? flow.steps : []) {
-      if (typeof s.evalFile === 'string' && !isAbsolute(s.evalFile)) s.evalFile = join(base, s.evalFile)
-    }
+    for (const job of jobs) job.flowDir = dirname(resolve(job.path))
   } else {
+    if (beforeUrl || afterUrl || baseUrlOpt) fail('--base-url, --before-url and --after-url need --flow')
     try {
       new URL(normalizeUrl(args._[0]))
     } catch {
-      note(`Virheellinen URL: ${args._[0]}`)
-      process.exit(2)
-      return
+      fail(`Virheellinen URL: ${args._[0]}`)
     }
+    if (side && typeof args.name !== 'string') fail('--side needs --name in single-URL mode (the name is the picture name)')
+    const name = labelName(typeof args.name === 'string' ? args.name : new URL(normalizeUrl(args._[0])).hostname)
+    jobs = [{ seq: 1, name, label: side ? `${name}@${side}` : name, side: side ?? null, multi: false, single: true }]
   }
 
   let session
@@ -1002,27 +1182,86 @@ async function main() {
     return
   }
 
+  const stateNotes = assignStatePaths(jobs, typeof args.state === 'string' ? args.state : null)
+  for (const n of stateNotes) note(n)
+
+  for (const job of jobs) job.namedBySide = !!job.side && args['out-dir'] !== undefined
+  const collisions = findNameCollisions(jobs)
+  if (collisions.length) {
+    fail(`Virhe: several shots would write the same file: ${collisions.map((c) => `${c.file} (${c.owners.join(', ')})`).join('; ')}. Give the shots different names.`)
+  }
+
+  // Reports, traces and failure images always stay in the tmp dir; requested shots may go to --out-dir.
   const outDir = join(tmpdir(), 'kanban-screenshots')
   await mkdir(outDir, { recursive: true })
+  let shotDir = outDir
+  if (args['out-dir'] !== undefined) {
+    if (typeof args['out-dir'] !== 'string') fail('--out-dir needs a folder')
+    shotDir = resolve(args['out-dir'])
+    await mkdir(shotDir, { recursive: true })
+    note(`OUT-DIR ${shotDir}`)
+  }
 
+  const settleCli = boolFlag(args['no-settle']) ? false : args.settle !== undefined && boolFlag(args.settle) ? true : undefined
   const ctx = {
     session,
     deviceRegistry,
     outDir,
+    shotDir,
     timeout: posNum(args.timeout, 30000),
-    delay: posNum(args.delay, 800),
-    statePath: typeof args.state === 'string' ? resolve(args.state) : null,
-    flowDir: flowPath ? dirname(resolve(flowPath)) : process.cwd(),
+    delay: nonNegNum(args.delay, DEFAULT_DELAY_MS),
+    delayExplicit: args.delay !== undefined && args.delay !== true,
+    settleCli,
+    settleTimeoutCli: args['settle-timeout'] !== undefined ? posNum(args['settle-timeout'], undefined) : undefined,
+    flowDir: process.cwd(),
   }
+  const concurrency = Math.floor(posNum(args.concurrency, 4))
 
+  note(`JOBS ${jobs.length}: ${jobs.map((j) => j.label).join(', ')}`)
+
+  const startedAt = Date.now()
   const browser = await launchBrowser(chromium, typeof args.channel === 'string' ? args.channel : null)
   ctx.browser = browser
+  let results = []
   try {
-    if (flow) await runFlow(flow, ctx)
-    else await runSingle(args, ctx)
+    if (jobs[0].single) {
+      await runSingle(args, { ...ctx }, jobs[0])
+    } else {
+      const settled = await runPool(jobs, concurrency, async (job) => {
+        const jobCtx = { ...ctx, flowDir: job.flowDir }
+        let result
+        try {
+          result = await runFlow(job, jobCtx)
+        } catch (err) {
+          if (!job.multi) throw err
+          result = { name: job.name, side: job.side, status: 'failed', shots: [], error: String(err?.message ?? err) }
+        }
+        const prefix = job.multi ? `[${job.label}] ` : ''
+        if (result.status === 'failed' && result.error) note(`${prefix}Virhe: ${result.error}`)
+        note(summaryLine(result))
+        return result
+      })
+      for (const s of settled) {
+        if (s.status === 'rejected') throw s.reason
+        results.push(s.value)
+      }
+    }
   } finally {
     await browser.close()
   }
+
+  if (results.length > 1) {
+    note(suiteLine(results, Date.now() - startedAt))
+    const suitePath = join(outDir, `suite-${Date.now()}-${process.pid}.json`)
+    const suite = results.map((r, i) => ({
+      name: r.name, side: r.side ?? null, baseUrl: r.baseUrl ?? null, status: r.status,
+      failedStep: r.failedStep ?? null, failure: r.failure ?? null, shots: r.shots ?? [], reportPath: r.reportPath ?? null,
+      ...(jobs[i]?.loadError || r.error ? { error: r.error ?? null } : {}),
+    }))
+    await writeFile(suitePath, JSON.stringify({ jobs: suite }, null, 2), { mode: 0o600 })
+    note(`SUITE-REPORT ${suitePath}`)
+  }
+  if (results.some((r) => r.status === 'failed')) process.exitCode = 2
 }
 
 main().catch((err) => {
