@@ -310,7 +310,7 @@ test("the repository's user-skills/ holds the agreed skills, well named, without
   assert.ok(!/(^|\/)node_modules\//m.test(tracked), 'no node_modules is committed');
 });
 
-test('the two kanban-ui-screenshots copies differ only in SKILL.md and agents/', () => {
+test('the three kanban-ui-screenshots copies differ only in SKILL.md and agents/', () => {
   const walk = (root: string, rel = ''): string[] =>
     readdirSync(path.join(root, rel), { withFileTypes: true }).flatMap((e) => {
       const r = rel ? `${rel}/${e.name}` : e.name;
@@ -320,7 +320,9 @@ test('the two kanban-ui-screenshots copies differ only in SKILL.md and agents/',
   const list = (tool: string) => walk(path.join(REPO, 'user-skills', tool, 'kanban-ui-screenshots')).filter((f) => f !== 'SKILL.md' && !f.startsWith('agents/'));
   const sum = (tool: string, f: string) => createHash('sha256').update(readFileSync(path.join(REPO, 'user-skills', tool, 'kanban-ui-screenshots', f))).digest('hex');
   const claude = list('claude').sort();
-  assert.deepEqual(list('codex').sort(), claude);
   assert.ok(claude.length > 0);
-  for (const f of claude) assert.equal(sum('codex', f), sum('claude', f), `${f} is the same in both`);
+  for (const tool of ['codex', 'antigravity']) {
+    assert.deepEqual(list(tool).sort(), claude, `${tool} has the same files`);
+    for (const f of claude) assert.equal(sum(tool, f), sum('claude', f), `${f} is the same in claude and ${tool}`);
+  }
 });

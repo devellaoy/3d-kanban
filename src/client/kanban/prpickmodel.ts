@@ -12,7 +12,7 @@ export type PickerMode = 'review' | 'panel';
 export interface ReviewFlags {
   /** Post the finished review on the pull requests. */
   post: boolean;
-  /** A worker also tests the UI and saves before and after pictures to the task's Images tab. */
+  /** A worker also tests what the pull requests change (a UI, an API, ...) as the project's pull-request review instructions say; pictures of a UI go to the task's Images tab. */
   uiTest: boolean;
 }
 
@@ -62,7 +62,7 @@ export function goTitle(mode: PickerMode, n: number): string {
 /** The tick that posts the review, in the number of the PRs ticked. */
 export const postLabel = (n: number) => `Post the review on the pull request${n > 1 ? 's' : ''} when it is done`;
 
-export const UI_TEST_LABEL = 'Also test the UI: a worker runs the app and tests the views and functions the pull requests change. What it tested and found goes into the review, its before and after pictures to the task’s Images tab (not to any pull request)';
+export const UI_TEST_LABEL = 'Also test the change: a worker starts what the pull requests change and tests it as the project’s pull-request review instructions say (a UI in a real browser, an API by calling its endpoints, …). What it tested and found goes into the review; pictures of a UI go to the task’s Images tab (not to any pull request)';
 
 /** What the toast says once the office took the review. No worker yet: the task waits for room in the office. */
 export function reviewToast(n: number, ok: { taskId?: number; workerId?: string }): string {

@@ -85,6 +85,54 @@ export class UiTestError extends Error {
   }
 }
 
+const SINGLE_ELEMENT_ASSERTIONS = new Set(['visible', 'hidden', 'enabled', 'disabled', 'focused', 'text', 'value', 'checked']);
+
+function bounded(promise, ms = 2000) {
+  let timer;
+  return Promise.race([promise, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('timeout')), ms); })])
+    .finally(() => clearTimeout(timer));
+}
+
+/**
+ * Names why an action or assertion failed, without recording selectors, values or page text.
+ * Returns { reason, matches } where reason is not-found | multiple-matches | not-visible |
+ * timeout | mismatch | error. matches (the locator's element count) is omitted when unknown,
+ * e.g. for mock locators without count(). Options: { assertion, type, single } where
+ * single=false says that the operation tolerates several matches (legacy page.click).
+ */
+export async function classifyFailure(locator, error, { assertion = false, type, single = true } = {}) {
+  let matches;
+  try {
+    if (locator && typeof locator.count === 'function') {
+      const count = await bounded(locator.count());
+      if (Number.isInteger(count) && count >= 0) matches = count;
+    }
+  } catch { /* unknown count */ }
+  const out = reason => matches === undefined ? { reason } : { reason, matches };
+  const timedOut = error?.name === 'TimeoutError';
+  const strict = /strict mode violation/i.test(String(error?.message ?? ''));
+  if (assertion) {
+    if (['count', 'url', 'noHorizontalOverflow', 'detached'].includes(type)) return out('mismatch');
+    if (matches === 0) return out('not-found');
+    if (matches > 1 && SINGLE_ELEMENT_ASSERTIONS.has(type)) return out('multiple-matches');
+    if (matches === 1 || matches > 1) {
+      if (type === 'visible' && matches === 1) return out('not-visible');
+      return out(timedOut && matches === 1 ? 'timeout' : 'mismatch');
+    }
+    return out(timedOut ? 'timeout' : strict ? 'multiple-matches' : 'error');
+  }
+  if (matches === 0) return out('not-found');
+  if (matches > 1 && (single || strict)) return out('multiple-matches');
+  if (matches === undefined && strict) return out('multiple-matches');
+  if (matches !== undefined && locator && typeof locator.isVisible === 'function') {
+    try {
+      const target = typeof locator.first === 'function' ? locator.first() : locator;
+      if (await bounded(target.isVisible()) === false) return out('not-visible');
+    } catch { /* ignore */ }
+  }
+  return out(timedOut ? 'timeout' : 'error');
+}
+
 function failure(kind, index, type, records, detail = {}) {
   const record = { kind, index, type, status: 'failed', ...detail };
   return new UiTestError(`${kind} ${index + 1} (${type}) failed`, record, records);
@@ -95,8 +143,9 @@ export async function runActions(page, actions, { timeout = 5000, flowDir = proc
   const records = [];
   for (const [index, action] of actions.entries()) {
     const options = { timeout: timeoutFor(action, timeout) };
+    let locator = null;
     try {
-      const locator = action.locator === undefined ? null : locate(page, action.locator);
+      locator = action.locator === undefined ? null : locate(page, action.locator);
       switch (action.type) {
         case 'click': await locator.click(options); break;
         case 'fill': await locator.fill(action.value, options); break;
@@ -109,9 +158,20 @@ export async function runActions(page, actions, { timeout = 5000, flowDir = proc
         case 'reload': await page.reload({ ...options, waitUntil: 'domcontentloaded' }); break;
       }
       records.push({ kind: 'action', index, type: action.type, status: 'passed' });
-    } catch {
-      // Playwright error messages can include filled values, file paths and selectors.
-      throw failure('action', index, action.type, records);
+    } catch (error) {
+      // Playwright error messages can include filled values, file paths and selectors,
+      // so only the classified reason and the match count are recorded.
+      let why = await classifyFailure(locator, error);
+      if (action.type === 'drag') {
+        // Source fine but the destination is the problem: classify by the destination.
+        let target = 'locator';
+        if (why.matches === 1 && ['timeout', 'error'].includes(why.reason)) {
+          const dest = await classifyFailure(locate(page, action.to), error);
+          if (['not-found', 'multiple-matches', 'not-visible'].includes(dest.reason)) { why = dest; target = 'to'; }
+        }
+        why = { ...why, target };
+      }
+      throw failure('action', index, action.type, records, why);
     }
   }
   return records;
@@ -138,26 +198,36 @@ async function observe(page, assertion, remaining) {
   }
 }
 
-export async function runAssertions(page, assertions, { timeout = 5000, includeValues = false } = {}) {
+export async function runAssertions(page, assertions, { timeout = 5000, includeValues = false, baseUrl } = {}) {
   validateTestSteps([{ assertions }]);
   const records = [];
   for (const [index, assertion] of assertions.entries()) {
     const duration = timeoutFor(assertion, timeout);
     const deadline = Date.now() + duration;
-    const expected = Object.hasOwn(assertion, 'expected') ? assertion.expected : assertion.type === 'noHorizontalOverflow' ? assertion.tolerance ?? 1 : true;
+    let expected = Object.hasOwn(assertion, 'expected') ? assertion.expected : assertion.type === 'noHorizontalOverflow' ? assertion.tolerance ?? 1 : true;
+    // A url expectation starting with "/" is resolved against the job's base URL (origin).
+    if (assertion.type === 'url' && expected.startsWith('/') && !expected.startsWith('//')) {
+      try { expected = new URL(expected, baseUrl ?? page.url()).toString(); } catch { /* keep as given */ }
+    }
     let actual;
     let passed = false;
+    let lastError;
     do {
       try {
         actual = await observe(page, assertion, deadline - Date.now());
+        lastError = undefined;
         passed = assertion.type === 'noHorizontalOverflow' ? actual <= expected : JSON.stringify(actual) === JSON.stringify(expected);
-      } catch { actual = undefined; }
+      } catch (error) { actual = undefined; lastError = error; }
       if (passed || Date.now() >= deadline) break;
       await new Promise(resolve => setTimeout(resolve, Math.min(50, Math.max(1, deadline - Date.now()))));
     } while (true);
     const sensitive = !includeValues && ['text', 'value', 'url', 'order'].includes(assertion.type);
     const detail = { expected: sensitive ? '[redacted]' : expected, actual: actual === undefined ? '[unavailable]' : sensitive ? '[redacted]' : actual };
-    if (!passed) throw failure('assertion', index, assertion.type, records, detail);
+    if (!passed) {
+      const locator = assertion.locator === undefined ? null : locate(page, assertion.locator);
+      const why = await classifyFailure(locator, lastError, { assertion: true, type: assertion.type });
+      throw failure('assertion', index, assertion.type, records, { ...detail, ...why });
+    }
     records.push({ kind: 'assertion', index, type: assertion.type, status: 'passed', ...detail });
   }
   return records;

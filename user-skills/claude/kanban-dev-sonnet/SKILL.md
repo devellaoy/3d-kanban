@@ -18,7 +18,7 @@ description: Enforces that non-trivial implementation work is planned and execut
   - **Light mode** — short DA for small tasks
 - **6. The main session delegates the substance** — what it may still edit itself
 - **7. Plan mode** — the required Team section
-- **8. Seeing the UI** — one browser owner, 5-minute server timeout
+- **8. Seeing the UI** — one environment owner, several browsers allowed, 5-minute server timeout
 - **9. Quick decision summary** — all rules in brief
 
 Meaningful implementation work is never carried by a single, unchallenged line of reasoning. It is carried by an **agent team** designed for the task, in which exactly one member is a **devil's advocate (DA)** whose job is to break the result before it is declared done — and, when the user has asked for a plan, to break the plan before it is executed. The DA is a mechanism, not a ceremony: it has a required output format, it runs at fixed checkpoints, its findings are logged with a decision, and it has a round limit so it cannot stall the work.
@@ -173,20 +173,27 @@ Execution: same team; substance delegated to implementers; DA reviews the result
 
 Write the section in the language of the plan (Finnish or English). Its purpose is to let whoever approves the plan see that a real challenge happened and what it changed.
 
-## 8. Seeing the UI — one browser owner, hard timeout
+## 8. Seeing the UI — one environment owner, hard timeout
 
 Verifying a web UI visually (dev server, screenshots, mobile emulation, before/after
 comparisons) is **not** part of this skill. The separate **`kanban-ui-screenshots`** skill
 owns that and ships the browser automation script. Never build your own browser driver.
 
-**Exactly one member per task owns the browser.** If the team has a UI member, it is the owner;
-otherwise the main session is. Nobody else starts a dev server or runs the screenshot script:
-- Implementers, researchers and the DA get this line in their brief: *"Do not use the
-  kanban-ui-screenshots skill and do not start a dev server."*
+**Exactly one member per task owns the environment.** If the team has a UI member, it is the
+owner; otherwise the main session is. The owner starts and stops the dev servers and picks the
+ports (the ports the project's instructions name, else free high ports, never the framework
+default). Nobody else starts a server. Several members may drive a browser at the same time
+against the servers the owner started, but only when the owner hands them a test path:
+- After the environment is up, the owner may give test paths to other members. The brief of such
+  a member names the URL, the `--state` file (a session the owner logged in) and the test data or
+  account to use. Without those lines a member does not drive a browser.
+- Every other brief (implementers, researchers, the DA) gets this line: *"Do not start a dev
+  server, and do not use the kanban-ui-screenshots skill unless this brief gives you a URL to
+  test."*
 - The DA at Checkpoint B receives the owner's screenshots and `--measure` output as part of its
   brief instead of capturing its own.
-- If the main session also needs the server while a UI member owns it, the main session assigns
-  port offsets (`KANBAN_PORT_BASE + n`) in the brief so they don't collide.
+- Paths that write to the same database need their own test data or account, or run one after
+  another.
 
 **The owner's brief has a mandatory field:** `UI verification: capture-only | functional
 (user asked: "<quote>")`. A missing field means capture-only. Functional UI testing (assertion
@@ -211,4 +218,4 @@ debugging the dev environment unless the user asks you to.
 - **Who edits?** → Substance goes to an implementer; the main session does glue and obvious small fixes only.
 - **DA output** → always the contract in §4, never a free-form "some concerns".
 - **Nesting** → subagents never run kanban-dev or form their own team.
-- **Browser** → one owner per task (UI member, else main session); capture-only unless the user explicitly asked for functional tests; server not up in 5 min → report and fall back to code-based verification.
+- **Browser** → one environment owner per task (UI member, else main session) starts the servers; other members may drive a browser only when their brief names the URL, `--state` file and test data; capture-only unless the user explicitly asked for functional tests; server not up in 5 min → report and fall back to code-based verification.

@@ -10,7 +10,7 @@ data. Browser mobile emulation is not verification on a physical mobile device.
 ```json
 {
   "name": "profile-save",
-  "baseUrl": "http://localhost:9036",
+  "baseUrl": "http://localhost:$PORT",
   "failOnPageError": true,
   "steps": [
     { "goto": "/profile", "waitSelector": "form" },
@@ -28,7 +28,8 @@ data. Browser mobile emulation is not verification on a physical mobile device.
 }
 ```
 
-Choose the URL and port of your actual authorized test environment. `actions` execute in array
+`$PORT` stands for the port of your actual authorized test environment; write the real URL in the
+file. `actions` execute in array
 order; `assertions` run afterwards. Split steps to assert intermediate states. Legacy `click`,
 `eval`, `measure`, `shot`, session and viewport options still work. Unknown action/assertion
 types or fields are rejected before the first flow action; they are not silently skipped.
@@ -76,7 +77,7 @@ eventually visible status messages or asynchronous saved values.
 | `text`, `value` | `locator`, string `expected` |
 | `count` | `locator`, nonnegative integer `expected` |
 | `checked` | `locator`, boolean `expected` |
-| `url` | absolute string `expected` |
+| `url` | string `expected`; may start with `/`, then it is resolved against the job's base URL |
 | `order` | list `locator`, `expected` array of trimmed element texts |
 | `noHorizontalOverflow` | optional `tolerance` pixels, default 1 |
 
@@ -103,7 +104,12 @@ Every flow writes a private JSON report in the OS temporary screenshot directory
 printed on stderr as `REPORT <path>`; stdout remains image paths only. The report includes:
 
 - `status`: `passed` (assertions passed), `failed`, or `capture-only` (no assertions).
-- Step/action/assertion outcomes and the failing step with expected/actual where safe.
+- Step/action/assertion outcomes and the failing step with expected/actual where safe. A failed
+  action, assertion or step also records `reason` (`not-found`, `multiple-matches`,
+  `not-visible`, `timeout`, `mismatch`, `error`) and `matches` (how many elements the locator
+  matched), so `not-found` with `matches=0` and `multiple-matches` with `matches=3` are told
+  apart without the selector being revealed. A failed `drag` also records `target`: `to` when
+  the destination locator is the problem, else `locator`.
 - Failure screenshot path when capture succeeds, plus requested screenshots.
 - Bounded console warning/error, JavaScript error, HTTP 4xx/5xx and failed-request metadata.
 - Optional trace paths and explicit simulated network-failure events.
@@ -113,8 +119,9 @@ URLs are reduced to origins. Numeric/boolean comparisons remain readable. No req
 headers or cookies are collected in the JSON report. Diagnostics alone do not fail a run
 unless `failOnPageError: true` is set; expected HTTP failures may be part of a recovery test.
 Top-level `includeValues: true` opts into textual assertion values and raw console/error text
-(bounded); use only with nonsensitive test data. Legacy `eval`/`measure` and progress stderr
-can expose page text or URLs and are not a secure logging channel.
+(bounded); use only with nonsensitive test data. Progress lines on stderr show addresses as
+their origin only; a flow that sets `includeValues` shows full addresses in its own lines only. Legacy `eval`/`measure` output can still expose
+page text and is not a secure logging channel.
 
 Top-level `trace: true` captures Playwright traces (one per browser context) for detailed
 inspection. **Traces, screenshots, session state and opt-in values may contain secrets.**
@@ -122,6 +129,36 @@ Use disposable test data, protect these files, and never commit them. Failure sc
 the viewport without scrolling the page to trigger extra lazy loads. Missing failure screenshots
 or traces are marked in the report; never claim those artifacts were verified. A missing optional
 trace does not change the outcome of completed assertions.
+
+## Running several flows and both sides of a change
+
+Several flows run in one call (`--flow a.json --flow b.json`, `--flow flows/*.json` or
+`--flow <folder>`), in parallel in one browser; see cli.md. The summary on stderr:
+
+```
+JOBS 3: login, profile-save, board
+FLOW login passed shots=1 report=/tmp/.../login.json
+FLOW profile-save failed shots=0 report=/tmp/.../profile-save.json failed-step=2 assertion 0 text: mismatch, matches=1
+FLOW board capture-only shots=2 report=/tmp/.../board.json
+SUITE 1/3 passed, 1 failed, 1 capture-only, 6420 ms
+SUITE-REPORT /tmp/.../suite.json
+```
+
+Read the `FLOW` lines, not only the exit code: `2` means at least one job failed.
+
+- **Writing flows share a database.** Flows that save, create or delete run in parallel by
+  default. Give each its own test data or account (or its own records), or run them with
+  `--concurrency 1`.
+- **Shared session.** Log in once with a flow and `--state s.json`, then pass the same `--state`
+  to the suite; a state file shared by several jobs is read-only. If the app rotates refresh
+  tokens (each use invalidates the old one), a shared session can break the second job; then log
+  in inside each flow instead. In a two-sided run (`--before-url` / `--after-url`) the state is
+  `s.before.json` and `s.after.json`.
+- **A before side that is expected to fail.** Running the same flows with assertions against the
+  old code often fails on the before side by design (the bug is there). The exit code `2` is then
+  expected: read the `FLOW <name>@before` and `FLOW <name>@after` lines per side and report each.
+- Always use a `waitSelector` or an assertion on the first step of a flow run against a session,
+  so a login page is not photographed and mistaken for the app.
 
 Success exits 0; failed flow/assertion exits 2. Invalid input or browser startup failures may
 occur before a report exists. A successful fixture test or screenshot does not establish that

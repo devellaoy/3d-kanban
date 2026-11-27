@@ -39,8 +39,11 @@ Settings -> Kanban -> Skills runs it too).
 - `AGENT_OFFICE_USER_SKILLS=off` turns the sync off (start-up and the admin's 🔄 Sync). A source in a linked
   git worktree (an agent's checkout) is skipped by both, so a branch doesn't overwrite your skills, unless
   `AGENT_OFFICE_USER_SKILLS=on`. A main checkout and an install without git sync.
-- `kanban-ui-screenshots` is kept in `claude/`, `codex/` and `antigravity/`; apart from `SKILL.md` and `agents/` (Codex's `openai.yaml`; Antigravity has none) the
-  files must be identical (a test checks it).
+- `kanban-ui-screenshots` is kept in three copies, `claude/`, `codex/` and `antigravity/`, identical apart from `SKILL.md`
+  and `agents/` (Codex's `openai.yaml`; Antigravity has none): `scripts/`, `tests/`, `references/` and the package files
+  must be byte for byte the same (a test compares all three). Change the Claude copy and copy the rest over the other two.
+  The skill's own tests are not part of `npm test`: run `npm ci` in a copy's folder, then
+  `node --test scripts/*.test.mjs tests/*.test.mjs` there (the tests under `tests/` drive a real browser and need Chrome or Edge).
 
 `kanban-ui-screenshots` needs `npm install` in its folder (`<home>/skills/kanban-ui-screenshots`) the first
 time you use it.

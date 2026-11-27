@@ -125,15 +125,15 @@ ${REVIEW_SAFETY}
 - Read the pull requests with gh pr view and gh pr diff. A pull request that its line says is checked out is the code in your worktree: read it there (git diff, git log, the files), read-only. gh api gives a file at the head of one that is not checked out.
 
 ${VERDICT}`,
-  /** The UI test run before a pull-request review (the pr-review phase's first run, an implementer's): the app is started and tested, nothing in the repositories is changed. */
+  /** The test run before a pull-request review (the pr-review phase's first run, an implementer's): what the pull requests change is started and tested (a UI, an API, anything else), nothing in the repositories is changed. */
   prUiTest: `${RULE}
 ${STOP_PROCESSES}
 
 Rules for this run (set by the office, they apply whatever else is said above):
 - Don't modify, stage or commit anything in the repositories' tracked files (installing dependencies and build output are fine), and don't push.
-- Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them.
+- Don't comment on, review, merge or change the pull requests, and attach the pictures (if you take any) to none of them.
 - Write only in your workspace, in the pictures folder and the report file named above, in temporary files, and in a local test environment that the project's instructions tell you to set up (a copy of the database for the test, say). Use test data and test accounts only.
-- Act only on an instance of the app that you started yourself for this test: never create, change or delete anything in a shared or production environment.
+- Act only on an instance of what you test that you started yourself for this test: never create, change or delete anything in a shared or production environment, and send no writing request to a shared or production backend or database.
 
 ${FINISH.replace(' and committed (for an investigation: nothing to commit)', '')}`,
   implementSafety: `${RULE}
@@ -202,12 +202,12 @@ export function prPosted(publicLanguage?: string, pictures = false): string {
 }
 
 /**
- * Added to the instructions of the UI tester of a pull-request review (the project's `prReviewInstructions`): the file form names the file,
+ * Added to the instructions of the tester of a pull-request review (the project's `prReviewInstructions`): the file form names the file,
  * the text form carries the text when the file could not be written. Not editable prompts and not contracts: a rewritten tester prompt gets them too.
  */
 export const prReviewInstructionsFile = (path: string): string =>
-  `Pull-request review and UI testing: the project's instructions for it are in \`${path}\`. Read it now, before you start the app or prepare any test data, and follow it: it says how this project's environments are started and how the data for a test is made.`;
-export const prReviewInstructionsText = (text: string): string => `Pull-request review and UI testing:\n${text}`;
+  `Pull-request review and testing: the project's instructions for it are in \`${path}\`. Read it now, before you start anything or prepare any test data, and follow it: it says what is tested and how, how this project's environments are started and how the data for a test is made.`;
+export const prReviewInstructionsText = (text: string): string => `Pull-request review and testing:\n${text}`;
 
 /** The text typed into a run that ended a turn without its final marker (see KANBAN_CONTRACTS.finish), for the kind of turn its phase is. */
 export function finishNudge(phase: string): string {

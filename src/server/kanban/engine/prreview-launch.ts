@@ -115,7 +115,7 @@ export class PrReviews {
       if (this.d.running(task.id)) return 'Stop it first: it is running';
       // Who asked is kept beside the request: the review is posted as them, and a Retry keeps it.
       this.d.ctx.repo.appendEvent(task.id, 'pr.review', { by: who.name, prs: labels, request, ...(who.accountId ? { account: who.accountId } : {}) });
-      if (request.uiTest && !ui) this.d.note(task, 'No pull request of this review is confirmed not to be from a fork, and the office never checks out or runs code that might be a fork\'s, so there is no UI to test: the review starts without it.');
+      if (request.uiTest && !ui) this.d.note(task, 'No pull request of this review is confirmed not to be from a fork, and the office never checks out or runs code that might be a fork\'s, so there is nothing to test: the review starts without it.');
       return this.d.apply(task.id, { type: 'prReview', ...(ui ? { ui: true as const } : {}) }, { who, prReview: request });
     });
     const task = this.d.ctx.repo.getTask(taskId);
@@ -134,7 +134,7 @@ export class PrReviews {
       }
       return err || 'The reviewer could not be hired';
     }
-    this.d.note(task, `${who.name} asked ${info.name} to ${ui ? 'test the UI of, and then review,' : 'review'} ${labels.join(', ')}`);
+    this.d.note(task, `${who.name} asked ${info.name} to ${ui ? 'test, and then review,' : 'review'} ${labels.join(', ')}`);
     return { taskId, workerId };
   }
 
@@ -158,9 +158,9 @@ export class PrReviews {
     let created: KanbanTask | undefined;
     let named = req.taskId;
     let mixed: string | undefined;
-    // A review that tests the UI is always a task of its own: the pictures are kept with it, and a task whose pull requests the office opened would have them added to those pull requests (see checkScreenshots).
+    // A review that is tested first is always a task of its own: the pictures are kept with it, and a task whose pull requests the office opened would have them added to those pull requests (see checkScreenshots).
     if (req.uiTest && named !== undefined) {
-      mixed = `This review was asked for on task #${named} and tests the UI too. Its pictures are kept with the review, not put in a pull request's description, so it is a review task of its own and task #${named} is left alone.`;
+      mixed = `This review was asked for on task #${named} and is tested too. Its pictures are kept with the review, not put in a pull request's description, so it is a review task of its own and task #${named} is left alone.`;
       named = undefined;
     }
     if (named !== undefined) {

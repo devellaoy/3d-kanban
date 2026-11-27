@@ -5,6 +5,8 @@ Run it with the **absolute path of this skill's base directory**:
 ```
 node "<skill-base>/scripts/screenshot.mjs" <url> [options]
 node "<skill-base>/scripts/screenshot.mjs" --flow <path.json>
+node "<skill-base>/scripts/screenshot.mjs" --flow <a.json> --flow <b.json>
+node "<skill-base>/scripts/screenshot.mjs" --flow <folder>
 node "<skill-base>/scripts/screenshot.mjs" --list-devices
 ```
 
@@ -18,7 +20,11 @@ address works. If https does not answer at all it retries over `http://`. It use
 browser — **Chrome first, then Edge** — so no separate Chromium download is needed.
 
 Errors caused by bad input (unknown device, missing element, malformed flow) print a single
-clear line and exit with code `2`.
+clear line and exit with code `2`. In single-URL mode a failing `--wait-selector`, `--click` or
+`--clip-selector` prints the kind of failure without the selector, e.g.
+`Virhe: --click 1: not-found, matches=0`. Addresses on stderr are shown as their origin only
+(no path or query); a flow with `includeValues: true` shows full addresses in its own lines only,
+never in another flow's or in the shared lines.
 
 ## Viewport, mobile and devices
 
@@ -81,13 +87,38 @@ the actual cause of the ticket.
 | `--eval-file "<path>"` | Same but multi-line JS from a file. |
 | `--post-delay <ms>` | Wait after the actions (animations, modals). |
 | `--wait-selector "<sel>"` | Wait for real content before capturing. |
-| `--delay <ms>` | Extra settle time after load (default 800). |
+| `--delay <ms>` | Extra settle time after load (default 800, not run when `--wait-selector` is given; an explicit `--delay` always runs; `--delay 0` means none). |
+| `--no-settle` | Skip the idle wait and the `load` wait after navigation. |
+| `--settle` | Force the idle wait (`networkidle`) even where it would be skipped. |
+| `--settle-timeout <ms>` | Cap of the idle wait (default 2000; 8000 is the old behaviour). |
 | `--timeout <ms>` | Navigation/selector timeout (default 30000). |
 | `--channel chrome\|msedge` | Force a browser channel. |
 
 **SPA tip:** point `--wait-selector` at something that only exists once real content has
 rendered (`"main h1"`, `"[data-loaded]"`) — **not** a bare root like `#app`, which is in the DOM
 immediately and proves nothing.
+
+### Waiting: `waitSelector` instead of delays
+
+A `waitSelector` (flow step) or `--wait-selector` (single shot) is the right way to say "the page
+is ready": it waits exactly as long as the content needs, and the fixed 800 ms delay is not run
+after it. Use it instead of `--delay` / `wait`.
+
+After a navigation the script also settles the page:
+
+- The idle wait (`networkidle`) is **skipped** when the step has a `waitSelector`, or has
+  `assertions` and no `click`/`actions`/`eval` (those run before the assertions, so an assertion
+  would not protect them from a half-hydrated page). Otherwise it is capped at 2 s, because a page
+  with a permanent connection (SSE, polling) never goes idle.
+- When the idle wait is skipped, the script still waits for the `load` state, up to 2 s, so
+  images and styles are in.
+- `--no-settle` (or `--settle=false`) / top-level `"settle": false` skips both. `--settle` / top-level or step
+  `"settle": true` forces the idle wait. `--settle-timeout <ms>` / top-level `"settleTimeout"`
+  sets the cap.
+
+If a picture still shows a half-loaded page, fix it with a better `waitSelector` (something that
+exists only when the part you photograph is complete) or with `"settle": true` on that step,
+not with a longer delay.
 
 ## Logged-in pages
 
@@ -121,13 +152,36 @@ to exist beforehand.
 
 ```
 # run 1: add to cart
-node "<skill-base>/scripts/screenshot.mjs" http://localhost:$KANBAN_PORT_BASE/product/1 \
+node "<skill-base>/scripts/screenshot.mjs" http://localhost:$PORT/product/1 \
   --state /tmp/session.json --click "button.add-to-cart" --post-delay 1500 --name added
 
 # run 2: the cart still has the item
-node "<skill-base>/scripts/screenshot.mjs" http://localhost:$KANBAN_PORT_BASE/cart \
+node "<skill-base>/scripts/screenshot.mjs" http://localhost:$PORT/cart \
   --state /tmp/session.json --device "iPhone 14" --measure ".checkout" --name cart
 ```
+
+**Log in once, share the `--state`.** Run a login flow with `--state s.json`, then pass the same
+`--state s.json` to every later run, including a suite run (see below), so no flow has to log in
+again. A state file that more than one job of a run uses is read-only: it is not written back, so
+parallel jobs cannot overwrite each other's session. A job whose origin has nothing in the file
+prints a warning and its `FLOW` line says `state=missing-origin`; the file's sessionStorage values are then not restored either (they
+belong to another origin), and the page is probably a login page. A saved state file is
+readable by its owner only (mode 0600).
+
+The state file records the origin its sessionStorage was read from (`sessionStorageOrigin`), and
+those values are restored only in documents of that origin: never in an iframe or a later page of
+another origin. A login kept only in sessionStorage is therefore recognised at the address where
+it was saved. An older state file without the field keeps its cookies and localStorage, but its
+sessionStorage is not restored anywhere (a note says so): run the login flow again, or add
+`"sessionStorageOrigin": "<origin>"` to the file if you know where it was saved. Values given with `--session-storage`, `--local-storage` and `--storage-file` likewise
+apply only to the origin of the target address; cookies stay bound to their domain, also when a
+viewport change mid-flow needs a new browser context.
+
+With two addresses (`--before-url` and `--after-url`, below) `--state s.json` means
+`s.before.json` and `s.after.json`, because localStorage belongs to one origin and a login
+against one address does not hold on the other. Run the login flow once with both addresses and
+both files are made. There is no fallback to the unsided `s.json`: a side whose file is missing
+starts with an empty session, and a note on stderr says so.
 
 ## Multi-step flows — `--flow`
 
@@ -141,7 +195,7 @@ node "<skill-base>/scripts/screenshot.mjs" --flow /tmp/flow.json
 ```json
 {
   "name": "cart-mobile",
-  "baseUrl": "http://localhost:9036",
+  "baseUrl": "http://localhost:<port>",
   "viewport": { "device": "iPhone 14" },
   "state": "/tmp/session.json",
   "steps": [
@@ -155,8 +209,8 @@ node "<skill-base>/scripts/screenshot.mjs" --flow /tmp/flow.json
 }
 ```
 
-Top level: `name`, `baseUrl` (prefix for relative `goto`s), `viewport`, `state`, `steps`.
-At least one `goto` step is required.
+Top level: `name`, `baseUrl` (prefix for relative `goto`s), `viewport`, `state`, `settle`,
+`settleTimeout`, `steps`. At least one `goto` step is required.
 
 Step keys, executed in this order within one step:
 
@@ -175,6 +229,64 @@ and `viewportOnly`. Relative `evalFile` paths resolve from the flow file's own d
 **Changing the viewport mid-flow keeps the session.** If the change needs a new browser context
 (mobile↔desktop, or a different dpr), cookies and storage are carried over and the page is
 reloaded at the same URL — so the cart does not empty.
+
+## Several flows in one call
+
+Two or more pictures or paths of the same app go through one call, not one call per picture:
+each call starts a browser, and a suite shares it.
+
+```
+node "<skill-base>/scripts/screenshot.mjs" --flow a.json --flow b.json
+node "<skill-base>/scripts/screenshot.mjs" --flow flows/*.json
+node "<skill-base>/scripts/screenshot.mjs" --flow flows/ --concurrency 2 --state /tmp/s.json
+```
+
+- `--flow` may be repeated, may be followed by several `.json` files (a shell glob), or may name a
+  folder: its `*.json` files, sorted, not recursive. A valid JSON file without a `steps` array is skipped; a file
+  that cannot be read or is not valid JSON is a failed job of its own.
+- Jobs run in parallel in separate contexts of one browser. `--concurrency <n>` sets how many at
+  once (default 4; `1` runs them one after another).
+- One failing flow does not stop the others. The exit code is `2` if any failed.
+- `stdout` stays image paths only, one per line, printed as each image is taken (the order
+  between flows is not guaranteed). `stderr` starts with `JOBS <n>: <names>`; per job it prints
+  `FLOW <name>[@before|@after] <passed|failed|capture-only> shots=<n> report=<path>`, and for a
+  failed job `failed-step=<i> <action|assertion|step> <j> <type>: <reason>, matches=<k>`;
+  a multi-job run ends with `SUITE <passed>/<total> passed, <f> failed, <c> capture-only, <ms> ms`
+  and `SUITE-REPORT <path>` (a JSON file listing every job; addresses in it are origins only).
+- Flows that write to the same database should not run in parallel against it; see
+  [ui-testing.md](ui-testing.md).
+
+## Before/after against two addresses
+
+Run the same flows against the app before and after a change in one call:
+
+```
+node "<skill-base>/scripts/screenshot.mjs" --flow flows/ \
+  --before-url http://localhost:$PORT --after-url http://localhost:$((PORT+1)) \
+  --out-dir /path/to/images
+```
+
+| Option | Meaning |
+|---|---|
+| `--base-url <url>` | Overrides every flow's `baseUrl`. Cannot be combined with `--before-url` / `--after-url`. |
+| `--before-url <url>` / `--after-url <url>` | Run every flow against each address given (one or both) in one call. Each job is named `<flow>@before` / `<flow>@after`. |
+| `--side before\|after` | Names the side of a one-address run (a flow or a single URL; a single URL then needs `--name`). |
+| `--out-dir <dir>` | Receives the requested shots (created if missing). |
+| `--concurrency <n>` | Jobs at once (default 4). |
+
+- Absolute `goto` URLs ignore the address override; a warning is printed.
+- A `url` assertion's `expected` may start with `/`; it is then resolved against the job's base
+  URL, so the same flow asserts on either address.
+- With a side known **and** `--out-dir` given, files are named `<subject>-<side>.png`, with no
+  timestamp, and overwrite an older file. With a side but no `--out-dir` they stay in the OS temp
+  directory with the side and a timestamp in the name. The subject is the step's `shot` name in a flow and `--name` in
+  single mode (lower-cased, only `[a-z0-9._-]`, at most 80 characters). Two shots that resolve to
+  the same name are an error before the browser starts.
+- Reports, traces and failure screenshots always stay in the OS temp directory, not in
+  `--out-dir`.
+- Without these options the output is as before: the OS temp directory and timestamped names.
+- If only one side exists yet (the before side is taken before the change is made), give only
+  `--before-url` (or `--side before`) now, and `--after-url` later with the same flows.
 
 ## Before/after comparison for a visual fix
 
