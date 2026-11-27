@@ -147,6 +147,12 @@ export const bitbucketProvider: HostingProvider = {
     return [...openPulls, ...[...merged, ...declined].map((pr) => bbPull(repo, pr))];
   },
 
+  async pullCard(repo, n, as, fetch) {
+    const p = await hostCall(fetch, as, 'GET', prUrl(repo, n));
+    // Participants and statuses only for an open one, as in the list.
+    return bbPull(repo, p, p?.state === 'OPEN' ? await detailOf(repo, p, as, fetch) : undefined);
+  },
+
   async checks(repo, n, as, fetch) {
     return statusesOf(repo, n, as, fetch);
   },

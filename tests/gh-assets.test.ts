@@ -100,6 +100,11 @@ test('wrong type, SVG, oversize, not found and failures are refused, and the tok
 test('a visitor is never given an attached picture (it would come with someone else’s GitHub access)', () => {
   assert.ok(!visitorPath('GET', '/api/gh/asset'));
   assert.ok(visitorPath('GET', '/api/gh/pull'));
+  // The one card of a PR the board no longer lists: read-only like the rest, and nothing beside it.
+  assert.ok(visitorPath('GET', '/api/gh/pull/card'));
+  assert.ok(!visitorPath('POST', '/api/gh/pull/card'));
+  assert.ok(!visitorPath('GET', '/api/gh/pull/card/x'));
+  assert.ok(!visitorPath('GET', '/api/gh/pull/cards'));
 });
 
 test('the same picture asked for at once is fetched once', async () => {

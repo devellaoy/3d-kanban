@@ -168,6 +168,12 @@ export const azureProvider: HostingProvider = {
     return [...open, ...closed];
   },
 
+  async pullCard(repo, n, as, fetch) {
+    // The one pull request has its whole description; checks only for an active one, as in the list.
+    const p = await hostCall(fetch, as, 'GET', pr(repo, n));
+    return pullOf(repo, p, p?.status === 'active' ? await checksWord(repo, p, as, fetch) : undefined);
+  },
+
   async checks(repo, n, as, fetch) {
     return prChecks(repo, await hostCall(fetch, as, 'GET', pr(repo, n)), as, fetch);
   },

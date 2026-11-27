@@ -445,7 +445,8 @@ over it, and the task's own over both.
 ## Comments
 
 The Conversation tab holds your comments, the agents' results, plans, questions, review findings and
-the office's status lines. Each agent's comment is tinted by who wrote it, with a matching edge and an
+the office's status lines. The comment box on top grows with what you write, and scrolls inside only
+once it fills the pane. Each agent's comment is tinted by who wrote it, with a matching edge and an
 *implementer* or *reviewer* chip (the role of the run that wrote it), so the two agents and your own
 comments (blue) read apart at a glance. URLs are links (a URL written as `code` too), and for admins
 so are file paths (`src/app.ts`, `src/app.ts:42`, `docs/x.md#L7`, an absolute path, or a lone
@@ -550,7 +551,11 @@ the Pull requests tab. Its tabs:
   another project's floor takes you to that floor first.
 - **Changes**: the task's **Changes view**, the same one **C** (or Changes in the worker's window)
   opens in the 3D office: upstream's Changes window with a tab per repository of the task (and its PR
-  number), the changed files down the left and one file's diff on the right (j/k or the arrows move),
+  number), the changed files down the left and one file's diff on the right. The files are a folder
+  tree by default (a folder that only holds one folder is joined to it in one row, like `src/client`;
+  click a folder to close or open it); a **Tree** / **List** switch above the files turns the flat list
+  of paths back on, and the browser remembers the choice. j/k and the arrows move through the files in
+  the order shown, and open a closed folder they step into,
   and **All changes** (the branch against its base, `origin/<base>` or the local base), **Per commit**
   (the branch's commits, the newest picked, each with its own files) and, while the task's worktree
   has uncommitted work, **Uncommitted (n)** (the worktree against its HEAD commit). While the task's
@@ -571,6 +576,7 @@ the Pull requests tab. Its tabs:
   **All repositories**. Only folders named like one of the project's repositories are read.
 - **Pull requests**: the task's pull requests with their state and, for an open or draft one, its **Review** (approved, changes requested or review required, and the number of unresolved review comments), **Fix PRs**, **Fetch review comments** and **Resolve conflicts** (with open PRs), and
   **Review these N PRs together**, and **Find PRs** (on this tab only, not on an archived task). Under the table are the **Review comments** the implementer fetched, by pull request: each with who wrote it and where (a link to the comment), its text, and four rows (**What it means**, **Valid**, **Caused by this task**, **Worth fixing**). A row is one remark: a comment or review that makes several (a numbered list of findings, say) is listed as a row for each, marked **Remark N** and decided on its own, and a remark made in more than one place is listed once ("N duplicate remarks were left out" under the list when the office left some out itself). You pick **Fix**, **Don't fix** or **Other** for each (the text box is required for Other and an optional extra instruction otherwise; nothing is picked for you) and press **Send to the implementer**. What you have filled in stays while the page is open; once sent, the list shows your decisions read-only ([Pull requests](#pull-requests)). A fetch that is parked (a usage limit, a question of the agent's, a stop) shows **The fetch of the review comments is waiting** with the task's reason instead of the reading line, and a fetch that changed files although it only reads shows **The fetch left changes behind** with what changed, above the list or the failure.
+  A row's repository name opens the pull request in the office's pull request window; a pull request that is no longer on the board (a merged one past its short history) is read from its host. For a project on another floor the page goes to that floor first, as the Pull requests board does; when that is not possible (the floor is not open, the 3D office, which does not travel from here, or the host cannot be read) a note says why and nothing opens: the number is the way to its host then. A page that moved to another floor while the pull request was being read opens nothing. The number opens it on the host.
   Each row ends with a button that unlinks the pull request from the task after a confirmation (the PR
   itself is untouched); the office does not link an unlinked PR again by itself, while Find PRs or
   **Link selected** brings it back. Find PRs is for a PR the office didn't link by itself: a task that
@@ -617,7 +623,7 @@ Every action button of the task window and of a pull request's window says what 
 - **An issue's window**: its key, status and the quiet **Refresh** in the header, the description and comments in the body, **Status** and **Assignee** in the rail beside it (and **Epic** when the issue is in one, or **Parent** when it has a parent that is not an epic, such as a sub-task's story), and in the footer **Open in Jira** / **Open on GitHub** (or Azure Boards) on the left and, on the right, a link to the task made from it (once there is one), **Create task** and **Create and start**.
 - **Find / Link PRs**: a list of pull requests to tick, *N of M selected* in the footer, **Cancel** and **Link selected**.
 - **A pull request's window** (the PR board): its title, state and review on top, the tabs **Conversation** and **Files changed**, the details rail (task, worker, review, changes, labels, updated) with *Hand it to a worker* (**Review**, a kanban task with the PR checked out and two ticks, to post the review on the PR and to test the UI and its functionality first; **Review panel**, the meeting form; **Fix comments and merge**, **Fix via task #N**, **Ask a worker**), and in the footer **Open on GitHub** on the left and **Close pull request** and **Merge** on the right.
-- **Changes**: the repositories as tabs, the modes (**All changes**, **Per commit**, **Uncommitted**) and **Refresh**, the files and the diff, and in the footer **Discard all**, **Commit…** and **Open PR…**.
+- **Changes**: the repositories as tabs, the modes (**All changes**, **Per commit**, **Uncommitted**) and **Refresh**, the files (as a folder tree or a flat list) and the diff, and in the footer **Discard all**, **Commit…** and **Open PR…**.
 - **Settings**: a window with the categories down the side (**You**, **Sound & voice**, **Notifications**, **Building**, **Workers**, **Kanban**, **Projects**, **Multiplayer**); the kanban's two are described under [Settings](#settings).
 
 ## Projects and repositories

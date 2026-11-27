@@ -478,6 +478,14 @@ export class GitHub {
     this.onIssues(this.issues);
   }
 
+  /** One pull request as the board's card, for one the list left out (merged long ago): asked of GitHub itself. */
+  async pullCard(n: number): Promise<GhPull> {
+    const asked = Date.now();
+    const card = pullCardOf(JSON.parse(await this.gh(['pr', 'view', String(n), ...repoFlag(this.target), '--json', PULL_FIELDS], this.dir)), this.nameWithOwner);
+    this.assets.note(card.body);
+    return this.relabel('pull', [card], asked)[0];
+  }
+
   private async refreshPulls() {
     // Nothing to ask on a project that isn't a git repository (refresh() says so), whoever asks for it.
     if (this.off || this.pulls.loading) return;
@@ -485,42 +493,16 @@ export class GitHub {
     this.onPulls(this.pulls);
     const asked = Date.now();
     try {
-      const fields = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences,reviewRequests';
       const [open, merged, closed, viewer] = await Promise.all([
-        this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '150', '--json', fields], this.dir),
-        this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'merged', '--limit', '30', '--json', fields], this.dir),
-        this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'closed', '--limit', '40', '--json', fields], this.dir),
+        this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'open', '--limit', '150', '--json', PULL_FIELDS], this.dir),
+        this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'merged', '--limit', '30', '--json', PULL_FIELDS], this.dir),
+        this.gh(['pr', 'list', ...repoFlag(this.target), '--state', 'closed', '--limit', '40', '--json', PULL_FIELDS], this.dir),
         this.viewer(),
       ]);
       // `--state closed` includes merged PRs; keep only the ones closed without merging.
       const seen = new Set<number>();
       const all = [...JSON.parse(open), ...JSON.parse(merged), ...JSON.parse(closed)].filter((p: any) => !seen.has(p.number) && seen.add(p.number));
-      const fetched: GhPull[] = all.map((p: any) => ({
-        number: p.number,
-        title: p.title,
-        state: p.state,
-        isDraft: !!p.isDraft,
-        url: p.url,
-        author: p.author?.login ?? '',
-        labels: labels(p.labels),
-        reviewDecision: p.reviewDecision ?? '',
-        headRefName: p.headRefName,
-        headRefOid: typeof p.headRefOid === 'string' ? p.headRefOid : undefined,
-        isCrossRepository: typeof p.isCrossRepository === 'boolean' ? p.isCrossRepository : undefined,
-        baseRefName: p.baseRefName,
-        createdAt: p.createdAt,
-        updatedAt: p.updatedAt,
-        additions: p.additions ?? 0,
-        deletions: p.deletions ?? 0,
-        checks: checksOf(p.statusCheckRollup),
-        body: String(p.body ?? '').slice(0, 4000),
-        // Read before the cut: the office's footer is the description's last line.
-        ...withOpenedBy(String(p.body ?? '')),
-        closes: (p.closingIssuesReferences ?? []).map((r: any) => Number(r.number)).filter((n: number) => Number.isInteger(n) && n > 0),
-        // People asked to review it, by login (a team's request has no login and is left out).
-        reviewRequests: (p.reviewRequests ?? []).map((r: any) => r?.login).filter((l: unknown): l is string => typeof l === 'string' && !!l),
-        ...(this.nameWithOwner ? { repo: this.nameWithOwner } : {}),
-      }));
+      const fetched: GhPull[] = all.map((p: any) => pullCardOf(p, this.nameWithOwner));
       this.assets.note(...fetched.map((p) => p.body));
       const items = this.relabel('pull', fetched, asked);
       this.pulls = { items, fetchedAt: Date.now(), loading: false, ...(viewer ? { viewer } : {}) };
@@ -529,6 +511,39 @@ export class GitHub {
     }
     this.onPulls(this.pulls);
   }
+}
+
+/** What `gh pr list` and `gh pr view` are asked for, which is all a board card has. */
+const PULL_FIELDS = 'number,title,state,isDraft,url,author,labels,reviewDecision,headRefName,headRefOid,isCrossRepository,baseRefName,createdAt,updatedAt,additions,deletions,statusCheckRollup,body,closingIssuesReferences,reviewRequests';
+
+/** A board card from one of gh's pull requests (as `pr list` or `pr view` gives it); `repo` marks it only on a project's other repository's board (see Floor.pullsState). */
+export function pullCardOf(p: any, repo?: string): GhPull {
+  return {
+    number: p.number,
+    title: p.title,
+    state: p.state,
+    isDraft: !!p.isDraft,
+    url: p.url,
+    author: p.author?.login ?? '',
+    labels: labels(p.labels),
+    reviewDecision: p.reviewDecision ?? '',
+    headRefName: p.headRefName,
+    headRefOid: typeof p.headRefOid === 'string' ? p.headRefOid : undefined,
+    isCrossRepository: typeof p.isCrossRepository === 'boolean' ? p.isCrossRepository : undefined,
+    baseRefName: p.baseRefName,
+    createdAt: p.createdAt,
+    updatedAt: p.updatedAt,
+    additions: p.additions ?? 0,
+    deletions: p.deletions ?? 0,
+    checks: checksOf(p.statusCheckRollup),
+    body: String(p.body ?? '').slice(0, 4000),
+    // Read before the cut: the office's footer is the description's last line.
+    ...withOpenedBy(String(p.body ?? '')),
+    closes: (p.closingIssuesReferences ?? []).map((r: any) => Number(r.number)).filter((n: number) => Number.isInteger(n) && n > 0),
+    // People asked to review it, by login (a team's request has no login and is left out).
+    reviewRequests: (p.reviewRequests ?? []).map((r: any) => r?.login).filter((l: unknown): l is string => typeof l === 'string' && !!l),
+    ...(repo ? { repo } : {}),
+  };
 }
 
 /** GhPull.openedBy from a description, when it has the office's "Opened from Agent Office by" line. */
@@ -541,12 +556,13 @@ function withOpenedBy(body: string): { openedBy?: string } {
  * A floor's board for one repository: GitHub's, or a provider's for one on another host
  * (hosting/hosted-board.ts), which is `hosted` and takes that host's credentials where GitHub's takes gh's.
  */
-export type Board = Omit<GitHub, 'pullDetail' | 'comment' | 'review' | 'assets' | 'asset'> & {
+export type Board = Omit<GitHub, 'pullDetail' | 'pullCard' | 'comment' | 'review' | 'assets' | 'asset'> & {
   /** Only GitHub's own boards have attached pictures to fetch. */
   readonly assets?: GitHub['assets'];
   asset?: GitHub['asset'];
   readonly hosted?: HostedRepo;
   pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail>;
+  pullCard(n: number, host?: HostAs): Promise<GhPull>;
   comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }>;
   review(n: number, file: string, as?: GhAs, owner?: string): Promise<string>;
 };

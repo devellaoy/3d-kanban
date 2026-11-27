@@ -30,6 +30,11 @@ export function hostedPulls(repo: HostedRepo): Promise<GhPull[]> {
   return provider(repo).listPulls(repo, reader(repo), hostFetch());
 }
 
+/** One pull request as the PR board's card, as the list gives it, read with the board's credentials (or the asker's). */
+export function hostedCard(repo: HostedRepo, n: number, as?: HostAs): Promise<GhPull> {
+  return provider(repo).pullCard(repo, n, as ?? reader(repo), hostFetch());
+}
+
 /** What the PR window shows, as far as the host has it in GitHub's terms. */
 export async function hostedPullDetail(repo: HostedRepo, n: number, as?: HostAs): Promise<GhPullDetail> {
   const by = as ?? reader(repo);

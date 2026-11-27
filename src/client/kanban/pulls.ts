@@ -8,6 +8,7 @@ import { store } from '../state';
 import { toast } from '../ui/dom';
 import { openBoard } from '../ui/boards';
 import type { BoardActions } from '../ui/github/prompts';
+import { goToFloor } from '../ui/github/floor-trip';
 import { pullsTarget } from './model';
 
 let going = false;
@@ -24,21 +25,9 @@ export function openPulls(net: Net, project: string | null, actions: () => Board
   // A second click while the page is on its way opens nothing more.
   if (going) return;
   going = true;
-  const note = toast(`Going to ${store.floors.find((f) => f.id === project)?.name ?? project}’s floor…`);
-  const stop = () => {
+  void goToFloor(project!, (floor) => net.send({ t: 'floor.go', floor })).then((ok) => {
     going = false;
-    off();
-    clearTimeout(timer);
-    note.remove();
-  };
-  const off = store.on('floor', () => {
-    if (store.floor !== project) return;
-    stop();
-    openBoard('pulls', net, actions());
+    if (ok) openBoard('pulls', net, actions());
+    else toast('Couldn’t get to that floor', 'error');
   });
-  const timer = setTimeout(() => {
-    stop();
-    toast('Couldn’t get to that floor', 'error');
-  }, 8000);
-  net.send({ t: 'floor.go', floor: project! });
 }

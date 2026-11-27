@@ -427,9 +427,9 @@ export class Floor {
     };
   }
 
-  /** The GitHub of one of the project's repositories, by owner/name: the floor's own for none (or its own name). */
+  /** The GitHub of one of the project's repositories, by owner/name: the floor's own for none (or its own name, which a checkout's origin gives when the floor names none). */
   githubFor(repo?: string): Board | undefined {
-    if (!repo || sameRepo(repo, this.def.repo) || sameRepo(repo, this.github.hosted?.id)) return this.github;
+    if (!repo || sameRepo(repo, this.def.repo) || sameRepo(repo, this.github.hosted?.id) || (this.git && sameRepo(repo, checkoutRemote(this.dir)))) return this.github;
     for (const b of this.boards.values()) if (sameRepo(b.remote, repo)) return b.board;
     return undefined;
   }
