@@ -2,9 +2,11 @@
 // where the button sits, what the big box adopts and the key that opens it.
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 import {
-  adopt, buttonPlace, expandable, fieldName, isExpandKey, replacement, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo,
+  adopt, buttonPlace, editorState, expandable, fieldName, isExpandKey, keptOnClose, mayWrite, replacement, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts,
 } from '../src/client/ui/textexpandmodel.js';
+import { commentFocus } from '../src/client/kanban/issueactionsmodel.js';
 import { isSendKey } from '../src/client/kanban/sendkey.js';
 
 const field = (o: Partial<FieldInfo> = {}): FieldInfo => ({
@@ -157,4 +159,102 @@ test('candidates with other keys are ignored', () => {
   const home = {};
   assert.equal(replacement({ key: 'a', home }, [{ key: 'b', home }, { key: null, home }]), -1);
   assert.equal(replacement({ key: 'a', home }, [{ key: 'b', home }, { key: 'a', home }, { key: 'c', home }]), 1);
+});
+
+const facts = (o: Partial<SyncFacts> = {}): SyncFacts => ({ connected: true, ownerThere: true, locked: false, held: false, fieldChanged: false, ...o });
+
+test('the task was linked to another issue under the open editor: the other issue\'s comment box is not taken', () => {
+  const home = {};
+  const A = { key: 'UYT-1' };
+  const B = { key: 'UYT-2' };
+  assert.equal(replacement({ key: commentFocus(A), home }, [{ key: commentFocus(B), home }]), -1);
+  assert.equal(replacement({ key: commentFocus(A), home }, [{ key: commentFocus(A), home }]), 0);
+});
+
+test('editorState: a field that is gone while its window is there is orphaned', () => {
+  assert.equal(editorState(facts({ connected: false })), 'orphaned');
+  assert.equal(editorState(facts({ connected: false, locked: true })), 'orphaned');
+});
+
+test('editorState: a field that is gone with its window is not orphaned', () => {
+  assert.equal(editorState(facts({ connected: false, ownerThere: false })), 'normal');
+});
+
+test('editorState: a locked field is locked, also with held text and a changed field', () => {
+  assert.equal(editorState(facts({ locked: true })), 'locked');
+  assert.equal(editorState(facts({ locked: true, held: true, fieldChanged: true })), 'locked');
+});
+
+test('held text and a field that changed while it was locked: the editor stays read-only with its warning', () => {
+  assert.equal(editorState(facts({ held: true, fieldChanged: true })), 'conflict');
+});
+
+test('editorState: held text with an unchanged field, or a changed field with nothing held, is normal', () => {
+  assert.equal(editorState(facts({ held: true })), 'normal');
+  assert.equal(editorState(facts({ fieldChanged: true })), 'normal');
+});
+
+test('typing on in that state does not write over the field\'s new text', () => {
+  assert.equal(mayWrite(facts({ held: true, fieldChanged: true })), false);
+  assert.equal(mayWrite(facts({ held: true })), true);
+  assert.equal(mayWrite(facts()), true);
+  assert.equal(mayWrite(facts({ locked: true })), false);
+  assert.equal(mayWrite(facts({ connected: false })), false);
+});
+
+test('closing in that state keeps the text in its own window', () => {
+  assert.equal(keptOnClose(facts({ held: true, fieldChanged: true }), 'mine', 'old'), 'conflict');
+});
+
+test('closing keeps text of a gone field that was edited, or that was held', () => {
+  assert.equal(keptOnClose(facts({ connected: false }), 'edited', 'old'), 'orphaned');
+  assert.equal(keptOnClose(facts({ connected: false, held: true }), 'old', 'old'), 'orphaned');
+});
+
+test('closing keeps nothing of a gone field whose text is as it was opened', () => {
+  assert.equal(keptOnClose(facts({ connected: false }), 'old', 'old'), null);
+});
+
+test('closing keeps the text held for a locked field', () => {
+  assert.equal(keptOnClose(facts({ locked: true, held: true }), 'mine', 'old'), 'locked');
+});
+
+test('closing keeps nothing when the field has the text, its window is gone or the text is blank', () => {
+  assert.equal(keptOnClose(facts(), 'mine', 'old'), null);
+  assert.equal(keptOnClose(facts({ locked: true }), 'mine', 'old'), null);
+  assert.equal(keptOnClose(facts({ connected: false, ownerThere: false }), 'mine', 'old'), null);
+  assert.equal(keptOnClose(facts({ held: true, locked: true }), '  \n', 'old'), null);
+});
+
+// The wiring of the rules above, read from the source: the editor's DOM half has no test page to run in.
+const source = (f: string) => readFileSync(new URL(`../src/client/${f}`, import.meta.url), 'utf8');
+
+test('the issue comment box is named after its issue, not by a name every issue shares', () => {
+  const src = source('kanban/issueactions.ts');
+  assert.match(src, /'data-focus': commentFocus\(issue\)/);
+  assert.doesNotMatch(src, /'data-focus': 'issue-comment'/);
+});
+
+test('the editor writes into the field in one place, and only where the model lets it', () => {
+  const src = source('ui/textexpand.ts');
+  assert.equal(src.match(/dispatchEvent\(new Event\('input'/g)?.length, 1, 'one place dispatches input on the field');
+  // Every caller of write() has asked the model first.
+  // Every caller of write() has asked the model first: on its own line, or (push) in the guard just above it.
+  const lines = src.split('\n');
+  const callers = lines.map((l, i) => ({ l, i })).filter(({ l }) => /\bwrite\(\);/.test(l));
+  assert.ok(callers.length >= 3);
+  for (const { l, i } of callers) assert.match(/^\s*write\(\);$/.test(l) ? lines.slice(i - 5, i).join('\n') : l, /takesHeld\(\)|mayWrite\(facts\(\)\)/, `line ${i + 1}`);
+  assert.match(src, /if \(!mayWrite\(facts\(\)\)\) return false;/, 'files are not handed to a field that may not be written');
+  assert.match(src, /big\.readOnly = next !== 'normal'/, 'the editor is read-only in every state but the normal one');
+});
+
+test('closing asks the model whether the text must be kept before it touches the field', () => {
+  const src = source('ui/textexpand.ts');
+  const close = src.slice(src.indexOf('onClose: () => {'));
+  assert.ok(close.indexOf('keptOnClose(facts(), big.value, opened)') > 0);
+  assert.ok(close.indexOf('keptOnClose(') < close.indexOf('field.focus('), 'the kept text is decided before the focus goes back');
+  // Nothing is copied but by the Copy text button's own press.
+  assert.equal(src.split('clipboard.writeText(').length - 1, 1);
+  const copy = src.slice(src.indexOf('function copyButton('), src.indexOf('function keepText('));
+  assert.ok(copy.indexOf("addEventListener('click'") > 0 && copy.indexOf("addEventListener('click'") < copy.indexOf('clipboard.writeText('));
 });

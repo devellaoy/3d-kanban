@@ -24,7 +24,7 @@ import { h, onModalChange, toast, type Modal } from './dom';
 import { iconButton } from './icons';
 import { btn } from './kit';
 import { modalShell, openShell } from './shell';
-import { adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isExpandKey, replacement, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo } from './textexpandmodel';
+import { adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isExpandKey, replacement, editorState, keptOnClose, mayWrite, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts, type EditorState } from './textexpandmodel';
 
 /** Marks the window's own text box, which never gets the button. */
 const EDITOR = 'data-text-expand-editor';
@@ -54,12 +54,16 @@ function copyButton(box: HTMLTextAreaElement, kind: 'quiet' | 'secondary'): HTML
 }
 
 /** The small window that keeps a text the editor could not put anywhere, so closing the editor does not lose it. */
-function keepText(text: string, why: 'orphaned' | 'locked') {
+function keepText(text: string, why: 'orphaned' | 'locked' | 'conflict') {
   const box = h('textarea.text-kept-box', { [EDITOR]: '', 'aria-label': 'The kept text' }) as HTMLTextAreaElement;
   box.rows = 12;
   box.readOnly = true;
   box.value = text;
-  const says = why === 'orphaned' ? 'The field this text was written for is gone, so it could not be put there. Copy it and paste it where it belongs.' : "The field this text was written for was locked or changed meanwhile, so it could not be put there. Copy it if you still need it.";
+  const says = {
+    orphaned: 'The field this text was written for is gone, so it could not be put there. Copy it and paste it where it belongs.',
+    locked: "The field this text was written for can't be edited any more, so it could not be put there. Copy it if you still need it.",
+    conflict: 'The field this text was written for got another text while it was locked, so yours was not put there. Copy it if you still need it.',
+  }[why];
   const close = btn('Close', { kind: 'primary' });
   const shell = modalShell({ cls: 'text-kept w640', icon: 'maximize-2', title: 'Text kept', body: [h('p.text-kept-why', {}, says), box], footerRight: [copyButton(box, 'secondary'), close] });
   const modal = openShell(shell);
@@ -250,12 +254,12 @@ export function installTextExpand(): void {
     let touched = false;
     /** The window has text the field did not take (it was locked): the field's text must not replace it. */
     let held = false;
-    /** The field is gone and no box is plainly its replacement, while its window is still there. */
-    let orphaned = false;
-    let state: 'normal' | 'locked' | 'orphaned' = 'normal';
+    let state: EditorState = 'normal';
     const locked = () => field.matches(':disabled') || field.readOnly;
+    /** What the editor knows of its field now (the decisions on it are the model's). A field that says what the editor says has not changed away from it. */
+    const facts = (): SyncFacts => ({ connected: field.isConnected, ownerThere: !owner || owner.isConnected, locked: locked(), held, fieldChanged: field.value !== last && field.value !== big.value });
     /** The field can take the text it refused: it is there, unlocked, and still says what it said then (a text its view wrote meanwhile is not written over). */
-    const takesHeld = () => held && field.isConnected && !locked() && field.value === last;
+    const takesHeld = () => held && mayWrite(facts());
 
     /** The window's selection, on the field: its view reads the caret there (a pasted file's link goes in at it, also when the upload ends later). */
     const mirror = () => {
@@ -292,12 +296,16 @@ export function installTextExpand(): void {
     };
     /** What the footer says and whether the window can be typed in, from the state of the field. */
     const refresh = () => {
-      orphaned = !field.isConnected && (!owner || owner.isConnected);
-      big.readOnly = locked() || orphaned;
-      const next = orphaned ? 'orphaned' : locked() ? 'locked' : 'normal';
+      const next = editorState(facts());
+      big.readOnly = next !== 'normal';
       if (next === state) return;
       state = next;
-      const note = state === 'orphaned' ? 'The field this text was for is gone. Copy the text before you close the editor.' : "This field can't be edited right now. Your text is kept here until you close the editor.";
+      const note = {
+        normal: '',
+        orphaned: 'The field this text was for is gone. Copy the text before you close the editor.',
+        locked: "This field can't be edited right now. Your text is kept here until you close the editor.",
+        conflict: 'This field got another text while it was locked. Your text is kept here: copy it before you close the editor.',
+      }[state];
       shell.setFooter(state === 'normal' ? [hint()] : [h('span.foot-hint.text-expand-note', {}, note), copyButton(big, 'quiet')], [done]);
     };
     const hint = () => h('span.foot-hint', {}, h('kbd.kbd', {}, 'Esc'), 'or Done returns to the field');
@@ -305,7 +313,7 @@ export function installTextExpand(): void {
       if (busy) return;
       rebind();
       refresh();
-      if (!field.isConnected || locked()) {
+      if (!mayWrite(facts())) {
         // The big box keeps what was typed, for the field when it can take it again or for the Text kept window.
         held = true;
         return;
@@ -320,7 +328,7 @@ export function installTextExpand(): void {
         return;
       }
       refresh();
-      if (dirty && !locked()) write();
+      if (dirty && mayWrite(facts())) write();
       else if (dirty) held = true;
       else pull();
     };
@@ -368,7 +376,8 @@ export function installTextExpand(): void {
     /** Hands a paste or a drag of files on to the field, and says whether its view took it. Not to a field that is gone or locked. */
     const pass = (type: string, prop: 'clipboardData' | 'dataTransfer', data: DataTransfer | null): boolean => {
       if (rebind()) settle();
-      if (!field.isConnected || locked()) return false;
+      // Not into a field that is gone or locked, nor one in conflict: the file's link would go into a text the editor doesn't show.
+      if (!mayWrite(facts())) return false;
       mirror();
       const ev = new Event(type, { bubbles: true, cancelable: true });
       Object.defineProperty(ev, prop, { value: data });
@@ -409,10 +418,15 @@ export function installTextExpand(): void {
         if (rebind()) settle();
         refresh();
         if (takesHeld()) write();
+        const why = keptOnClose(facts(), big.value, opened);
         const stillThere = !owner || owner.isConnected;
         owner = null;
         field.removeEventListener('input', onFieldInput);
-        if (field.isConnected && stillThere && !locked()) {
+        if (why) {
+          // The text must not just go, and the clipboard is not ours to take: it stays in a window of its own once this one has settled. The field is left as it is.
+          const text = big.value;
+          setTimeout(() => keepText(text, why), 0);
+        } else if (field.isConnected && stillThere && !locked()) {
           field.focus({ preventScroll: true });
           const a = adopt(field.value, [big.selectionStart, big.selectionEnd]);
           try {
@@ -420,11 +434,6 @@ export function installTextExpand(): void {
           } catch {
             // A box that has no selection to set.
           }
-        } else if (stillThere && big.value.trim() && ((orphaned && big.value !== opened) || held)) {
-          // The text must not just go, and the clipboard is not ours to take: it stays in a window of its own once this one has settled.
-          const text = big.value;
-          const why = orphaned ? 'orphaned' : 'locked';
-          setTimeout(() => keepText(text, why), 0);
         }
         update();
       },

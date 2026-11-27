@@ -78,3 +78,41 @@ export function replacement(original: FieldIdentity, candidates: readonly FieldI
   }
   return found;
 }
+
+/** What the open editor knows of its field when it decides what it may do. */
+export interface SyncFacts {
+  /** The field is in the page. */
+  connected: boolean;
+  /** The window the field was in is still open (always true for a field outside a window). */
+  ownerThere: boolean;
+  /** The field is disabled or read-only. */
+  locked: boolean;
+  /** The editor has text the field did not take. */
+  held: boolean;
+  /** The field's text is no longer what the two last agreed on: its view wrote another text meanwhile. */
+  fieldChanged: boolean;
+}
+
+export type EditorState = 'normal' | 'locked' | 'orphaned' | 'conflict';
+
+/** The editor's state: orphaned (not connected while its window is there), else locked, else conflict (held text and a field that changed meanwhile), else normal. */
+export function editorState(f: SyncFacts): EditorState {
+  if (!f.connected && f.ownerThere) return 'orphaned';
+  if (f.locked) return 'locked';
+  if (f.held && f.fieldChanged) return 'conflict';
+  return 'normal';
+}
+
+/** Whether the editor's text may be written into the field now: it is there, unlocked, and not in conflict (the field's own new text is never written over). */
+export function mayWrite(f: SyncFacts): boolean {
+  return f.connected && !f.locked && !(f.held && f.fieldChanged);
+}
+
+/** Why the text must be kept in a window of its own when the editor closes, or null when the field has it (or its window is gone, or there is nothing worth keeping). */
+export function keptOnClose(f: SyncFacts, text: string, opened: string): Exclude<EditorState, 'normal'> | null {
+  if (!f.ownerThere || text.trim() === '') return null;
+  const state = editorState(f);
+  if (state === 'orphaned') return text !== opened || f.held ? 'orphaned' : null;
+  if (!f.connected || !f.held) return null;
+  return state === 'conflict' ? 'conflict' : 'locked';
+}
