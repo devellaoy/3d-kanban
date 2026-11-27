@@ -16,15 +16,17 @@
 // field never took is shown on closing in a small Text kept window. Nothing goes to the clipboard unless
 // the user presses Copy text.
 // Which box gets the button, the window's title and where the button goes is textexpandmodel.ts's.
+// A box its view gave an action (ui/fieldaction.ts) gets that action's button beside this one, on its left.
 //
 // No three.js, core/ or features/ here: the kanban page and the 2D view use it too.
 
 import './textexpand.css';
 import { h, onModalChange, toast, type Modal } from './dom';
+import { actionButton, fieldAction } from './fieldaction';
 import { iconButton } from './icons';
 import { btn } from './kit';
 import { modalShell, openShell } from './shell';
-import { adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isExpandKey, replacement, editorState, keptOnClose, mayWrite, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts, type EditorState } from './textexpandmodel';
+import { actionPlace, adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isActionKey, isExpandKey, replacement, editorState, keptOnClose, mayWrite, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts, type EditorState } from './textexpandmodel';
 
 /** Marks the window's own text box, which never gets the button. */
 const EDITOR = 'data-text-expand-editor';
@@ -76,7 +78,10 @@ export function installTextExpand(): void {
   installed = true;
 
   const button = iconButton('maximize-2', 'Expand', { class: 'xs text-expand-btn hidden', tabindex: -1, title: 'Open this text in a large editor (Alt+Enter).' }, 14);
-  document.body.append(button);
+  /** The button of the box's own action, when it has one: shown and hidden with the Expand button, and as much the module's own. */
+  const act = actionButton();
+  const own = [button, act.el];
+  document.body.append(button, act.el);
 
   /** The text box under the pointer, and the one with the focus. */
   let hovered: HTMLTextAreaElement | null = null;
@@ -107,15 +112,20 @@ export function installTextExpand(): void {
     if (expandable(f.width || f.height ? f : { ...f, width: MIN_FIELD_W, height: MIN_FIELD_H })) el.classList.add(ROOM);
   };
 
-  function hide() {
-    if (!shown) return;
-    shown = false;
+  /** Takes one of the two buttons away. */
+  function conceal(b: HTMLButtonElement) {
+    if (b.classList.contains('hidden')) return;
     // The tooltip (ui/tooltip.ts) holds the button while the pointer is on it and hears nothing when it
     // just goes: it is told the pointer left, so its bubble goes with the button.
     telling = true;
-    button.dispatchEvent(new Event('pointerout', { bubbles: true }));
+    b.dispatchEvent(new Event('pointerout', { bubbles: true }));
     telling = false;
-    button.classList.add('hidden');
+    b.classList.add('hidden');
+  }
+  function hide() {
+    if (!shown) return;
+    shown = false;
+    own.forEach(conceal);
   }
 
   /** Puts the button in its box's corner, or takes it away when the box or that corner of it can't be seen. */
@@ -126,12 +136,19 @@ export function installTextExpand(): void {
     // Left of the box's own scrollbar (what is left of its width without its content and its borders).
     const at = buttonPlace(el.getBoundingClientRect(), el.offsetWidth - el.clientWidth - 2 * el.clientLeft);
     // The corner has to be the box's own there: not under a window's header or footer it has scrolled beneath, nor under another window.
-    const under = document.elementsFromPoint(at.left + BTN_SIZE / 2, at.top + BTN_SIZE / 2).find((n) => !button.contains(n));
+    const under = document.elementsFromPoint(at.left + BTN_SIZE / 2, at.top + BTN_SIZE / 2).find((n) => !own.some((b) => b.contains(n)));
     if (under !== el) return hide();
     button.style.setProperty('--tx-left', `${at.left}px`);
     button.style.setProperty('--tx-top', `${at.top}px`);
     button.classList.remove('hidden');
     shown = true;
+    const action = fieldAction(el);
+    if (!action) return conceal(act.el);
+    const beside = actionPlace(at);
+    act.wear(action);
+    act.el.style.setProperty('--tx-left', `${beside.left}px`);
+    act.el.style.setProperty('--tx-top', `${beside.top}px`);
+    act.el.classList.remove('hidden');
   }
   const later = () => {
     if (anchor && !frame) frame = requestAnimationFrame(place);
@@ -169,8 +186,8 @@ export function installTextExpand(): void {
     // A finger has no hover: on a touch screen the button comes with the focus.
     if (e.pointerType === 'touch') return;
     const t = e.target;
-    // On the button the pointer is still on its box.
-    if (t instanceof Node && button.contains(t)) return;
+    // On either button the pointer is still on its box.
+    if (t instanceof Node && own.some((b) => b.contains(t))) return;
     const el = t instanceof HTMLTextAreaElement ? t : null;
     if (el === hovered) return;
     hovered = el;
@@ -193,18 +210,26 @@ export function installTextExpand(): void {
   });
   // A press on the button must not take the focus (and the caret) out of the box.
   const keepFocus = (e: Event) => e.preventDefault();
-  button.addEventListener('pointerdown', keepFocus);
-  button.addEventListener('mousedown', keepFocus);
+  for (const b of own) {
+    b.addEventListener('pointerdown', keepFocus);
+    b.addEventListener('mousedown', keepFocus);
+  }
   button.addEventListener('click', () => anchor && open(anchor));
+  act.el.addEventListener('click', () => usable(anchor) && fieldAction(anchor)?.run(anchor));
   // Before the box's own key handlers: Alt+Enter is this and nothing else.
   document.addEventListener(
     'keydown',
     (e) => {
       const el = e.target;
-      if (!isExpandKey(e) || !(el instanceof HTMLTextAreaElement) || !usable(el)) return;
+      if (!(el instanceof HTMLTextAreaElement) || !usable(el)) return;
+      // The box's own action has a key too: its button, like Expand's, is not a stop of the Tab key.
+      const action = isActionKey(e) ? fieldAction(el) : undefined;
+      if (!action && !isExpandKey(e)) return;
       e.preventDefault();
       e.stopPropagation();
-      if (!e.repeat) open(el);
+      if (e.repeat) return;
+      if (action) action.run(el);
+      else open(el);
     },
     true,
   );

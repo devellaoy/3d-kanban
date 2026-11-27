@@ -37,6 +37,7 @@ import { APPROVAL_NAMES, effortName, toolName } from './labels';
 import { checkbox, field, numberInput, numberValue, run, projectSelect, select, tabStrip, textArea, textInput } from './ui';
 import { sourcesPane } from './settings-sources';
 import { jiraConnectionsFieldset } from './jira-connections';
+import { attachInstructionsDraft } from './instructionsdraft';
 
 /** The tabs of Projects. */
 export type ProjectTab = 'project' | 'sources' | 'skills' | 'prompts';
@@ -355,6 +356,8 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   const general = textArea(ps.generalInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
   const testing = textArea(ps.testingInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
   const prReview = textArea(ps.prReviewInstructions ?? '', { rows: 4, maxlength: KANBAN_LIMITS.promptText, placeholder: 'e.g. how to start the environments, and how to make a copy of the database that the test may add data to' });
+  // "Write with AI" beside the Expand button of the two (instructionsdraft.ts).
+  attachInstructionsDraft(api, projectId, { testing, prReview }, cleanups, { branch, general });
   const fields = thisProjectFields(ps, s);
   const save = saveButton();
   save.addEventListener('click', () => {
@@ -387,7 +390,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
       h('legend', {}, 'Instructions'),
       field('Branch naming', branch, 'Empty: the default (see Prompts → Branch naming)'),
       field('General instructions', general),
-      field('Debugging and testing', testing),
+      field('Debugging and testing', testing, 'Read by a task’s agents before they test or verify anything: how to install, run and test the project'),
       field('Pull-request review', prReview, 'Given as a file to the worker that tests the pull requests before a review (the Review button’s “Also test the change”): what to test and how (the UI, an API’s endpoints, something else), how to start the environments and how to make the test data'),
     ),
     fields.el,

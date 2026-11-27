@@ -115,3 +115,24 @@
   .kb-set .kb-prompt-list { max-height: 180px; }
   .kb-set .kb-save { position: static; background: none; }
 }
+
+/* "Write with AI" on the project's instructions (instructionsdraft.ts). The status line stands right under
+   the box that is being written while the agent runs: a spinner, what is going on, and Cancel. */
+.kb-set .kb-insd-status { display: flex; align-items: center; gap: 6px; min-width: 0; margin-top: 6px; font-size: var(--fs-xs); font-weight: var(--fw-semibold); color: var(--muted); }
+.kb-set .kb-insd-status > svg { flex: none; animation: spin 1.6s linear infinite; }
+.kb-set .kb-insd-status > span { flex: 0 1 auto; min-width: 0; }
+.kb-set .kb-insd-status > .btn { flex: none; }
+@media (prefers-reduced-motion: reduce) { .kb-set .kb-insd-status > svg { animation: none; } }
+
+/* The window the proposal is checked in: its own window over Settings, so its rules are scoped under it.
+   Wide and tall enough to read a page of instructions, and all the height it has goes to the text. */
+.modal.kb-insd-review { width: min(860px, 100%); height: min(760px, calc(100dvh - 32px)); }
+.modal.kb-insd-review > .shell-body { overflow: hidden; }
+.modal.kb-insd-review > .shell-body > .shell-main { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; gap: 10px; overflow: hidden; }
+.kb-insd-review .kb-insd-lead { margin: 0; font-size: var(--fs-sm); color: var(--text-2); }
+.modal.kb-insd-review textarea.kb-insd-box { flex: 1 1 auto; min-height: 120px; width: 100%; font-size: var(--fs-md); line-height: 1.55; resize: none; }
+/* A phone: the whole screen, and 16px text so iOS doesn't zoom in on the box. */
+@media (max-width: 700px) {
+  .modal.kb-insd-review { width: 100%; height: 100%; max-height: 100%; }
+  .modal.kb-insd-review textarea.kb-insd-box { font-size: 16px; }
+}

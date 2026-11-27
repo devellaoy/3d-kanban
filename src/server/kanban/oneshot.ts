@@ -1,6 +1,8 @@
-// One-shot Claude runs: a single prompt to Claude Code, no tools, no session, one answer (the task prompt
-// drafted from an issue). Like the worker-naming run in server/tasks.ts. Claude only: Codex can't switch its
-// tools off (`exec --sandbox read-only` still runs shell commands), and the issue text is not to be trusted.
+// One-shot Claude runs: a single prompt to Claude Code, no session, one answer (the task prompt drafted from
+// an issue). Like the worker-naming run in server/tasks.ts. Tool-less by default; a caller may ask for read-only
+// tools (Read, Glob, Grep) and extra directories they may look in, and nothing more.
+// Claude only: Codex can't switch its tools off (`exec --sandbox read-only` still runs shell commands), and the
+// text it is given is not to be trusted.
 
 import { spawn } from 'node:child_process';
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
@@ -13,14 +15,15 @@ export const ONESHOT_TIMEOUT_MS = 45_000;
 const REASON_MAX = 200;
 
 /** The arguments of a run; the prompt goes in on stdin and the system text in `systemFile`, so every argument is a plain token. */
-export function oneShotCommand(model: string | undefined, systemFile: string): { args: string[] } {
+export function oneShotCommand(model: string | undefined, systemFile: string, extra: { tools?: string[]; addDirs?: string[] } = {}): { args: string[] } {
   return {
     args: [
       '-p',
       ...(model ? ['--model', model] : []),
       '--output-format', 'json',
       '--system-prompt-file', systemFile,
-      '--tools', '',
+      '--tools', extra.tools?.length ? extra.tools.join(',') : '',
+      ...(extra.addDirs ?? []).flatMap((d) => ['--add-dir', d]),
       // Not the user's or the project's settings: no hooks, no MCP servers, no plugins, no transcript.
       '--setting-sources', '',
       '--strict-mcp-config',
@@ -53,6 +56,10 @@ export interface OneShotOptions {
   input: string;
   env: Record<string, string>;
   timeoutMs?: number;
+  /** Read-only tools to allow (e.g. Read, Glob, Grep); none: no tools at all. */
+  tools?: string[];
+  /** Directories the tools may reach besides the temp folder the run starts in. */
+  addDirs?: string[];
 }
 
 export interface OneShotRun {
@@ -74,10 +81,11 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
     let dir: string | undefined;
     try {
       dir = await mkdtemp(path.join(os.tmpdir(), 'kanban-oneshot-'));
+      const runDir = dir;
       const file = path.join(dir, 'system.txt');
       await writeFile(file, o.system, 'utf8');
       if (cancelled) return { error: 'cancelled' };
-      const plan = spawnPlan(o.cmd, oneShotCommand(o.model, file).args);
+      const plan = spawnPlan(o.cmd, oneShotCommand(o.model, file, { tools: o.tools, addDirs: o.addDirs }).args);
       if ('error' in plan) return plan;
       const res = await new Promise<{ code: number | null; out: string; err: string; error?: string }>((resolve) => {
         let out = '';
@@ -92,8 +100,9 @@ export function runOneShot(o: OneShotOptions): OneShotRun {
         let child: ReturnType<typeof spawn>;
         try {
           child = spawn(plan.file, plan.args, {
-            // The temp dir, away from any project and its CLAUDE.md.
-            cwd: os.tmpdir(),
+            // The temp dir, away from any project and its CLAUDE.md. A run with tools gets its own fresh folder
+            // instead: the working directory is one of the places its tools can read, and the temp dir holds other things.
+            cwd: o.tools?.length ? runDir : os.tmpdir(),
             env: { ...o.env, MAX_THINKING_TOKENS: '0' },
             stdio: ['pipe', 'pipe', 'pipe'],
             // A group of its own (not on Windows), so whatever the agent started ends with it.

@@ -109,7 +109,7 @@ What the office does for you:
 
 - **The kanban page** at `/kanban` (**J**, or **🗂️ Kanban** in the office, a link on `/lite`): board, task
   view with conversation, plan, runs, changes and PRs, and a bar of the floor's other workers ([docs/kanban.md](docs/kanban.md#opening-it)).
-- **A large editor for every text box**: the **Expand** button in a box's top right corner, or **Alt + Enter** in the box, opens its text in a window nearly as large as the screen ([docs/kanban.md](docs/kanban.md#creating-a-task)).
+- **A large editor for every text box**: the **Expand** button in a box's top right corner, or **Alt + Enter** in the box, opens its text in a window nearly as large as the screen ([docs/kanban.md](docs/kanban.md#creating-a-task)). Beside it, a project's *Debugging and testing* and *Pull-request review* instructions have **Write with AI**: Claude reads the project's repositories and writes or completes the text, which you check before it goes in the box ([docs/kanban.md](docs/kanban.md#projects-and-repositories)).
 - **Workers at desks**: Claude Code, Codex, Antigravity, OpenCode, Grok, Muse or DeepSeek Harness, each with its terminal
   on its laptop; kanban tasks run on Claude Code, Codex or Antigravity ([agents](docs/agents.md)).
 - **Who needs you**: workers that wait on you jump and ding, **N** goes to the one waiting longest, and a

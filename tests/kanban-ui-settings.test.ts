@@ -510,3 +510,36 @@ test('⚙️ Project sends its main reviewer’s focus as a string with its own 
   assert.deepEqual(review?.extra, [{ tool: 'claude', focus: 'Simplicity' }]);
   cleanups.run();
 });
+
+test('unsaved instruction texts kept over a close are used up only when the boxes are seen, not by a pane drawn out of sight', async () => {
+  const g = globalThis as Record<string, unknown>;
+  const { keptInstructionTexts } = await import('../src/client/kanban/instructionsdraft.js');
+  const watchers: ((entries: { isIntersecting: boolean }[]) => void)[] = [];
+  const hadObserver = g.IntersectionObserver;
+  g.IntersectionObserver = class {
+    constructor(readonly fn: (entries: { isIntersecting: boolean }[]) => void) {
+      watchers.push(fn);
+    }
+    observe() {}
+    disconnect() {}
+  };
+  try {
+    keptInstructionTexts.keep('shop', { general: 'my unsaved rules' }, { general: '' });
+    // The Settings opened on another category: the pane is built, never shown, and closed again.
+    const hidden = await projectPaneFixture(true);
+    hidden.cleanups.run();
+    assert.equal(keptInstructionTexts.has('shop'), true, 'the hidden pane used the texts up');
+    assert.ok(!hidden.all.some((el) => el.tagName === 'textarea' && el.value === 'my unsaved rules'));
+    // Opened again and the boxes come into view: the text is back, and used up.
+    const shown = await projectPaneFixture(true);
+    watchers.at(-1)!([{ isIntersecting: false }]);
+    assert.equal(keptInstructionTexts.has('shop'), true);
+    watchers.at(-1)!([{ isIntersecting: true }]);
+    assert.equal(keptInstructionTexts.has('shop'), false);
+    assert.equal([...shown.pane.all()].filter((el) => el.tagName === 'textarea' && el.value === 'my unsaved rules').length, 1);
+    assert.deepEqual(shown.sent, [], 'nothing is saved by it');
+    shown.cleanups.run();
+  } finally {
+    g.IntersectionObserver = hadObserver;
+  }
+});

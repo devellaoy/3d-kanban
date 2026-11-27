@@ -20,6 +20,8 @@ export const MIN_FIELD_H = 40;
 /** The button's side on screen, px, and how far it sits from the field's top and right edges. */
 export const BTN_SIZE = 22;
 export const BTN_INSET = 4;
+/** The gap between the Expand button and a field's own action button on its left. */
+export const BTN_GAP = 4;
 /** The longest title the editor shows. */
 const NAME_MAX = 60;
 
@@ -45,6 +47,11 @@ export function buttonPlace(rect: { top: number; right: number }, scrollbar: num
   };
 }
 
+/** Where a field's own action button goes (ui/fieldaction.ts), given the Expand button's place: right beside it on its left, level with it. */
+export function actionPlace(expand: { left: number; top: number }): { left: number; top: number } {
+  return { left: expand.left - BTN_GAP - BTN_SIZE, top: expand.top };
+}
+
 /** What the big box takes when the field changed from elsewhere: the field's text and its selection, kept inside the text (null selection = the end; start never after end). */
 export function adopt(value: string, sel: readonly [number | null, number | null]): { value: string; start: number; end: number } {
   const len = value.length;
@@ -57,6 +64,11 @@ export function adopt(value: string, sel: readonly [number | null, number | null
 /** Alt+Enter and nothing else held (no Ctrl, Meta or Shift), never mid-IME-composition. */
 export function isExpandKey(e: Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'isComposing'>): boolean {
   return e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.isComposing;
+}
+
+/** Alt+Shift+Enter and nothing else held: runs the box's own action (ui/fieldaction.ts), when it has one. */
+export function isActionKey(e: Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'isComposing'>): boolean {
+  return e.key === 'Enter' && e.altKey && e.shiftKey && !e.ctrlKey && !e.metaKey && !e.isComposing;
 }
 
 /** What tells one field of a view from another across the view's redraws. */

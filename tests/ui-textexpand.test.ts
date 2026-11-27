@@ -4,7 +4,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 import {
-  adopt, buttonPlace, editorState, expandable, fieldName, isExpandKey, keptOnClose, mayWrite, replacement, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts,
+  actionPlace, adopt, buttonPlace, editorState, expandable, fieldName, isActionKey, isExpandKey, keptOnClose, mayWrite, replacement, BTN_GAP, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo, type SyncFacts,
 } from '../src/client/ui/textexpandmodel.js';
 import { commentFocus } from '../src/client/kanban/issueactionsmodel.js';
 import { isSendKey } from '../src/client/kanban/sendkey.js';
@@ -115,6 +115,14 @@ const key = (o: Partial<Parameters<typeof isExpandKey>[0]> = {}) => ({
 
 test('Alt+Enter opens the editor', () => {
   assert.equal(isExpandKey(key()), true);
+});
+
+test('Alt+Shift+Enter is the key of the box\'s own action, and never the editor\'s', () => {
+  assert.equal(isActionKey(key({ shiftKey: true })), true);
+  assert.equal(isExpandKey(key({ shiftKey: true })), false);
+  assert.equal(isActionKey(key()), false);
+  assert.equal(isActionKey(key({ shiftKey: true, ctrlKey: true })), false);
+  assert.equal(isActionKey(key({ shiftKey: true, isComposing: true })), false);
 });
 
 test('other keys and chords do not', () => {
@@ -257,4 +265,22 @@ test('closing asks the model whether the text must be kept before it touches the
   assert.equal(src.split('clipboard.writeText(').length - 1, 1);
   const copy = src.slice(src.indexOf('function copyButton('), src.indexOf('function keepText('));
   assert.ok(copy.indexOf("addEventListener('click'") > 0 && copy.indexOf("addEventListener('click'") < copy.indexOf('clipboard.writeText('));
+});
+
+test('a field\'s own action button sits right beside the Expand button, on its left and level with it', () => {
+  const expand = buttonPlace({ top: 100, right: 500 }, 0);
+  const action = actionPlace(expand);
+  assert.equal(action.top, expand.top);
+  assert.equal(action.left + BTN_SIZE + BTN_GAP, expand.left, 'one gap between the two');
+  // The room a field with an action keeps on its right (textexpand.css) covers both buttons and their gaps.
+  const room = Number(/ta-has-action[^{]*\{ padding-right: (\d+)px/.exec(source('ui/textexpand.css'))?.[1]);
+  assert.ok(room >= 500 - action.left + BTN_GAP, `padding-right ${room}px keeps the words clear of the two buttons`);
+});
+
+test('the action button is the module\'s own like the Expand button, and the field is written by its view, not here', () => {
+  const src = source('ui/textexpand.ts');
+  assert.match(src, /const own = \[button, act\.el\];/);
+  assert.match(src, /own\.some\(\(b\) => b\.contains\(t\)\)\) return;/, 'the pointer on either button is still on the box');
+  assert.match(src, /for \(const b of own\) \{\n\s+b\.addEventListener\('pointerdown', keepFocus\);\n\s+b\.addEventListener\('mousedown', keepFocus\);/, 'a press on either keeps the focus in the box');
+  assert.match(src, /usable\(anchor\) && fieldAction\(anchor\)\?\.run\(anchor\)/, 'only a box that gets the buttons runs its action');
 });

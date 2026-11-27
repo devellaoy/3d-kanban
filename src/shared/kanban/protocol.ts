@@ -40,6 +40,7 @@ import type { LoungeServerMsg } from './lounge.js';
 import { ISSUE_OPS_CLIENT_TYPE_LIST, parseIssueOpsMsg, type IssueOpsClientMsg, type IssueOpsServerMsg } from './issueops.js';
 import { PR_CLIENT_TYPE_LIST, parsePrMsg, type PrClientMsg, type PrServerMsg } from './prmsgs.js';
 import { FILE_OPS_CLIENT_TYPE_LIST, parseFileOpsMsg, type FileOpsClientMsg } from './fileops.js';
+import { INSTRUCTIONS_DRAFT_CLIENT_TYPE_LIST, parseInstructionsDraftMsg, type InstructionsDraftClientMsg, type InstructionsDraftServerMsg } from './instructionsdraft.js';
 import { JIRA_CONNECTION_CLIENT_TYPE_LIST, parseJiraConnectionMsg, type JiraConnectionClientMsg, type JiraConnectionServerMsg } from './jira-connections.js';
 
 // --- Limits ---------------------------------------------------------------------------------------
@@ -151,6 +152,7 @@ export type KanbanClientMsg =
   | PrClientMsg
   | IssueOpsClientMsg
   | FileOpsClientMsg
+  | InstructionsDraftClientMsg
   | JiraConnectionClientMsg;
 
 export type KanbanClientType = KanbanClientMsg['t'];
@@ -186,6 +188,7 @@ export type KanbanServerMsg =
   /** `earlier`: a creation's `once` key had already made `taskId` from another request (another issue, or none): nothing was made now. */
   | { t: 'kanban.ok'; rid?: string; taskId?: number; commentId?: number; workerId?: string; existed?: boolean; startError?: string; started?: true; earlier?: true }
   | IssueOpsServerMsg
+  | InstructionsDraftServerMsg
   | JiraConnectionServerMsg
   | LoungeServerMsg
   | { t: 'kanban.error'; rid?: string; message: string };
@@ -268,6 +271,7 @@ export const KANBAN_CLIENT_TYPE_LIST: Readonly<Record<KanbanClientType, true>> =
   ...ISSUE_OPS_CLIENT_TYPE_LIST,
   ...PR_CLIENT_TYPE_LIST,
   ...FILE_OPS_CLIENT_TYPE_LIST,
+  ...INSTRUCTIONS_DRAFT_CLIENT_TYPE_LIST,
   ...JIRA_CONNECTION_CLIENT_TYPE_LIST,
   'kanban.subscribe': true,
   'kanban.unsubscribe': true,
@@ -343,6 +347,7 @@ function parse(raw: unknown): KanbanClientMsg {
   if (t in ISSUE_OPS_CLIENT_TYPE_LIST) return m(parseIssueOpsMsg(t as keyof typeof ISSUE_OPS_CLIENT_TYPE_LIST, r));
   if (t in PR_CLIENT_TYPE_LIST) return m(parsePrMsg(t as keyof typeof PR_CLIENT_TYPE_LIST, r));
   if (t in FILE_OPS_CLIENT_TYPE_LIST) return m(parseFileOpsMsg(t as keyof typeof FILE_OPS_CLIENT_TYPE_LIST, r));
+  if (t in INSTRUCTIONS_DRAFT_CLIENT_TYPE_LIST) return m(parseInstructionsDraftMsg(t as keyof typeof INSTRUCTIONS_DRAFT_CLIENT_TYPE_LIST, r));
   if (t in JIRA_CONNECTION_CLIENT_TYPE_LIST) return m(parseJiraConnectionMsg(t as keyof typeof JIRA_CONNECTION_CLIENT_TYPE_LIST, r));
   const nullableProject = (v: unknown) => (v === null || v === undefined ? null : project(v));
   switch (t as KanbanClientType) {

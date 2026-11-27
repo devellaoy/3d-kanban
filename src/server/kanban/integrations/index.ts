@@ -15,6 +15,7 @@ import { createImagesPlugin } from './images/index.js';
 import { createPrCommentsPlugin } from './prcomments/index.js';
 import { createHostingPlugin } from './hosting/index.js';
 import { createOpenFilePlugin } from '../openfile.js';
+import { createInstructionsDraftPlugin } from './instructions-draft/index.js';
 
 /** Every integration plugin, in the order they are consulted. */
 export const integrationPlugins: KanbanPluginFactory[] = [
@@ -30,6 +31,7 @@ export const integrationPlugins: KanbanPluginFactory[] = [
   // After pulls: a board refresh has set the linked PRs' states before work items follow them.
   (ctx) => createHostingPlugin(ctx),
   (ctx) => createOpenFilePlugin(ctx),
+  (ctx) => createInstructionsDraftPlugin(ctx),
 ];
 
 export function createPulls(ctx: KanbanContext): KanbanPullsApi {
