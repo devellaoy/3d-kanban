@@ -60,6 +60,8 @@ export const githubRoutes = {
         }
         // "You" on comments is your own GitHub login once you've signed in to it.
         const me = session.account ? ctx.signins.githubLogin(session.account.id) : undefined;
+        // One card of the PR board, for a PR the board's list no longer holds: marked with its repository as its board's list marks it (the floor's own board's cards carry none).
+        if (p === '/api/gh/pull/card') return send(res, 200, await github.pullCard(n, hostedAs(github, session.account?.id)));
         if (p === '/api/gh/pull') return send(res, 200, await github.pullDetail(n, me, hostedAs(github, session.account?.id)));
         if (p === '/api/gh/issue') return send(res, 200, await github.issueDetail(n, me));
         if (p === '/api/gh/labels') return send(res, 200, await github.repoLabels());

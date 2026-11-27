@@ -295,3 +295,18 @@ test('a 429 makes the office wait as Bitbucket asks: nothing goes out until then
     hostRate.clear();
   }
 });
+
+test('pullCard maps one PR as the list does: an open one with participants and statuses, a merged one without', async () => {
+  const { fetch } = stub({
+    [`${API}/pullrequests?state=OPEN&pagelen=50`]: { values: [pr(1, 'OPEN')] },
+    [`${API}/pullrequests?state=MERGED&pagelen=30`]: { values: [pr(4, 'MERGED')] },
+    [`${API}/pullrequests?state=DECLINED&pagelen=40`]: { values: [] },
+    [`${API}/pullrequests/1/statuses`]: { values: [{ state: 'SUCCESSFUL', name: 'build' }] },
+    [`${API}/pullrequests/1`]: pr(1, 'OPEN', { participants: [{ state: 'approved' }] }),
+    [`${API}/pullrequests/4`]: pr(4, 'MERGED'),
+  });
+  const list = await bb.listPulls(repo, as, fetch);
+  assert.deepEqual(await bb.pullCard(repo, 1, as, fetch), list[0]);
+  assert.deepEqual(await bb.pullCard(repo, 4, as, fetch), list[1]);
+  assert.equal(list[0].repo, 'bitbucket:acme/widgets');
+});

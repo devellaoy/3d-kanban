@@ -113,6 +113,8 @@ export interface HostingProvider {
    * recently merged and closed.
    */
   listPulls(repo: RepoRef, as: HostAs, fetch: Fetch): Promise<GhPull[]>;
+  /** One pull request as the list shows it (same shape, `repo` included), for one the list left out: merged long ago, or a capped or failed list. */
+  pullCard(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<GhPull>;
   checks(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<GhCheck[]>;
   comments(repo: RepoRef, n: number, as: HostAs, fetch: Fetch): Promise<HostComment[]>;
   /** The pull request, its checks and its comments together (the pull request is asked for once); a check or comment list that can't be read is empty. */

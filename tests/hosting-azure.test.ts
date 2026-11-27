@@ -400,3 +400,21 @@ test('listPulls keeps an open PR’s checks between looks: asked again on a chan
     azureCache.clear();
   }
 });
+
+test('pullCard maps one PR as the list does: an active one with its checks, a completed one without', async () => {
+  azureCache.clear();
+  azureDescriptions.clear();
+  const one = (n: number, extra: Record<string, unknown>) => [new RegExp(`GET .*/pullrequests/${n}\\?`), () => pr(n, extra)] as [RegExp, () => unknown];
+  const { fetch } = stub([
+    [/statuses/, () => ({ value: [{ id: 1, iterationId: 1, state: 'succeeded', context: { genre: 'ci', name: 'build' } }] })],
+    one(1, { reviewers: [{ vote: 10 }], labels: [{ name: 'ui', active: true }] }),
+    one(4, { status: 'completed', closedDate: '2026-10-02T00:00:00Z' }),
+    [/status=active/, () => ({ value: [pr(1, { reviewers: [{ vote: 10 }], labels: [{ name: 'ui', active: true }] })] })],
+    [/status=completed/, () => ({ value: [pr(4, { status: 'completed', closedDate: '2026-10-02T00:00:00Z' })] })],
+    [/status=abandoned/, () => ({ value: [] })],
+  ]);
+  const list = await azureProvider.listPulls(repo, as, fetch);
+  assert.deepEqual(await azureProvider.pullCard(repo, 1, as, fetch), list[0]);
+  assert.deepEqual(await azureProvider.pullCard(repo, 4, as, fetch), list[1]);
+  assert.equal((await azureProvider.pullCard(repo, 1, as, fetch)).repo, 'azure:contoso/My Project/web app');
+});

@@ -4,6 +4,7 @@
 // pushing them is the footer's button. Which buttons show is taskactions.ts's.
 
 import { h, timeAgo } from '../ui/dom';
+import { openPullFrom } from '../ui/github/open-pull';
 import { icon } from '../ui/icons';
 import { btn, prPill } from '../ui/kit';
 import type { KanbanTask } from '../../shared/kanban/types.js';
@@ -38,7 +39,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask, comments: PrComments): HTM
             h(
               'tr',
               {},
-              h('td', {}, repoName(p)),
+              h('td', {}, h('button.kb-pr-open', { type: 'button', title: 'Open the pull request in the office’s pull request window (goes to the project’s floor first when the page is on another)', onclick: (e: Event) => void openPr(c, task, p, e.currentTarget as HTMLButtonElement) }, repoName(p))),
               h('td', {}, h('a.kb-pr-link', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, `#${p.number}`, icon('external-link', { size: 12 }))),
               h('td', {}, prPill(p.state)),
               h('td.kb-pr-review', {}, ...prMarkPills(p)),
@@ -53,6 +54,16 @@ export function prsPane(c: TaskCtx, task: KanbanTask, comments: PrComments): HTM
   const list = comments.section(task, repoName);
   if (list) out.push(list);
   return out;
+}
+
+/** The repository name's click: the office's pull request window (going to the project's floor first when the page is on another; a note saying why when that cannot be, the number's link being the way to its host). One at a time: the button waits. */
+async function openPr(c: TaskCtx, task: KanbanTask, p: KanbanTask['prs'][number], button: HTMLButtonElement): Promise<void> {
+  button.disabled = true;
+  try {
+    await openPullFrom(c.o.net, p, task.project);
+  } finally {
+    button.disabled = false;
+  }
 }
 
 /** One reviewer takes every open pull request of the task at once. */

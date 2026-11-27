@@ -154,6 +154,9 @@
 .kb-tv .kb-table code { font-family: var(--font-mono); font-size: var(--fs-xs); overflow-wrap: anywhere; }
 .kb-tv .kb-pr-link { display: inline-flex; align-items: center; gap: 4px; font-family: var(--font-mono); font-size: var(--fs-xs); white-space: nowrap; color: var(--link); text-decoration: none; }
 .kb-tv .kb-pr-link:hover { text-decoration: underline; }
+/* The Repository cell opens the PR in the office (taskprs.ts): a button that reads as a link. */
+.kb-tv .kb-pr-open { border: 0; background: none; padding: 0; margin: 0; font: inherit; color: var(--link); cursor: pointer; text-align: left; }
+.kb-tv .kb-pr-open:hover { text-decoration: underline; }
 /* The Review column's pills (prmarks.ts): side by side, under each other in a narrow cell. */
 .kb-tv .kb-pr-review .gh-badge { margin: 1px 6px 1px 0; }
 /* A PR row's unlink (prbuttons.ts): quiet until pointed at, in a column no wider than itself. */

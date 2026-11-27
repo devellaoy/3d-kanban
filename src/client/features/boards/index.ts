@@ -10,6 +10,7 @@ import { aside, boardHint, hintTitle, key, onE } from '../../core/hint';
 import { store, type Topic } from '../../state';
 import { openBoard } from '../../ui/boards';
 import type { BoardActions } from '../../ui/github/prompts';
+import { setPullActions } from '../../ui/github/open-pull';
 import { clip } from '../../ui/dom';
 import { cardId } from '../../../shared/kanban/issuecard.js'; // an issue source's card by its key
 import { openCard } from '../../kanban/issuecards'; // a card from the issue sources opens too
@@ -42,6 +43,7 @@ export interface BoardsDeps {
 
 export function installBoards(ctx: Ctx, deps: BoardsDeps) {
   const { office } = ctx;
+  setPullActions(deps.boardActions); // a task's pull request opens in the pull request window
   // Boards: each draws onto a canvas texture, redrawn whenever what it shows changes. The same
   // texture goes on that board in whichever world you're in (see dressBoards).
   function mountBoard(mesh: THREE.Mesh | undefined, texture: THREE.Texture, render: () => void, topics: Topic[]) {
