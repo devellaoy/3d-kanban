@@ -1,7 +1,7 @@
-// The UI test before a pull-request review (the request's `uiTest`): the pr-review phase's first run, by an implementer-role agent in
+// The test before a pull-request review (the request's `uiTest`, which tests a UI, an API or anything else): the pr-review phase's first run, by an implementer-role agent in
 // a fresh worktree of the involved repositories on their configured base branches (so the app starts as it is before the pull
-// requests), who tests the UI and the functionality the pull requests change with real browser actions, takes before and after
-// pictures into the task's images folder and writes a test report in the task's grant folder (ui-test-report.md; the reply is the
+// requests), who tests what the pull requests change (a UI with real browser actions, an API by its endpoints, anything else through its entry point), takes before and after
+// pictures of a UI into the task's images folder and writes a test report in the task's grant folder (ui-test-report.md; the reply is the
 // fallback when it left none). The pictures stay with the task: none is added to a pull request; the reviewers read the report.
 // When its turn ends the tester goes home with its worktree, and the review starts by itself (machine event `prUiTested`). Split out of prreview-launch.ts; PrReviews hands it the request and the engine's deps.
 
@@ -23,8 +23,8 @@ import { instructionReadDirs, prReviewRepoIds } from './launchdirs.js';
 import { grantDir } from '../uploads.js';
 
 const ENGINE: DepartureIntent = { by: 'Kanban', reason: 'engine' };
-/** The heading the tester's prompt asks its report to start with. */
-const REPORT_HEADING = /^#{1,6}\s*UI test report\b/im;
+/** The heading the tester's prompt asks its report to start with (an older prompt text said "UI test report"). */
+const REPORT_HEADING = /^#{1,6}\s*(?:UI\s+)?test report\b/im;
 
 /**
  * Hires the tester: it never carries on an earlier one (a Retry, an office restart or an answer to its question starts the UI test
@@ -55,7 +55,7 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
   if (signIn) return fail(signIn);
   // A fork's pull request, or one not confirmed not to be, is never checked out or run: it is left out of the test, and the prompt says why.
   const all = req.prs as HeadPr[], testable = all.filter(trusted);
-  if (!testable.length) return fail('No pull request is confirmed not to be from a fork, and the office never checks out or runs code that might be: there is no UI to test');
+  if (!testable.length) return fail('No pull request is confirmed not to be from a fork, and the office never checks out or runs code that might be: there is nothing to test');
   // Every head and each repository's first target, fetched while the configured bases are, all bounded.
   const headsP = fetchPrHeads(def, testable, d.git, true, d.headsMs);
   await d.freshBase(floor, def, involved);

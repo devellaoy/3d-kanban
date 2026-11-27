@@ -126,7 +126,7 @@ What the office does for you:
   and resolves the threads it settled, the ones it only answered included.
 - **Multi-PR reviews, review panels and meetings** across repositories ([features](docs/features.md)). The PR window's **Review** is a
   kanban task with the pull request's head checked out for the reviewers of the review settings, and can post the review on
-  the PRs and test the UI and its functionality first ([docs/kanban.md](docs/kanban.md#pull-requests)); **Review panel** opens the meeting form.
+  the PRs and test the change first (a UI in a browser, an API by its endpoints) ([docs/kanban.md](docs/kanban.md#pull-requests)); **Review panel** opens the meeting form.
 - **UI testing**: the implementer saves before and after screenshots, the reviewer looks at them, and they go
   into the pull request description ([docs/kanban.md](docs/kanban.md#ui-testing)).
 - **Languages**: the conversation language, the public language and the code comment language
