@@ -9,6 +9,12 @@
 // kanban/attachbox.ts, a drafted prompt) shows in the window. Files pasted or dropped on the window are
 // handed to the field, whose view does with them what it does. Esc, the close button, Done and Ctrl/Cmd+Enter
 // close it and put the keyboard back in the field, the caret where it was in the window.
+//
+// A field its view draws anew is followed only by its data-focus inside the same task view (replacement()
+// in the model); otherwise the editor is orphaned. A field that turns read-only or disabled meanwhile is
+// not written to either. In both cases the editor says so in its footer and offers Copy text, and what the
+// field never took is shown on closing in a small Text kept window. Nothing goes to the clipboard unless
+// the user presses Copy text.
 // Which box gets the button, the window's title and where the button goes is textexpandmodel.ts's.
 //
 // No three.js, core/ or features/ here: the kanban page and the 2D view use it too.
@@ -18,7 +24,7 @@ import { h, onModalChange, toast, type Modal } from './dom';
 import { iconButton } from './icons';
 import { btn } from './kit';
 import { modalShell, openShell } from './shell';
-import { adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isExpandKey, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo } from './textexpandmodel';
+import { adopt, BTN_SIZE, buttonPlace, expandable, fieldName, isExpandKey, replacement, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo } from './textexpandmodel';
 
 /** Marks the window's own text box, which never gets the button. */
 const EDITOR = 'data-text-expand-editor';
@@ -30,6 +36,35 @@ const FOREIGN = '.xterm, .excalidraw';
 const POLL_MS = 400;
 
 let installed = false;
+
+/** The Copy text button of a window that holds text the field could not take: the user's own press puts the whole text of `box` on the clipboard, and when that can't be done the text is selected to copy by hand. */
+function copyButton(box: HTMLTextAreaElement, kind: 'quiet' | 'secondary'): HTMLButtonElement {
+  const title = 'Copy the whole text to the clipboard';
+  const b = btn('Copy text', kind === 'quiet' ? { kind, size: 'sm', icon: 'copy', attrs: { title } } : { kind, icon: 'copy', attrs: { title } });
+  b.addEventListener('click', () => {
+    const byHand = () => {
+      box.focus();
+      box.select();
+      toast("Couldn't copy: the text is selected, copy it with Ctrl/Cmd+C", 'warn');
+    };
+    if (!navigator.clipboard?.writeText) return byHand();
+    navigator.clipboard.writeText(box.value).then(() => toast('Copied'), byHand);
+  });
+  return b;
+}
+
+/** The small window that keeps a text the editor could not put anywhere, so closing the editor does not lose it. */
+function keepText(text: string, why: 'orphaned' | 'locked') {
+  const box = h('textarea.text-kept-box', { [EDITOR]: '', 'aria-label': 'The kept text' }) as HTMLTextAreaElement;
+  box.rows = 12;
+  box.readOnly = true;
+  box.value = text;
+  const says = why === 'orphaned' ? 'The field this text was written for is gone, so it could not be put there. Copy it and paste it where it belongs.' : "The field this text was written for was locked or changed meanwhile, so it could not be put there. Copy it if you still need it.";
+  const close = btn('Close', { kind: 'primary' });
+  const shell = modalShell({ cls: 'text-kept w640', icon: 'maximize-2', title: 'Text kept', body: [h('p.text-kept-why', {}, says), box], footerRight: [copyButton(box, 'secondary'), close] });
+  const modal = openShell(shell);
+  close.addEventListener('click', () => modal.close());
+}
 
 /** Turns the large editor on for this page. Once per page: a second call does nothing. */
 export function installTextExpand(): void {
@@ -201,17 +236,26 @@ export function installTextExpand(): void {
     // A field in the mono font (a prompt, a query) is written in it here too.
     if (/mono|courier|consolas|menlo/i.test(getComputedStyle(field).fontFamily)) big.classList.add('mono');
 
-    // Where a field drawn anew in the editor's time is looked for: only in the window (or the task view) this one was in.
     owner = field.closest('.backdrop');
-    const scope: Element = owner ?? field.closest('.kb-tv') ?? document.body;
-    const key = field.dataset.focus;
-    /** What tells a field without a data-focus from the other text boxes of its window, should its view draw it anew. */
-    const looks = (el: HTMLTextAreaElement) => `${el.getAttribute('aria-label') ?? ''}\n${el.placeholder}\n${el.id.replace(/\d+$/, '')}\n${[...el.classList].filter((c) => c !== ROOM).join(' ')}`;
-    const look = looks(field);
+    // A field is followed across its view's redraws only by its data-focus inside the view it was drawn in (a task view's root is made once per task).
+    const key = field.dataset.focus ?? null;
+    const home = field.closest('.kb-tv');
     /** The field's text as the two last agreed on: a difference is text written into the field without an event. */
     let last = field.value;
     /** Set while one side is being written from the other, so the writing isn't taken for an edit to copy back. */
     let busy = false;
+    /** The user has typed in the window since it opened (not the field's text written into it). */
+    let dirty = false;
+    /** The user has typed or moved the caret in the window: the opening caret is no longer theirs to set. */
+    let touched = false;
+    /** The window has text the field did not take (it was locked): the field's text must not replace it. */
+    let held = false;
+    /** The field is gone and no box is plainly its replacement, while its window is still there. */
+    let orphaned = false;
+    let state: 'normal' | 'locked' | 'orphaned' = 'normal';
+    const locked = () => field.matches(':disabled') || field.readOnly;
+    /** The field can take the text it refused: it is there, unlocked, and still says what it said then (a text its view wrote meanwhile is not written over). */
+    const takesHeld = () => held && field.isConnected && !locked() && field.value === last;
 
     /** The window's selection, on the field: its view reads the caret there (a pasted file's link goes in at it, also when the upload ends later). */
     const mirror = () => {
@@ -223,18 +267,17 @@ export function installTextExpand(): void {
       // Some browsers put the focus where a selection is set: it stays in the window.
       if (modal.backdrop.isConnected && document.activeElement === field) big.focus({ preventScroll: true });
     };
-    /** Field to window: the field's text and its caret, when the text is not the window's. */
+    /** Field to window: the field's text and its caret, when the text is not the window's. Not while the window holds text the field refused. */
     const pull = () => {
+      if (held) return;
       last = field.value;
       if (field.value === big.value) return;
       const a = adopt(field.value, [field.selectionStart, field.selectionEnd]);
       big.value = a.value;
       big.setSelectionRange(a.start, a.end);
     };
-    /** Window to field, as if typed there: its view keeps its draft and its buttons by the `input` it hears. */
-    const push = () => {
-      if (busy) return;
-      rebind();
+    /** Window to field, as if typed there: its view keeps its draft and its buttons by the `input` it hears. One write, one event. */
+    const write = () => {
       busy = true;
       try {
         field.value = big.value;
@@ -243,38 +286,78 @@ export function installTextExpand(): void {
       } finally {
         busy = false;
       }
+      held = false;
       // What the field's view made of it (a trimmed or corrected text) is the text.
       pull();
+    };
+    /** What the footer says and whether the window can be typed in, from the state of the field. */
+    const refresh = () => {
+      orphaned = !field.isConnected && (!owner || owner.isConnected);
+      big.readOnly = locked() || orphaned;
+      const next = orphaned ? 'orphaned' : locked() ? 'locked' : 'normal';
+      if (next === state) return;
+      state = next;
+      const note = state === 'orphaned' ? 'The field this text was for is gone. Copy the text before you close the editor.' : "This field can't be edited right now. Your text is kept here until you close the editor.";
+      shell.setFooter(state === 'normal' ? [hint()] : [h('span.foot-hint.text-expand-note', {}, note), copyButton(big, 'quiet')], [done]);
+    };
+    const hint = () => h('span.foot-hint', {}, h('kbd.kbd', {}, 'Esc'), 'or Done returns to the field');
+    const push = () => {
+      if (busy) return;
+      rebind();
+      refresh();
+      if (!field.isConnected || locked()) {
+        // The big box keeps what was typed, for the field when it can take it again or for the Text kept window.
+        held = true;
+        return;
+      }
+      write();
+    };
+    /** The window's text and the field's, after the field was switched: the window's is written only when it was edited here, else the field's is taken. Never into a locked field. */
+    const settle = () => {
+      if (!field.isConnected || busy) return;
+      if (field.value === big.value) {
+        last = field.value;
+        return;
+      }
+      refresh();
+      if (dirty && !locked()) write();
+      else if (dirty) held = true;
+      else pull();
     };
     // On the field itself: the attach box's `input` doesn't bubble.
     const onFieldInput = () => {
       if (!busy) pull();
     };
     /**
-     * The view drew the field anew: the one in its place is the field from now on. That is the box with the
-     * same data-focus in the same window, or for a field without one, the only box there that looks the same
-     * (its name, placeholder and classes); with two alike there is no telling, and none is taken.
+     * The view drew the field anew: the one in its place is the field from now on. That is the only box with
+     * the same data-focus in the same task view the field was in (replacement() in the model); a field
+     * without a key or a view, or with two candidates, is not followed. Only switches, and says whether it did.
      */
-    function rebind() {
-      if (field.isConnected || !scope.isConnected) return;
-      const boxes = [...scope.querySelectorAll<HTMLTextAreaElement>('textarea')].filter((el) => el !== field && !el.hasAttribute(EDITOR));
-      const alike = key ? boxes.filter((el) => el.dataset.focus === key) : boxes.filter((el) => !el.dataset.focus && looks(el) === look);
-      const next = key ? alike[0] : alike.length === 1 ? alike[0] : undefined;
-      if (!next) return;
+    function rebind(): boolean {
+      if (field.isConnected || !home?.isConnected) return false;
+      const boxes = [...home.querySelectorAll<HTMLTextAreaElement>('textarea')].filter((el) => el !== field && !el.hasAttribute(EDITOR));
+      const i = replacement({ key, home }, boxes.map((el) => ({ key: el.dataset.focus ?? null, home: el.closest('.kb-tv') })));
+      if (i < 0) return false;
       field.removeEventListener('input', onFieldInput);
-      field = next;
+      field = boxes[i];
       field.addEventListener('input', onFieldInput);
-      // The window has what was typed; the new field has it from its view's draft, or gets it now.
-      if (field.value !== big.value) push();
-      else last = field.value;
+      return true;
     }
     field.addEventListener('input', onFieldInput);
     const poll = window.setInterval(() => {
-      rebind();
-      if (!busy && field.value !== last) pull();
+      if (rebind()) settle();
+      refresh();
+      if (takesHeld()) write();
+      else if (!busy && field.value !== last) pull();
     }, POLL_MS);
 
+    big.addEventListener('input', () => {
+      dirty = true;
+      touched = true;
+    });
     big.addEventListener('input', push);
+    big.addEventListener('keydown', () => (touched = true));
+    big.addEventListener('pointerdown', () => (touched = true));
     for (const type of ['select', 'keyup', 'pointerup'] as const) big.addEventListener(type, mirror);
     // The caret moved by a held arrow key, or a selection dragged out: no other event says so until it ends.
     const onSelection = () => {
@@ -282,9 +365,10 @@ export function installTextExpand(): void {
     };
     document.addEventListener('selectionchange', onSelection);
 
-    /** Hands a paste or a drag of files on to the field, and says whether its view took it. */
+    /** Hands a paste or a drag of files on to the field, and says whether its view took it. Not to a field that is gone or locked. */
     const pass = (type: string, prop: 'clipboardData' | 'dataTransfer', data: DataTransfer | null): boolean => {
-      rebind();
+      if (rebind()) settle();
+      if (!field.isConnected || locked()) return false;
       mirror();
       const ev = new Event(type, { bubbles: true, cancelable: true });
       Object.defineProperty(ev, prop, { value: data });
@@ -313,7 +397,7 @@ export function installTextExpand(): void {
     });
 
     const done = btn('Done', { kind: 'primary', attrs: { title: 'Close the editor and go back to the field. The text is already there.' } });
-    const shell = modalShell({ cls: 'text-expand', icon: 'maximize-2', title: name, body: big, footerLeft: [h('span.foot-hint', {}, h('kbd.kbd', {}, 'Esc'), 'or Done returns to the field')], footerRight: [done] });
+    const shell = modalShell({ cls: 'text-expand', icon: 'maximize-2', title: name, body: big, footerLeft: [hint()], footerRight: [done] });
     const modal: Modal = openShell(shell, {
       backdropCloses: false,
       onClose: () => {
@@ -321,11 +405,14 @@ export function installTextExpand(): void {
         clearTimeout(caret);
         document.removeEventListener('selectionchange', onSelection);
         closeEditor = null;
+        // One last look at the field: drawn anew, or unlocked, since the last poll.
+        if (rebind()) settle();
+        refresh();
+        if (takesHeld()) write();
         const stillThere = !owner || owner.isConnected;
         owner = null;
-        rebind();
         field.removeEventListener('input', onFieldInput);
-        if (field.isConnected && stillThere) {
+        if (field.isConnected && stillThere && !locked()) {
           field.focus({ preventScroll: true });
           const a = adopt(field.value, [big.selectionStart, big.selectionEnd]);
           try {
@@ -333,22 +420,23 @@ export function installTextExpand(): void {
           } catch {
             // A box that has no selection to set.
           }
-        } else if (stillThere && big.value.trim() && big.value !== opened) {
-          // Its view drew the field anew and nothing there is plainly the same box: the text must not just go.
-          const lost = () => toast('The field this text was for is gone, and the text with it.', 'error');
-          const copied = () => toast('The field this text was for is gone: the text is on the clipboard, paste it where it belongs.', 'warn');
-          if (navigator.clipboard?.writeText) navigator.clipboard.writeText(big.value).then(copied, lost);
-          else lost();
+        } else if (stillThere && big.value.trim() && ((orphaned && big.value !== opened) || held)) {
+          // The text must not just go, and the clipboard is not ours to take: it stays in a window of its own once this one has settled.
+          const text = big.value;
+          const why = orphaned ? 'orphaned' : 'locked';
+          setTimeout(() => keepText(text, why), 0);
         }
         update();
       },
     });
     closeEditor = () => modal.close();
     done.addEventListener('click', () => modal.close());
-    // The caret where it was in the field: now, so the focus the shell gives the box brings it into view, and again once it has.
+    // The caret where it was in the field: now, so the focus the shell gives the box brings it into view, and again once it has (unless the user has taken the caret by then).
     big.setSelectionRange(start.start, start.end);
     const caret = window.setTimeout(() => {
-      big.focus();
+      if (document.activeElement !== big) big.focus();
+      // A selection made meanwhile without a key or a press (Select all from a menu, a script) is theirs too.
+      if (touched || big.selectionStart !== start.start || big.selectionEnd !== start.end) return;
       big.setSelectionRange(start.start, start.end);
       mirror();
     }, 60);

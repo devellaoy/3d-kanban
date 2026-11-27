@@ -35,3 +35,14 @@ textarea.ta-expandable.ta-expandable.ta-expandable { padding-right: 32px; }
   .modal.text-expand { height: 100%; max-height: 100%; }
   .modal.text-expand textarea.text-expand-box, .modal.text-expand textarea.text-expand-box.mono { padding: 14px 16px; font-size: 16px; }
 }
+
+/* The editor's footer says when its field can't take the text (gone, or locked): in the warning ink, and
+   it wraps so the buttons keep their size on a phone. */
+.modal.text-expand .foot-hint.text-expand-note { display: block; flex: 1 1 200px; min-width: 0; color: var(--warn-ink); }
+
+/* The window that keeps a text the editor could not put anywhere (closing the editor with the field gone or locked). */
+.modal.text-kept .text-kept-why { margin: 0 0 12px; }
+.modal.text-kept textarea.text-kept-box { display: block; width: 100%; resize: vertical; }
+@media (max-width: 700px) {
+  .modal.text-kept textarea.text-kept-box { font-size: 16px; }
+}

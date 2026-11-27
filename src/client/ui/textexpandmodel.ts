@@ -58,3 +58,23 @@ export function adopt(value: string, sel: readonly [number | null, number | null
 export function isExpandKey(e: Pick<KeyboardEvent, 'key' | 'altKey' | 'ctrlKey' | 'metaKey' | 'shiftKey' | 'isComposing'>): boolean {
   return e.key === 'Enter' && e.altKey && !e.ctrlKey && !e.metaKey && !e.shiftKey && !e.isComposing;
 }
+
+/** What tells one field of a view from another across the view's redraws. */
+export interface FieldIdentity {
+  /** Its data-focus, the name its view keeps for it. */
+  key: string | null;
+  /** The root of the view it was drawn in (a task view's), as an opaque identity. */
+  home: unknown | null;
+}
+
+/** Which of `candidates` is `original` drawn anew: the only one with its key in its own view, or -1. A field without a key or a view is never anyone's replacement: another project's or another task's box must not get this one's text. */
+export function replacement(original: FieldIdentity, candidates: readonly FieldIdentity[]): number {
+  if (!original.key || !original.home) return -1;
+  let found = -1;
+  for (let i = 0; i < candidates.length; i++) {
+    if (candidates[i].key !== original.key || candidates[i].home !== original.home) continue;
+    if (found >= 0) return -1;
+    found = i;
+  }
+  return found;
+}

@@ -3,7 +3,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  adopt, buttonPlace, expandable, fieldName, isExpandKey, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo,
+  adopt, buttonPlace, expandable, fieldName, isExpandKey, replacement, BTN_INSET, BTN_SIZE, MIN_FIELD_H, MIN_FIELD_W, type FieldInfo,
 } from '../src/client/ui/textexpandmodel.js';
 import { isSendKey } from '../src/client/kanban/sendkey.js';
 
@@ -128,4 +128,33 @@ test('other keys and chords do not', () => {
 test('the send key is never Alt+Enter, so the two keys do not collide', () => {
   assert.equal(isSendKey({ key: 'Enter', isComposing: false, metaKey: false, ctrlKey: false, altKey: true }), false);
   assert.equal(isSendKey({ key: 'Enter', isComposing: false, metaKey: false, ctrlKey: true, altKey: true }), false);
+});
+
+test('the project changed under the open editor: another project\'s look-alike field (no key, no view) is not taken', () => {
+  assert.equal(replacement({ key: null, home: null }, [{ key: null, home: null }, { key: null, home: null }]), -1);
+  assert.equal(replacement({ key: null, home: null }, [{ key: 'prompt', home: {} }]), -1);
+});
+
+test('another task\'s comment box (same key, another view) is not taken', () => {
+  assert.equal(replacement({ key: 'comment', home: {} }, [{ key: 'comment', home: {} }]), -1);
+});
+
+test('the same key in the same view is the replacement', () => {
+  const home = {};
+  assert.equal(replacement({ key: 'comment', home }, [{ key: 'other', home }, { key: 'comment', home }]), 1);
+});
+
+test('two boxes with the key in the view give no replacement', () => {
+  const home = {};
+  assert.equal(replacement({ key: 'comment', home }, [{ key: 'comment', home }, { key: 'comment', home }]), -1);
+});
+
+test('a field with a key but no view is never replaced', () => {
+  assert.equal(replacement({ key: 'comment', home: null }, [{ key: 'comment', home: null }, { key: 'comment', home: {} }]), -1);
+});
+
+test('candidates with other keys are ignored', () => {
+  const home = {};
+  assert.equal(replacement({ key: 'a', home }, [{ key: 'b', home }, { key: null, home }]), -1);
+  assert.equal(replacement({ key: 'a', home }, [{ key: 'b', home }, { key: 'a', home }, { key: 'c', home }]), 1);
 });
