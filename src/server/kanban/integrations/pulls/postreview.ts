@@ -33,15 +33,15 @@ export const POST_PICTURES = 10;
 type Verdict = 'approved' | 'changes_requested';
 
 /** What of the review is `pr`'s: the whole text of a review of one pull request, its own part of a review of several (none: nothing is posted on it). */
-function ownPart(pr: PrRef, prs: readonly PrRef[], text: string) {
-  const found = reviewParts(prs, stripWorkDone(reviewFindings(text)));
+function ownPart(pr: PrRef, prs: readonly PrRef[], text: string, cut = false) {
+  const found = reviewParts(prs, stripWorkDone(reviewFindings(text)), cut);
   return prs.length > 1 ? found.parts.get(partKey(pr)) : found.common;
 }
 
 /** Whether a review of several pull requests has text in no pull request's part: it is posted nowhere, and the task is told. */
-export function strayText(prs: readonly PrRef[], text: string): boolean {
+export function strayText(prs: readonly PrRef[], text: string, cut = false): boolean {
   if (prs.length < 2) return false;
-  const { common } = reviewParts(prs, stripWorkDone(reviewFindings(text)));
+  const { common } = reviewParts(prs, stripWorkDone(reviewFindings(text)), cut);
   return !!common.text || common.pictures.length > 0;
 }
 
@@ -50,10 +50,10 @@ export function strayText(prs: readonly PrRef[], text: string): boolean {
  * task, its absolute path as the reviewer's prompt lists it, or the bare file name of exactly one image; in the order given, each once, at
  * most POST_PICTURES, and never a before picture. A name that matches nothing is dropped: a path is never taken from the reviewer's text.
  */
-export function reviewPictures(pr: PrRef, prs: readonly PrRef[], text: string, images: readonly UiImageFile[] = []): UiImageFile[] {
+export function reviewPictures(pr: PrRef, prs: readonly PrRef[], text: string, images: readonly UiImageFile[] = [], cut = false): UiImageFile[] {
   if (!images.length) return [];
   const out: UiImageFile[] = [];
-  for (const n of ownPart(pr, prs, text)?.pictures ?? []) {
+  for (const n of ownPart(pr, prs, text, cut)?.pictures ?? []) {
     const exact = images.find((i) => i.name === n || i.file === n);
     const bare = images.filter((i) => i.name.split('/').pop() === n);
     const hit = exact ?? (bare.length === 1 ? bare[0] : undefined);
@@ -83,12 +83,12 @@ export interface ReviewBodyOpts {
  * `language` (posttexts.ts). Cut off, with a line saying so, when it is too long for GitHub; the pictures the reviewer named close it.
  */
 export function reviewBody(pr: PrRef, prs: readonly PrRef[], text: string, opts: ReviewBodyOpts = {}): string | undefined {
-  const part = ownPart(pr, prs, text);
+  const part = ownPart(pr, prs, text, opts.cut);
   if (!part) return undefined;
   const t = postTexts(opts.language);
   // The run's own verdict when it is given: the text may be cut, and a cut one has no verdict line to read.
   const top = t.heading((part.verdict ?? opts.verdict ?? reviewVerdict(text)) === 'approved');
-  const pics = reviewPictures(pr, prs, text, opts.images);
+  const pics = reviewPictures(pr, prs, text, opts.images, opts.cut);
   const block = pics.length ? `\n\n${pics.map((i) => `![${i.name}](./${opts.ref?.get(i.name) ?? flatName(i)})`).join('\n')}` : '';
   const cut = `\n\n${t.cutLong}`;
   const body = (part.text || t.none) + (opts.cut ? `\n\n${t.cutKept}` : '');
@@ -134,7 +134,7 @@ export async function postReview(ctx: KanbanContext, project: string, prs: (PrRe
       try {
         const folder = path.join(dir, `pr-${i}`);
         const file = path.join(folder, 'review.md');
-        let pics = board.hosted ? [] : reviewPictures(p, prs, text, opts.images);
+        let pics = board.hosted ? [] : reviewPictures(p, prs, text, opts.images, opts.cut);
         let note: string | undefined;
         let staged: Awaited<ReturnType<typeof stageImages>> | undefined;
         // The folder is made with the pictures in it (flat names), the body beside them: gh finds `./name` next to the body file.
@@ -178,7 +178,7 @@ export async function postReview(ctx: KanbanContext, project: string, prs: (PrRe
     if (dir) await rm(dir, { recursive: true, force: true }).catch(() => undefined);
   }
   // Said once, on the first pull request's line.
-  if (out.length && strayText(prs, text)) out[0] = { ...out[0], note: [out[0].note, STRAY].filter(Boolean).join('; ') };
+  if (out.length && strayText(prs, text, opts.cut)) out[0] = { ...out[0], note: [out[0].note, STRAY].filter(Boolean).join('; ') };
   return out;
 }
 

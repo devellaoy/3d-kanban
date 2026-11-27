@@ -250,7 +250,7 @@ test('GitHub: pictures go as attachments of a conversation comment; without them
     assert.deepEqual(got.map((r) => [r.number, r.url, r.note]), [[3, 'https://github.com/o/web/pull/3#issuecomment-5', undefined], [4, 'https://github.com/o/web/pull/4#pullrequestreview-77', undefined]]);
     const c = gh.comment(3);
     assert.deepEqual(c.attached, ['login-after.png']);
-    assert.ok(c.args.includes('--repo') && c.args.includes('o/web') && c.body.endsWith('![login-after.png](./login-after.png)'));
+    assert.ok(c.args.includes('--repo') && c.args.includes('o/web') && /!\[login-after\.png\]\(\.\/login-after\.png\)\n\n<!-- review [0-9a-f]{16} -->\n$/.test(c.body));
     rmSync(imgDir, { recursive: true, force: true });
   } finally {
     gh.done();
@@ -302,26 +302,54 @@ test('pictures that could not be attached: posted once without them when no comm
   gone.done();
 });
 
-test('commentWithPictures: a failed gh is looked into before anyone posts again', async () => {
+test('commentWithPictures: a failed gh is looked into before anyone posts again, by the mark of this one posting', async () => {
   const dir = mkdtempSync(path.join(tmpdir(), 'kanban-post-c-'));
   const file = path.join(dir, 'review.md');
-  writeFileSync(file, '**Review: changes requested**\n\nBug.\n\n![a.png](./a.png)\n![b.png](./b.png)');
-  const run = (fail: string | undefined, listed: unknown) => async (args: string[]) => {
-    if (args[0] === 'pr') {
-      if (fail) throw new Error(fail);
-      return 'https://github.com/o/web/pull/3#issuecomment-5\n';
-    }
-    if (listed === undefined) throw new Error('HTTP 502');
-    assert.match(args[1], /^repos\/o\/web\/issues\/3\/comments\?since=/);
-    return JSON.stringify(listed);
+  const BODY = '**Review: changes requested**\n\nBug.\n\n![a.png](./a.png)';
+  /** A gh whose comment fails with `fail` (after `waitMs`) and whose look at the conversation answers what `found` makes of the mark. */
+  const call = async (fail?: string, found?: (mark: string) => string, waitMs = 0, timeout?: number) => {
+    writeFileSync(file, BODY);
+    const run = async (args: string[]) => {
+      if (args[0] === 'pr') {
+        if (waitMs) await new Promise((r) => setTimeout(r, waitMs));
+        if (fail) throw new Error(fail);
+        return 'https://github.com/o/web/pull/3#issuecomment-5\n';
+      }
+      if (!found) throw new Error('HTTP 502');
+      // Every page of the conversation, and only the comment that carries this posting's mark.
+      assert.ok(args.includes('--paginate') && /^repos\/o\/web\/issues\/3\/comments\?since=/.test(args[2]), args.join(' '));
+      const mark = /contains\("(<!-- review [0-9a-f]{16} -->)"\)/.exec(args[args.indexOf('--jq') + 1])?.[1] ?? '';
+      assert.ok(mark && readFileSync(file, 'utf8') === `${BODY}\n\n${mark}\n`, 'the body ends with the mark');
+      return found(mark);
+    };
+    return commentWithPictures(run, 'o/web', 3, file, [path.join(dir, 'a.png')], dir, undefined, timeout);
   };
-  const call = (fail?: string, listed?: unknown) => commentWithPictures(run(fail, listed), 'o/web', 3, file, [path.join(dir, 'a.png')], dir);
+  const marks: string[] = [];
+  const none = (m: string) => (marks.push(m), '');
   assert.equal(await call(), 'https://github.com/o/web/pull/3#issuecomment-5');
-  await assert.rejects(call('upload failed no comment was posted'), PicturesNotPosted);
-  // gh posted the comment with the picture that did upload, then failed: the comment is found by its text.
-  const mine = { html_url: 'https://github.com/o/web/pull/3#issuecomment-9', body: '**Review: changes requested**\r\n\r\nBug.\r\n\r\n![a.png](https://github.com/user-attachments/assets/1)\r\n![b.png](./b.png)' };
-  await assert.rejects(call('upload failed: b.png', [{ html_url: 'x', body: 'Someone else.' }, mine]), (e: unknown) => e instanceof PicturesPartly && e.url === mine.html_url);
-  await assert.rejects(call('unknown flag: --attach', [{ html_url: 'x', body: 'Someone else.' }]), PicturesNotPosted);
-  await assert.rejects(call('timed out', undefined), (e: unknown) => !(e instanceof PicturesNotPosted) && !(e instanceof PicturesPartly) && (e as Error).message === 'timed out');
+  await assert.rejects(call('upload failed\nno comment was posted'), PicturesNotPosted);
+  // gh made the comment, then failed an upload: found by its mark (gh pages through the conversation), it is the post.
+  await assert.rejects(call('upload failed: b.png', () => 'https://github.com/o/web/pull/3#issuecomment-9\n'), (e: unknown) => e instanceof PicturesPartly && e.url === 'https://github.com/o/web/pull/3#issuecomment-9');
+  // An earlier comment with the very same text carries another mark, so it is not this posting: nothing is found.
+  await assert.rejects(call('HTTP 422', none), PicturesNotPosted);
+  await assert.rejects(call('HTTP 422', none), PicturesNotPosted);
+  assert.ok(marks.length === 2 && marks[0] !== marks[1], 'a mark of its own each time');
+  // The look failed, or gh ran out of time and nothing is found (GitHub may still have heard it): nobody knows, so no second post.
+  await assert.rejects(call('HTTP 500'), (e: unknown) => !(e instanceof PicturesNotPosted) && !(e instanceof PicturesPartly) && (e as Error).message === 'HTTP 500');
+  await assert.rejects(call('Command failed: gh pr comment', none, 30, 1_020), (e: unknown) => !(e instanceof PicturesNotPosted) && (e as Error).message === 'Command failed: gh pr comment');
   rmSync(dir, { recursive: true, force: true });
+});
+
+test('a heading the office cannot read ends the part before it, and a cut review loses its unfinished pictures line', () => {
+  // The second pull request's verdict is not one the office knows: its findings and pictures must not join the first one's approving comment.
+  const text = '## o/web#3: APPROVED\nFine.\n## o/web#4: muutoksia pyydetty\nBroken.\nPictures: login-after.png\nREVIEW: CHANGES_REQUESTED';
+  assert.equal(reviewBody(PRS[0], PRS, text, { images: IMAGES }), '**Review: approved**\n\nFine.');
+  assert.equal(reviewBody(PRS[1], PRS, text, { images: IMAGES }), undefined);
+  assert.equal(strayText(PRS, text), true, 'the task is told');
+  // A deeper heading, or one that names the part's own pull request, is a finding's title.
+  assert.ok(reviewBody(PRS[0], PRS, '## o/web#3\n### o/web#4: see also\nA.\n## o/web#3 again\nB.\n## o/web#4\nC.')!.endsWith('### o/web#4: see also\nA.\n## o/web#3 again\nB.'));
+  // The stored start of a review may end inside its pictures line: a local path is never posted.
+  const cut = reviewBody(PRS[0], [PRS[0]], 'Bug.\nPictures: /Users/someone/office/grants/task-1/ui/login-after.p', { cut: true, images: IMAGES })!;
+  assert.equal(cut, '**Review: changes requested**\n\nBug.\n\n(The text of the review was cut here: the office kept only its first part.)');
+  assert.ok(!reviewBody(PRS[0], [PRS[0]], 'Bug.\nPictures: /Users/someone/ui/login-after.p\nMore.')!.includes('/Users/'), 'nor from a line that only starts as a path');
 });
