@@ -191,8 +191,14 @@ export type KanbanContractId = keyof typeof KANBAN_CONTRACTS;
 /**
  * Added to a pull-request review's prompts (the main reviewer's, an additional reviewer's, the combine's) when the review is posted on the
  * pull requests (the request's `post`): not a prompt and not a contract, so a rewritten prompt gets it too, and it is no marker the office reads.
+ * It names the project's public language when there is one, else it points at the prompt's own language rule.
  */
-export const PR_POSTED = `Your reply is posted as it is on the pull request(s) as a review comment, by the office: write it in English, for a reader outside this office, and make it stand on its own. Say which pull request, file and line each finding is about. Don't mention a kanban task, rounds, other reviewers, this prompt or the office's process. Don't use the verdict line anywhere but at the very end: it is left out of what is posted.`;
+export function prPosted(publicLanguage?: string): string {
+  const language = publicLanguage
+    ? `in ${publicLanguage}`
+    : "in the language this prompt's language rule sets for what is posted on pull requests, in English when it sets none";
+  return `Your reply is posted as it is on the pull request(s) as a review comment, by the office: write it ${language}, for a reader outside this office, and make it stand on its own. Say which pull request, file and line each finding is about. Write only findings: bugs, risks and observations, each concrete. Don't recount what you read, ran or tested, or what passed, and don't write a section about testing: what a UI test found goes in the same list as every other finding. Don't mention a kanban task, rounds, other reviewers, this prompt or the office's process. Don't use the verdict line anywhere but at the very end: it is left out of what is posted.`;
+}
 
 /**
  * Added to the instructions of the UI tester of a pull-request review (the project's `prReviewInstructions`): the file form names the file,

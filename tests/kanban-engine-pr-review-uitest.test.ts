@@ -138,7 +138,7 @@ test('uiTest: a task of its own even when one is named, the tester first (an imp
   const reportFile = uiTestReportPath(fx.ctx.filesDir, id);
   assert.ok(readFileSync(reportFile, 'utf8').includes('Saved the pictures of the login view'), 'its reply is kept in the report file');
   assert.ok(review.prompt!.includes(`The tester's report is in ${reportFile}.`));
-  assert.ok(review.prompt!.includes('Your reply must have a section "UI testing"'), 'the main reviewer writes the section');
+  assert.ok(review.prompt!.includes("Don't write a section about the UI test"), 'the main reviewer is told to put the findings among the others');
   assert.ok(review.prompt!.includes(`- login: before ${path.join(dir(), 'login-before.png')}, after ${path.join(dir(), 'login-after.png')}`), review.prompt);
   assert.ok(review.args.some((a, i) => a === '--add-dir' && review.args[i + 1] === grantDir(fx.ctx.filesDir, id)), 'the pictures can be read');
   assert.ok(review.args.includes('--disallowedTools'), 'the reviewer keeps its read-only flags');

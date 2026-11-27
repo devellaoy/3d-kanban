@@ -8,7 +8,7 @@ import { execFileSync } from 'node:child_process';
 import { existsSync } from 'node:fs';
 import path from 'node:path';
 import type { GitRunner } from '../src/server/kanban/engine/prheads.js';
-import { PR_POSTED } from '../src/shared/kanban/prompts.js';
+import { prPosted } from '../src/shared/kanban/prompts.js';
 import { reviewBody } from '../src/server/kanban/integrations/pulls/postreview.js';
 import type { KanbanRun, KanbanTask } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
@@ -264,7 +264,7 @@ test('post: the round’s final text is posted once, on every pull request, and 
   // The reply is told it is posted, in the main reviewer's, the additional reviewer's and the combine prompt alike.
   const all = prompts(fx).filter((p) => /Review these pull requests|Combine them into the review/.test(p.prompt));
   assert.equal(all.length, 3);
-  for (const p of all) assert.ok(p.prompt.includes(PR_POSTED), `${p.kind} is told its reply is posted`);
+  for (const p of all) assert.ok(p.prompt.includes(prPosted()), `${p.kind} is told its reply is posted`);
   assert.equal(fx.repo.listEvents(id).filter((e) => e.kind === 'pr.review').map((e) => (e.data as { request: { post?: boolean } }).request.post).join(), 'true', 'the request keeps `post` for a Retry');
 });
 
@@ -276,7 +276,7 @@ test('post: a review with no additional reviewers posts its own text', async (t)
   await fx.waitTask(id, inReview, 'the review column', 20_000);
   await until('the posting', () => calls.length === 1);
   assert.equal(calls[0].text, 'The two fit together.\nREVIEW: APPROVED');
-  assert.ok(prompts(fx).some((p) => p.prompt.includes(PR_POSTED)));
+  assert.ok(prompts(fx).some((p) => p.prompt.includes(prPosted())));
 });
 
 test('without post nothing is posted and the prompts carry no word about it', async (t) => {
@@ -288,7 +288,7 @@ test('without post nothing is posted and the prompts carry no word about it', as
   await sleep(300);
   assert.equal(calls.length, 0);
   assert.ok(!notes(fx, id).some((n) => /Posted the review|Could not post/.test(n)));
-  assert.ok(prompts(fx).every((p) => !p.prompt.includes(PR_POSTED)));
+  assert.ok(prompts(fx).every((p) => !p.prompt.includes(prPosted())));
   assert.equal(fx.repo.listEvents(id).filter((e) => e.kind === 'pr.review').some((e) => 'post' in ((e.data as { request: object }).request)), false);
 });
 
@@ -342,7 +342,7 @@ test('post: with additional reviewers that never deliver, a long approving revie
   assert.equal(calls[0].text, long, 'the whole text, not the run’s clipped summary');
   assert.ok(fx.repo.listRuns(id)[0].summary!.length < long.length, 'the run row keeps only the start');
   const body = reviewBody([pr(3), pr(4)], calls[0].text, calls[0].opts as never);
-  assert.match(body, /^\*\*Review by Agent Office: approved\*\*/);
+  assert.match(body, /^\*\*Review: approved\*\*/);
   assert.ok(body.includes('Finding 1999: a note.') && !/REVIEW: APPROVED/.test(body) && !/cut/.test(body));
 });
 

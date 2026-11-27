@@ -15,7 +15,7 @@ import type { KanbanContext } from '../registry.js';
 import { projectRepos, parseRepoFloorId } from '../projects.js';
 import { grantFiles } from '../uploads.js';
 import { inlineFiles, unlinkedFiles } from './inlinefiles.js';
-import { PR_POSTED, kanbanPromptText, resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
+import { prPosted, kanbanPromptText, resolveKanbanPrompt, withContract, type KanbanContractId, type KanbanPromptId } from '../../../shared/kanban/prompts.js';
 import { closingPr, closingRef, parseGhKey } from '../../../shared/kanban/issuecard.js';
 import { isPrPhase, openPrs } from '../../../shared/kanban/prs.js';
 import { isKanbanTool, type KanbanPrLink, type KanbanTask, type KanbanTool, type ProjectRepo, type RunPhase, type SkillPhase, type TaskWorkspace } from '../../../shared/kanban/types.js';
@@ -432,7 +432,7 @@ export class Composer {
         return seal(ins('kanban.review', hist('kanban.review', this.withUi('kanban.review', def, task, 'review', { ...v, history: h, summary }), h)) + this.reviewerText(x, p));
       }
       case 'rereview': {
-        if (x.panel === 'combine' && x.phase === 'pr-review') return seal(this.posted(this.prUiTested(ins('kanban.pr.review.combine', this.text('kanban.pr.review.combine', p, { prs: x.prs ?? '', reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })), task, def, x), x));
+        if (x.panel === 'combine' && x.phase === 'pr-review') return seal(this.posted(this.prUiTested(ins('kanban.pr.review.combine', this.text('kanban.pr.review.combine', p, { prs: x.prs ?? '', reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })), task, def, x), x, task.project));
         if (x.panel === 'combine') return seal(ins('kanban.review.combine', this.text('kanban.review.combine', p, { taskId: task.id, round: v.round, rounds: v.rounds, reviews: x.reviews ?? '', instructions: v.instructions, language: v.language })));
         const h = history();
         return seal(ins('kanban.rereview', hist('kanban.rereview', this.withUi('kanban.rereview', def, task, 'review', { taskId: task.id, round: v.round, rounds: v.rounds, fixSummary: x.fixSummary?.trim() || '(no reply)', plan: v.plan, history: h, instructions: v.instructions, language: v.language }), h)) + this.reviewerText(x, p));
@@ -486,7 +486,7 @@ export class Composer {
       case 'pr.review': {
         // What the user said to a reviewer that asked (a fresh reviewer starts the review again with the answer).
         const text = [ins('kanban.pr.review', this.text('kanban.pr.review', p, { prs: x.prs ?? '', project: def.name, task: x.prTask ?? '', repos: x.prRepos ? x.prRepos + this.hostingNote(p, projectRepos(def)) : v.repos, instructions: v.instructions, language: v.language })), x.text ? this.text('kanban.sinceSaid', p, { text: x.text }) : ''].filter(Boolean).join('\n\n');
-        return seal(this.posted(this.prUiTested(text + this.reviewerText(x, p), task, def, x), x));
+        return seal(this.posted(this.prUiTested(text + this.reviewerText(x, p), task, def, x), x, task.project));
       }
       case 'pr.uitest': {
         // The tester also gets the project's pull-request review instructions, in its {{instructions}} or at the end of a rewritten prompt without it.
@@ -498,13 +498,13 @@ export class Composer {
   }
 
   /** A pull-request review's prompt with the block that tells its reviewer the reply is posted as it is (see ComposeExtra.post). */
-  private posted(text: string, x: ComposeExtra): string {
-    return x.post ? `${text.trimEnd()}\n\n${PR_POSTED}` : text;
+  private posted(text: string, x: ComposeExtra, project: string): string {
+    return x.post ? `${text.trimEnd()}\n\n${prPosted(this.languages(project).public)}` : text;
   }
 
   /**
    * A pull-request review's prompt with what its UI test left (see ComposeExtra.uiTest): the block naming the tester's report and
-   * listing its pictures, when there is a report or any picture, then the review's own "UI testing" section for the main reviewer
+   * listing its pictures, when there is a report or any picture, then the block that puts its findings among the review's others for the main reviewer
    * and the combine (not an additional reviewer). A rewritten block without {{report}} gets the report line at its end.
    */
   private prUiTested(text: string, task: KanbanTask, def: FloorDef, x: ComposeExtra): string {

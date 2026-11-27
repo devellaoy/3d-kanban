@@ -1,12 +1,14 @@
 // Posts a pull-request review's text on its pull requests (KanbanPullsApi.postReview): the finished review of the pr-review phase, when
 // its request had `post`. GitHub gets a COMMENT review (never an approval or a change request), through the board's own `review`, as
-// the account that asked; Azure DevOps and Bitbucket get a comment on the conversation (hosting/hosted-board.ts). Nothing here throws.
+// the account that asked, written in the project's public language (posttexts.ts); Azure DevOps and Bitbucket get a comment on the conversation (hosting/hosted-board.ts). Nothing here throws.
 
 import { mkdtemp, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { PrRef } from '../../../../shared/kanban/types.js';
 import type { KanbanContext } from '../../registry.js';
+import { resolveLanguages } from '../../../../shared/language.js';
+import { postTexts } from './posttexts.js';
 import { reviewFindings, reviewVerdict, stripWorkDone } from '../../engine/markers.js';
 
 /** GitHub takes a review body of 65,536 characters at most: the body is clipped well under that. */
@@ -20,17 +22,18 @@ export interface PostedReview {
 }
 
 /**
- * The review as it is posted: "Review by Agent Office: approved" (or "changes requested"), for several pull requests the list of the ones
- * it covers, then the text without its verdict and WORK DONE lines. Cut off, with a line saying so, when it is too long for GitHub.
+ * The review as it is posted: "Review: approved" (or "changes requested"), for several pull requests the list of the ones it covers,
+ * then the text without its verdict and WORK DONE lines. The fixed lines are in `language` (posttexts.ts). Cut off, with a line
+ * saying so, when it is too long for GitHub.
  */
-export function reviewBody(prs: (PrRef & { title?: string })[], text: string, opts: { verdict?: 'approved' | 'changes_requested'; cut?: boolean } = {}): string {
+export function reviewBody(prs: (PrRef & { title?: string })[], text: string, opts: { verdict?: 'approved' | 'changes_requested'; cut?: boolean; language?: string } = {}): string {
+  const t = postTexts(opts.language);
   // The run's own verdict when it is given: the text may be cut, and a cut one has no verdict line to read.
-  const verdict = (opts.verdict ?? reviewVerdict(text)) === 'approved' ? 'approved' : 'changes requested';
-  const head = [`**Review by Agent Office: ${verdict}**`];
-  if (prs.length > 1) head.push('', 'This review covers:', ...prs.map((p) => `- ${p.repo}#${p.number}${p.title ? ` ${p.title}` : ''}`));
+  const head = [t.heading((opts.verdict ?? reviewVerdict(text)) === 'approved')];
+  if (prs.length > 1) head.push('', t.covers, ...prs.map((p) => `- ${p.repo}#${p.number}${p.title ? ` ${p.title}` : ''}`));
   const top = head.join('\n');
-  const cut = '\n\n(The review is cut off here: it is too long to post.)';
-  const body = (stripWorkDone(reviewFindings(text)) || '(The reviewer gave no findings.)') + (opts.cut ? '\n\n(The text of the review was cut here: the office kept only its first part.)' : '');
+  const cut = `\n\n${t.cutLong}`;
+  const body = (stripWorkDone(reviewFindings(text)) || t.none) + (opts.cut ? `\n\n${t.cutKept}` : '');
   const room = POST_MAX - top.length - 2;
   return `${top}\n\n${body.length > room ? `${body.slice(0, room - cut.length).trimEnd()}${cut}` : body}`;
 }
@@ -38,11 +41,13 @@ export function reviewBody(prs: (PrRef & { title?: string })[], text: string, op
 /** Posts `text` on each of `prs`; one result per pull request, a URL or why not. */
 export async function postReview(ctx: KanbanContext, project: string, prs: (PrRef & { title?: string })[], text: string, account?: string, opts: { verdict?: 'approved' | 'changes_requested'; cut?: boolean } = {}): Promise<PostedReview[]> {
   const out: PostedReview[] = [];
+  // Before the try: a failure here is no "could not post", and the prompt and the body go by the same language.
+  const language = resolveLanguages(ctx.languages(), ctx.settings.project(project)?.publicLanguage).public;
   let dir: string | undefined;
   try {
     dir = await mkdtemp(path.join(tmpdir(), 'office-review-'));
     const file = path.join(dir, 'review.md');
-    await writeFile(file, reviewBody(prs, text, opts), { encoding: 'utf8', mode: 0o600 });
+    await writeFile(file, reviewBody(prs, text, { ...opts, language }), { encoding: 'utf8', mode: 0o600 });
     const floor = ctx.floor(project);
     for (const p of prs) {
       const board = floor?.githubFor(p.repo);

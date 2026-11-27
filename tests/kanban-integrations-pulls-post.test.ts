@@ -19,18 +19,26 @@ const PRS = [
 const REVIEW = 'src/login.ts:12 never clears the cache.\n\nREVIEW: CHANGES_REQUESTED\nWORK DONE';
 
 test('the body: a header with the verdict, the list of the pull requests when there are several, the text without its verdict and work-done lines', () => {
-  assert.equal(reviewBody([PRS[0]], 'Nothing to fix.\n\nREVIEW: APPROVED'), '**Review by Agent Office: approved**\n\nNothing to fix.');
-  assert.equal(reviewBody([PRS[0]], REVIEW), '**Review by Agent Office: changes requested**\n\nsrc/login.ts:12 never clears the cache.');
-  assert.equal(reviewBody(PRS, 'Fine.\nREVIEW: APPROVED'), '**Review by Agent Office: approved**\n\nThis review covers:\n- o/web#3 Fix login\n- o/web#4\n\nFine.');
+  assert.equal(reviewBody([PRS[0]], 'Nothing to fix.\n\nREVIEW: APPROVED'), '**Review: approved**\n\nNothing to fix.');
+  assert.equal(reviewBody([PRS[0]], REVIEW), '**Review: changes requested**\n\nsrc/login.ts:12 never clears the cache.');
+  assert.equal(reviewBody(PRS, 'Fine.\nREVIEW: APPROVED'), '**Review: approved**\n\nThis review covers:\n- o/web#3 Fix login\n- o/web#4\n\nFine.');
   // No verdict line: a review that did not end with one counts as asking for changes, as everywhere.
-  assert.match(reviewBody([PRS[0]], 'Unclear.'), /^\*\*Review by Agent Office: changes requested\*\*/);
+  assert.match(reviewBody([PRS[0]], 'Unclear.'), /^\*\*Review: changes requested\*\*/);
   assert.match(reviewBody([PRS[0]], 'REVIEW: APPROVED'), /\(The reviewer gave no findings\.\)$/);
 });
 
 test('the verdict is the run’s own when it is given, and a review the office kept only the start of says so', () => {
-  assert.match(reviewBody([PRS[0]], 'The start of a long review, cut here', { verdict: 'approved', cut: true }), /^\*\*Review by Agent Office: approved\*\*\n\nThe start of a long review, cut here\n\n\(The text of the review was cut here: the office kept only its first part\.\)$/);
+  assert.match(reviewBody([PRS[0]], 'The start of a long review, cut here', { verdict: 'approved', cut: true }), /^\*\*Review: approved\*\*\n\nThe start of a long review, cut here\n\n\(The text of the review was cut here: the office kept only its first part\.\)$/);
   assert.match(reviewBody([PRS[0]], 'No verdict line left.', { verdict: 'changes_requested' }), /changes requested/);
   assert.match(reviewBody([PRS[0]], 'Text.\nREVIEW: APPROVED', { verdict: 'changes_requested' }), /changes requested/, 'what is given wins over the text');
+});
+
+test('the fixed lines follow the language: Finnish ones, English for a language the office has none for', () => {
+  const fi = reviewBody(PRS, 'Fine.\nREVIEW: APPROVED', { language: ' finnish ', cut: true });
+  assert.match(fi, /^\*\*Katselmointi: hyväksytty\*\*\n\nTämä katselmointi kattaa:\n- o\/web#3 Fix login/);
+  assert.ok(fi.endsWith('(Katselmoinnin teksti katkaistiin tästä: toimisto säilytti vain sen alkuosan.)'));
+  assert.match(reviewBody([PRS[0]], REVIEW, { language: 'Finnish' }), /^\*\*Katselmointi: muutoksia pyydetty\*\*/);
+  assert.equal(reviewBody([PRS[0]], REVIEW, { language: 'Klingon' }), reviewBody([PRS[0]], REVIEW));
 });
 
 test('a very long review is cut under GitHub’s limit, and says so', () => {
@@ -38,7 +46,7 @@ test('a very long review is cut under GitHub’s limit, and says so', () => {
   assert.ok(body.length <= POST_MAX, `${body.length} characters`);
   assert.ok(POST_MAX < 65_536);
   assert.ok(body.endsWith('(The review is cut off here: it is too long to post.)'));
-  assert.match(body, /^\*\*Review by Agent Office: approved\*\*\n\nThis review covers:/);
+  assert.match(body, /^\*\*Review: approved\*\*\n\nThis review covers:/);
 });
 
 /** A gh that records what it is asked and the body file it is given, and fails for the pull requests `failing` names. */
