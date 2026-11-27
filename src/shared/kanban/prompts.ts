@@ -125,15 +125,15 @@ ${REVIEW_SAFETY}
 - Read the pull requests with gh pr view and gh pr diff. A pull request that its line says is checked out is the code in your worktree: read it there (git diff, git log, the files), read-only. gh api gives a file at the head of one that is not checked out.
 
 ${VERDICT}`,
-  /** The UI test run before a pull-request review (the pr-review phase's first run, an implementer's): the app is started and tested, nothing in the repositories is changed. */
+  /** The test run before a pull-request review (the pr-review phase's first run, an implementer's): what the pull requests change is started and tested (a UI, an API, anything else), nothing in the repositories is changed. */
   prUiTest: `${RULE}
 ${STOP_PROCESSES}
 
 Rules for this run (set by the office, they apply whatever else is said above):
 - Don't modify, stage or commit anything in the repositories' tracked files (installing dependencies and build output are fine), and don't push.
-- Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them.
+- Don't comment on, review, merge or change the pull requests, and attach the pictures (if you take any) to none of them.
 - Write only in your workspace, in the pictures folder and the report file named above, in temporary files, and in a local test environment that the project's instructions tell you to set up (a copy of the database for the test, say). Use test data and test accounts only.
-- Act only on an instance of the app that you started yourself for this test: never create, change or delete anything in a shared or production environment.
+- Act only on an instance of what you test that you started yourself for this test: never create, change or delete anything in a shared or production environment, and send no writing request to a shared or production backend or database.
 
 ${FINISH.replace(' and committed (for an investigation: nothing to commit)', '')}`,
   implementSafety: `${RULE}
@@ -191,16 +191,23 @@ export type KanbanContractId = keyof typeof KANBAN_CONTRACTS;
 /**
  * Added to a pull-request review's prompts (the main reviewer's, an additional reviewer's, the combine's) when the review is posted on the
  * pull requests (the request's `post`): not a prompt and not a contract, so a rewritten prompt gets it too, and it is no marker the office reads.
+ * It names the project's public language when there is one, else it points at the prompt's own language rule.
  */
-export const PR_POSTED = `Your reply is posted as it is on the pull request(s) as a review comment, by the office: write it in English, for a reader outside this office, and make it stand on its own. Say which pull request, file and line each finding is about. Don't mention a kanban task, rounds, other reviewers, this prompt or the office's process. Don't use the verdict line anywhere but at the very end: it is left out of what is posted.`;
+export function prPosted(publicLanguage?: string, pictures = false): string {
+  const language = publicLanguage
+    ? `in ${publicLanguage}`
+    : "in the language this prompt's language rule sets for what is posted on pull requests, in English when it sets none";
+  const pics = pictures ? " When a finding shows in a picture of the UI test, end that pull request's part (your reply, when there is one pull request) with a line `Pictures:` (that word as it is, whatever language you write in) followed by those pictures' paths as the list above gives them, separated by commas: only pictures in which a finding is visible, never a before picture and never one that shows nothing wrong. The office attaches them at the end of the comment and takes the line out; name no picture anywhere else." : '';
+  return `Your reply is posted as it is on the pull request(s) as a review comment, by the office: write it ${language}, for a reader outside this office, and make it stand on its own. Say which pull request, file and line each finding is about. When there are several pull requests, each gets only its own part of your reply: write each one's findings under a heading line of its own that has nothing else on it, \`## <owner/repo#number>\` exactly as its line above names it, followed by \`: APPROVED\` or \`: CHANGES REQUESTED\` for that pull request alone. Put a finding in the part of the pull request whose code has to change, a finding that needs a change in several of them in each of those, worded for that one, and write nothing outside those parts. Write only findings: bugs, risks and observations, each concrete. Don't recount what you read, ran or tested, or what passed, and don't write a section about testing: what a UI test found goes in the same list as every other finding. Don't mention a kanban task, rounds, other reviewers, this prompt or the office's process. Don't use the verdict line anywhere but at the very end: it is left out of what is posted.${pics}`;
+}
 
 /**
- * Added to the instructions of the UI tester of a pull-request review (the project's `prReviewInstructions`): the file form names the file,
+ * Added to the instructions of the tester of a pull-request review (the project's `prReviewInstructions`): the file form names the file,
  * the text form carries the text when the file could not be written. Not editable prompts and not contracts: a rewritten tester prompt gets them too.
  */
 export const prReviewInstructionsFile = (path: string): string =>
-  `Pull-request review and UI testing: the project's instructions for it are in \`${path}\`. Read it now, before you start the app or prepare any test data, and follow it: it says how this project's environments are started and how the data for a test is made.`;
-export const prReviewInstructionsText = (text: string): string => `Pull-request review and UI testing:\n${text}`;
+  `Pull-request review and testing: the project's instructions for it are in \`${path}\`. Read it now, before you start anything or prepare any test data, and follow it: it says what is tested and how, how this project's environments are started and how the data for a test is made.`;
+export const prReviewInstructionsText = (text: string): string => `Pull-request review and testing:\n${text}`;
 
 /** The text typed into a run that ended a turn without its final marker (see KANBAN_CONTRACTS.finish), for the kind of turn its phase is. */
 export function finishNudge(phase: string): string {

@@ -13,7 +13,7 @@ import { Composer, reposText, slugify } from '../src/server/kanban/engine/compos
 import type { PromptKind } from '../src/server/kanban/engine/machine.js';
 import type { KanbanContext } from '../src/server/kanban/registry.js';
 import { KanbanSettingsStore, sanitizeKanbanSettings } from '../src/server/kanban/settings.js';
-import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, PR_POSTED, isKanbanPromptId, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
+import { KANBAN_CONTRACTS, KANBAN_PROMPT_DEFS, PROMPT_CONTRACT, prPosted, isKanbanPromptId, STOP_PROCESSES, resolveKanbanPrompt, withContract } from '../src/shared/kanban/prompts.js';
 import { PROMPTS, placeholders, promptText, type PromptId } from '../src/shared/prompts.js';
 import type { RunPhase } from '../src/shared/kanban/types.js';
 import type { LanguageSettings } from '../src/shared/language.js';
@@ -496,6 +496,10 @@ test('UI testing: the implementer gets the block with the images folder, or the 
   assert.match(on, /<subject>-before\.png/);
   assert.match(on, /kanban-ui-screenshots/);
   assert.match(on, /do not get stuck/);
+  assert.match(on, /real browser/);
+  assert.match(on, /flow runner and assertions/);
+  assert.match(on, /what you tested and what the result was/);
+  assert.match(on, /could not test or capture/);
   assert.ok(existsSync(images), 'the folder is made');
   assert.ok(on.indexOf('UI testing is on') < on.indexOf('Never push, open pull requests'), 'in front of the closing lines');
   assert.ok(on.endsWith(KANBAN_CONTRACTS.implementSafety));
@@ -504,6 +508,9 @@ test('UI testing: the implementer gets the block with the images folder, or the 
   const off = compose.build('implement', def, task, 'claude', dir, { phase: 'implement' });
   assert.doesNotMatch(off, /UI testing is on/);
   assert.match(off, /UI testing is off for this task by default/);
+  assert.doesNotMatch(off, /flow runner/);
+  // The other blocks are still about pictures only.
+  for (const id of ['kanban.uiTesting.onRequest', 'kanban.uiTesting.fix'] as const) assert.ok(KANBAN_PROMPT_DEFS[id].text.includes('Use the kanban-ui-screenshots skill for the pictures if it is available to you'), id);
   // The task's own choice over the project's.
   const own = repo.createTask({ project: 'proj', title: 'X', description: 'x', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada', overrides: { uiTesting: true } });
   assert.match(compose.build('implement', def, own, 'claude', dir, { phase: 'implement' }), /UI testing is on/);
@@ -983,17 +990,23 @@ test('post: the block telling the reply is posted goes after the pr.review and t
     const kind: PromptKind = x.panel === 'combine' ? 'rereview' : 'pr.review';
     const off = compose.build(kind, def, task, 'claude', dir, x);
     const on = compose.build(kind, def, task, 'claude', dir, { ...x, post: true });
-    assert.ok(!off.includes(PR_POSTED), 'nothing without post');
-    assert.ok(on.includes(`${PR_POSTED}\n\n${KANBAN_CONTRACTS.prReview}`), `${kind}/${x.panel ?? 'solo'}: the block, then the contract`);
+    assert.ok(!off.includes(prPosted()), 'nothing without post');
+    assert.ok(on.includes(`${prPosted()}\n\n${KANBAN_CONTRACTS.prReview}`), `${kind}/${x.panel ?? 'solo'}: the block, then the contract`);
   }
-  assert.match(PR_POSTED, /in English, for a reader outside this office/);
-  assert.match(PR_POSTED, /Don't mention a kanban task, rounds, other reviewers/);
+  // The fixture sets no public language: the block points at the prompt's own language rule.
+  assert.match(prPosted(), /in the language this prompt's language rule sets for what is posted on pull requests, in English when it sets none, for a reader outside this office/);
+  assert.match(prPosted(), /Don't mention a kanban task, rounds, other reviewers/);
+  assert.match(prPosted('Finnish'), /write it in Finnish, for a reader outside this office/);
+  assert.ok(!prPosted('Finnish').includes('in English'));
+  assert.match(prPosted('Finnish'), /don't write a section about testing/);
+  assert.match(prPosted(), /`## <owner\/repo#number>` exactly as its line above names it/);
+  assert.ok(!prPosted().includes('Pictures:') && prPosted(undefined, true).includes('`Pictures:`'));
   // A rewritten prompt gets it too: it is not a prompt variable.
   settings.setProject('proj', { prompts: { 'kanban.pr.review': 'Mine', 'kanban.pr.review.combine': 'Mine too {{reviews}}' } });
   const mine = compose.build('pr.review', def, task, 'claude', dir, { ...common, post: true });
-  assert.ok(mine.startsWith('Mine') && mine.includes(`${PR_POSTED}\n\n${KANBAN_CONTRACTS.prReview}`));
-  assert.ok(compose.build('rereview', def, task, 'claude', dir, { ...common, panel: 'combine', post: true }).includes(PR_POSTED));
-  assert.deepEqual(Object.keys(PROMPTS).filter((id) => PROMPTS[id as PromptId].text.includes(PR_POSTED)), [], 'it is in no editable prompt');
+  assert.ok(mine.startsWith('Mine') && mine.includes(`${prPosted()}\n\n${KANBAN_CONTRACTS.prReview}`));
+  assert.ok(compose.build('rereview', def, task, 'claude', dir, { ...common, panel: 'combine', post: true }).includes(prPosted()));
+  assert.deepEqual(Object.keys(PROMPTS).filter((id) => PROMPTS[id as PromptId].text.includes(prPosted())), [], 'it is in no editable prompt');
 });
 
 test('kanban.pr.uiTest.review: a rewritten block without {{report}} gets the report line at its end, and an emptied one adds nothing but the section', (t) => {
@@ -1002,7 +1015,7 @@ test('kanban.pr.uiTest.review: a rewritten block without {{report}} gets the rep
   const grant = path.join(ctx.filesDir, 'grants', `task-${task.id}`);
   keepUiTestReport(repo, ctx.filesDir, task.id, 'x');
   const text = compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
-  assert.ok(text.includes(`Pictures: none yet\n${"The tester's report is in " + path.join(grant, 'ui-test-report.md')}.\n\nYour reply must have a section "UI testing"`));
+  assert.ok(text.includes(`Pictures: none yet\n${"The tester's report is in " + path.join(grant, 'ui-test-report.md')}.\n\nDon't write a section about the test`));
 });
 
 test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images folder and the rules, and ends with the UI test contract; the pictures are listed to the reviewers', (t) => {
@@ -1019,9 +1032,10 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   const x = { phase: 'implement' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3 — its head is fetched as origin/office-pr/3', prRepos: '- `.`: Proj' };
   const text = compose.build('pr.uitest', floorDef, task, 'claude', dir, x);
   assert.doesNotMatch(text, /\{\{/);
-  for (const part of ['its head is fetched as origin/office-pr/3', `Save the pictures in ${images}`, '<subject>-before.png or <subject>-after.png', 'under its Images tab: they are not added to any pull request', 'git worktree add --detach', 'git fetch origin pull/<number>/head', 'Never create, move or delete a branch, never commit', 'is from a fork is not tested', "Don't commit, push or change any file of the repositories", 'stop every process you started', 'say so in your report and end', 'Use test data and test accounts only', 'Test the UI and the functionality of these pull requests', 'real user actions', `Write the report to ${report} as you go`, '## UI test report', 'a shared or production backend']) assert.ok(text.includes(part), part);
+  for (const part of ['its head is fetched as origin/office-pr/3', `Save the pictures in ${images}`, '<subject>-before.png or <subject>-after.png', 'under its Images tab. When the review is posted on the pull requests, the pictures that show a fault are attached', 'git worktree add --detach', 'git fetch origin pull/<number>/head', 'Never create, move or delete a branch, never commit', 'is from a fork is not tested', "Don't commit, push or change any file of the repositories", 'stop every process you started', 'say so in your report and end', 'Use test data and test accounts only', 'Test what these pull requests change', 'real user actions', `Write the report to ${report} as you go`, '## Test report', 'a shared or production backend']) assert.ok(text.includes(part), part);
+  for (const part of ['call the changed endpoints', "the project's pull-request review instructions", 'send nothing that writes there']) assert.ok(text.includes(part), part); // not a UI-only tester: endpoints, the project's say, the shared-backend guard
   assert.ok(text.endsWith(KANBAN_CONTRACTS.prUiTest), 'the UI test contract');
-  assert.match(KANBAN_CONTRACTS.prUiTest, /Don't comment on, review, merge or change the pull requests, and attach the pictures to none of them/);
+  assert.match(KANBAN_CONTRACTS.prUiTest, /Don't comment on, review, merge or change the pull requests, and attach the pictures \(if you take any\) to none of them/);
   assert.match(KANBAN_CONTRACTS.prUiTest, /How to end your work/, 'the work-done ending of an investigation');
   assert.doesNotMatch(KANBAN_CONTRACTS.prUiTest, /REVIEW: APPROVED/);
   assert.ok(text.includes('WORK DONE'));
@@ -1029,7 +1043,7 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   assert.match(compose.build('pr.uitest', floorDef, task, 'claude', dir, { ...x, text: 'Use the staging login.' }), /Use the staging login\./);
   // The reviewers get the report and the pictures, when the UI was tested and the tester left either.
   const base = { phase: 'pr-review' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3' };
-  const SECTION = 'Your reply must have a section "UI testing"';
+  const SECTION = "Don't write a section about the test";
   const TESTED = /were tested before your review/;
   assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), TESTED, 'no report and no pictures, nothing to add');
   // A report without pictures.
@@ -1144,7 +1158,7 @@ test('kanban.pr.uiTest.review: when the report file can be neither replaced nor 
   assert.match(readFileSync(path.join(folder, spare[0]), 'utf8'), /the form submits twice/, 'the whole report, the finding at its end too');
   const kept = build();
   assert.ok(kept.includes(`The tester's report is in ${path.join(folder, spare[0])}.`) && !kept.includes(`${report}.`), 'the refused file is not named');
-  assert.ok(kept.includes('Your reply must have a section "UI testing"'));
+  assert.ok(kept.includes("Don't write a section about the test"));
   // A new UI test clears the spare file too.
   resetUiTestReport(repo, ctx.filesDir, task.id);
   assert.deepEqual(readdirSync(folder), []);
@@ -1165,16 +1179,16 @@ test('kanban.pr.uiTest.review: when the report file can be neither replaced nor 
 });
 
 test('the project’s pull-request review instructions go to the UI tester of a pull-request review only', (t) => {
-  const MARK = 'Pull-request review and UI testing';
+  const MARK = 'Pull-request review and testing';
   const { def, dir, repo, settings, compose, ctx } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'PR review: acme/proj#3', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
   const x = { phase: 'implement' as const, prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', prRepos: '- `.`: Proj' };
   const file = path.join(ctx.filesDir, 'instructions', 'proj', 'pr-review.md');
-  assert.ok(KANBAN_PROMPT_DEFS['kanban.pr.uiTest'].text.includes("When the project's instructions below have a part for pull-request review and UI testing, follow it"));
+  assert.ok(KANBAN_PROMPT_DEFS['kanban.pr.uiTest'].text.includes("When the project's instructions below have a part for pull-request review and testing, follow it"));
   assert.doesNotMatch(compose.build('pr.uitest', def, task, 'claude', dir, x), new RegExp(MARK));
   settings.setProject('proj', { prReviewInstructions: 'Copy the database.' });
   const text = compose.build('pr.uitest', def, task, 'claude', dir, x);
-  assert.ok(text.includes(`${MARK}: the project's instructions for it are in \`${file}\`. Read it now, before you start the app or prepare any test data`));
+  assert.ok(text.includes(`${MARK}: the project's instructions for it are in \`${file}\`. Read it now, before you start anything or prepare any test data`));
   assert.equal(readFileSync(file, 'utf8'), 'Copy the database.\n');
   assert.ok(text.includes('Keep it small.') || text.includes('general.md'), 'with the general instructions too');
   assert.ok(text.includes(file));

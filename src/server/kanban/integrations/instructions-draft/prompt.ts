@@ -26,7 +26,7 @@ const TESTING = `This text is the project's "Debugging and testing" instructions
 
 Use these headings (written in the output language): One-time setup (configs, package installs and so on); Preparing the test database; Running the tests; Debugging / UI testing / API testing; Cleanup.`;
 
-const PR_REVIEW = `This text is the project's "Pull-request review" instructions. It is given to the worker that tests a pull request's UI before its review, in fresh worktrees of the repositories.
+const PR_REVIEW = `This text is the project's "Pull-request review" instructions. It is given to the worker that tests a pull request's change before its review (the UI, an API's endpoints or something else, as the change needs), in fresh worktrees of the repositories.
 
 Use these headings (written in the output language): One-time setup in a fresh worktree; Per-review database copies; Starting the services against the copies; Testing (per repository; the UI on mobile and desktop sizes, the user roles to test with, the endpoints); Cleanup.`;
 
