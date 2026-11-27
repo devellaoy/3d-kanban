@@ -25,6 +25,7 @@ import { byUrgency, waitingInOrder, waitingLabel } from './nextup';
 import { askNotifyPermission, DesktopNotifier, notifyPermission, shouldAlert, waitingOnSomeone } from './notify';
 import { workerCard } from './shared/workercard';
 import { officeActions } from './shared/officeactions';
+import { setPullActions } from './ui/github/open-pull';
 import { workerOpener } from './shared/openworker';
 // The tab title counts the workers waiting on someone, on every floor, as the 3D office's does.
 import { renderTitle } from './shared/title';
@@ -183,6 +184,7 @@ function promptWorker(id: string) {
 // ---- New work, the boards and the meeting room (shared/officeactions.ts) ---------------------------
 const { boardActions, sendToWorker } = officeActions(net, (id) => openWorker(id));
 
+setPullActions(boardActions); // a task's pull request opens in the pull request window
 $('btn-issues').addEventListener('click', () => openBoard('issues', net, boardActions()));
 $('btn-pulls').addEventListener('click', () => openBoard('pulls', net, boardActions()));
 $('btn-queue').addEventListener('click', () => openQueue(net, { openTerminal: openWorker }));

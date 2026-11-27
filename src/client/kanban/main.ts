@@ -26,6 +26,7 @@ import { moveWithDialog } from './holddialog';
 import { openIssues } from './issues';
 import { openPulls } from './pulls';
 import { officeActions } from '../shared/officeactions';
+import { setPullActions } from '../ui/github/open-pull';
 import { workerOpener } from '../shared/openworker';
 import { installWorkerBar } from './workerbar';
 import { boardStats, deepLink, EMPTY_FILTER, filterActive, isTaskTab, orderedProjects, parseDeepLink, STATE_FILTERS, TICKET_FILTERS, type BoardFilter, type StateFilter, type TicketFilter } from './model';
@@ -365,6 +366,8 @@ const { boardActions, hireNew, openShell, showMeeting, newMeeting } = officeActi
   if (task) openTask(task, 'terminal');
   else showTerminal(id);
 });
+
+setPullActions(boardActions); // a task's pull request opens in the pull request window
 
 /** The bottom bar: the floor's meeting rooms and plain workers as tabs (their windows as the 2D view opens them), and a new meeting, worker or shell. */
 const { openWorker: openPlainWorker, sendHome } = workerOpener(net, { keypad: () => window.matchMedia('(max-width: 700px)').matches });
