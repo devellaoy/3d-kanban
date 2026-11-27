@@ -316,6 +316,8 @@ test('HTTP through the owner: the allowed reads work, everything else is refused
     '/api/whiteboard/file?floor=locked&id=pic1', // shared, but vera cannot read its repository
     '/api/gh/pull?number=1&floor=vault',
     '/api/gh/pull?number=1',
+    '/api/gh/pull/card?number=1&floor=vault', // the one card is kept to shared floors like the PR itself
+    '/api/gh/pull/card?number=1',
     '/api/docs?floor=vault', // the bookshelf of a floor that is not shared
     '/api/docs?floor=locked',
     '/api/docs',
@@ -329,6 +331,8 @@ test('HTTP through the owner: the allowed reads work, everything else is refused
     '/api/whoami',
     '/api/kanban/upload',
   ]) assert.equal((await via(p)).status, 403, p);
+  // The one card of a PR on the shared floor is let through to the owner (who has no such PR here): any answer but the gate's.
+  assert.notEqual((await via('/api/gh/pull/card?number=1&floor=pub')).status, 403);
   // The bookshelf of the shared floor reads through the owner (its own README, not the visitor's office).
   const shelf = await via('/api/docs?floor=pub');
   assert.equal(shelf.status, 200);
