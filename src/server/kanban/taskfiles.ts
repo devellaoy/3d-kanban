@@ -1,6 +1,6 @@
 // A task's files in its grant folder that prompts name by path: the accepted plan, the conversation and the UI test's report.
 
-import { lstatSync, mkdirSync, readFileSync, rmSync } from 'node:fs';
+import { closeSync, constants, fstatSync, lstatSync, mkdirSync, openSync, readSync, rmSync } from 'node:fs';
 import path from 'node:path';
 import { failOnce, putOfficeFile } from './officefile.js';
 import { grantDir } from './uploads.js';
@@ -54,10 +54,10 @@ export function syncUiTestReport(filesDir: string, taskId: number, text: string 
   return sync(uiTestReportPath(filesDir, taskId), 'the UI test report', text);
 }
 
-/** Leaves no report at all, whatever is at its path (a file, a read-only copy, a link), so the next tester can create it. Never throws. */
+/** Leaves nothing at the report's path, whatever is there (a file, a read-only copy, a link, a folder), so the next report can be written. A link is removed, never followed. Never throws. */
 export function dropUiTestReport(filesDir: string, taskId: number): void {
   try {
-    rmSync(uiTestReportPath(filesDir, taskId), { force: true });
+    rmSync(uiTestReportPath(filesDir, taskId), { force: true, recursive: true });
   } catch {
     // it stays; nothing more to try
   }
@@ -65,14 +65,45 @@ export function dropUiTestReport(filesDir: string, taskId: number): void {
 
 const REPORT_MAX_BYTES = 200_000;
 
-/** The tester's report: only a regular file (never a link) up to 200 kB with text in it; anything else, or any error, is no report. Never throws. */
-export function readUiTestReport(filesDir: string, taskId: number): string | undefined {
+/** Whether a report is there for a prompt to name: a regular file only (not a link, not a folder). Never throws. */
+export function hasUiTestReport(filesDir: string, taskId: number): boolean {
+  try {
+    return lstatSync(uiTestReportPath(filesDir, taskId)).isFile();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * The tester's report: only a regular file (never a link) up to 200 kB with text in it; anything else, or any error, is no report.
+ * The file is opened without following a link and checked and read through that one descriptor, at most the limit's bytes, so
+ * what is at the path cannot change between the check and the read. `opened` is for tests: called once the file is open. Never throws.
+ */
+export function readUiTestReport(filesDir: string, taskId: number, opened?: () => void): string | undefined {
+  let fd: number | undefined;
   try {
     const file = uiTestReportPath(filesDir, taskId);
-    const st = lstatSync(file);
+    // Not a link (checked again by O_NOFOLLOW where the platform has it), and never a blocking open of a pipe.
+    if (!lstatSync(file).isFile()) return undefined;
+    fd = openSync(file, constants.O_RDONLY | (constants.O_NOFOLLOW ?? 0) | (constants.O_NONBLOCK ?? 0));
+    opened?.();
+    const st = fstatSync(fd);
     if (!st.isFile() || st.size > REPORT_MAX_BYTES) return undefined;
-    return readFileSync(file, 'utf8').trim() || undefined;
+    const buf = Buffer.alloc(REPORT_MAX_BYTES + 1);
+    let n = 0;
+    for (let got = -1; got !== 0 && n < buf.length; n += got) got = readSync(fd, buf, n, buf.length - n, null);
+    // It grew while it was read: not the report that was checked.
+    if (n > REPORT_MAX_BYTES) return undefined;
+    return buf.toString('utf8', 0, n).trim() || undefined;
   } catch {
     return undefined;
+  } finally {
+    if (fd !== undefined) {
+      try {
+        closeSync(fd);
+      } catch {
+        // already closed
+      }
+    }
   }
 }

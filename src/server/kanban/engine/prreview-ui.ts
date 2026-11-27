@@ -119,16 +119,28 @@ export async function launchUi(d: PrReviewDeps, req: KanbanPrReviewRequest, task
 }
 
 /**
- * The tester's turn ended with its reply. The report is its reply when that has the report's heading, else what it wrote in its
- * file, else the reply as it is: that one text is kept in the file the reviewers read (the office's own copy from here on) and is
- * the `result` comment of the task, the tester goes home with its worktree removed (a
- * worker that is not a reviewer would keep it), and the review starts. Returns the machine event for that.
+ * The report of a UI test, from what the tester wrote in its file (`own`, see readUiTestReport) and its last reply: the file's
+ * text comes first; a reply that is a report too (it has the report's heading) and says something the file does not is kept
+ * after it, so neither a draft in the file nor a short reply loses the other's findings. Without a file it is the reply.
+ */
+export function uiTestReport(own: string | undefined, reply: string): string {
+  const text = reply.trim();
+  if (!own) return text;
+  const flat = (t: string) => t.replace(/\s+/g, ' ').trim();
+  if (!REPORT_HEADING.test(text) || flat(own).includes(flat(text))) return own;
+  return `${own}\n\n---\n\nThe tester's final reply:\n\n${text}`;
+}
+
+/**
+ * The tester's turn ended with its reply. Its report (uiTestReport) is one text: it replaces whatever is at the report's path as
+ * the office's own copy, which the reviewers read, and it is the `result` comment of the task. The tester goes home with its
+ * worktree removed (a worker that is not a reviewer would keep it), and the review starts. Returns the machine event for that.
  */
 export async function uiEnded(d: PrReviewDeps, task: KanbanTask, live: Live, text: string, say: (kind: 'result', text: string) => void): Promise<{ type: 'prUiTested' }> {
-  // One text for the reviewers' file and the conversation: the reply when it holds the report (it is the tester's last word), else the file.
-  const own = readUiTestReport(d.ctx.filesDir, task.id);
-  const report = own && !REPORT_HEADING.test(text) ? own : text;
+  const report = uiTestReport(readUiTestReport(d.ctx.filesDir, task.id), text);
   say('result', report);
+  // Whatever the tester left there goes first, unread: a file over the limit, a link or a folder is not compared with or written through.
+  dropUiTestReport(d.ctx.filesDir, task.id);
   syncUiTestReport(d.ctx.filesDir, task.id, report);
   const floor = d.ctx.floor(live.floorId);
   if (floor?.workers.get(live.workerId)) await floor.sendHome(live.workerId, 'all', ENGINE);

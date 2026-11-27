@@ -5,14 +5,15 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { execFileSync } from 'node:child_process';
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { existsSync, lstatSync, mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import type { GitRunner } from '../src/server/kanban/engine/prheads.js';
 import { uiImagesDir } from '../src/server/kanban/engine/uitesting.js';
 import { checkScreenshots, type ScreenshotMark } from '../src/server/kanban/integrations/pulls/screenshots.js';
 import { closingsIdle } from '../src/server/kanban/integrations/pulls/closes.js';
-import { readUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
+import { dropUiTestReport, hasUiTestReport, readUiTestReport, syncUiTestReport, uiTestReportPath } from '../src/server/kanban/taskfiles.js';
+import { uiTestReport } from '../src/server/kanban/engine/prreview-ui.js';
 import { grantDir } from '../src/server/kanban/uploads.js';
 import type { KanbanTask } from '../src/shared/kanban/types.js';
 import { ADA, engineFixture, type EngineFixture, type Rule } from './kanban-engine-fixture.js';
@@ -51,6 +52,16 @@ async function uiReview(fx: EngineFixture, more: object = {}) {
   if (typeof got === 'string') throw new Error(got);
   return { id: got.taskId, tester: got.workerId! };
 }
+
+/** Whether anything, a dangling link too, is at `p`. */
+const lstatExists = (p: string) => {
+  try {
+    lstatSync(p);
+    return true;
+  } catch {
+    return false;
+  }
+};
 
 const branchLeft = (fx: EngineFixture, wt: string) => git(fx.dir, 'branch', '--list', 'office/*').includes(path.basename(wt));
 
@@ -326,7 +337,7 @@ test('uiTest: the report the tester wrote is kept and is the result comment when
   assert.ok(prompts(fx, /Review these pull requests/)[0].prompt!.includes(`The tester's report is in ${file}.`));
 });
 
-test('uiTest: a reply that holds the whole report goes over an earlier draft in the file, for the reviewers and the conversation alike', async (t) => {
+test('uiTest: the file stays first and a reply that is a report too is kept after it, for the reviewers and the conversation alike', async (t) => {
   const fx = await setup(t);
   const full = '## UI test report\n### Tested\n- PR 3 login: FAILED\n### Findings\n- PR 3: the form submits twice';
   fx.setRules([TESTER(full, { delayMs: 1500 }), MAIN(APPROVED)]);
@@ -336,11 +347,76 @@ test('uiTest: a reply that holds the whole report goes over an earlier draft in 
   writeFileSync(file, '## UI test report\n### Tested\n- PR 3 login: NOT TESTED');
   await fx.waitTask(id, inReview, 'the review column', 40_000);
   const kept = readFileSync(file, 'utf8');
-  assert.match(kept, /the form submits twice/, 'the reviewers read the finished report, not the draft');
-  assert.doesNotMatch(kept, /NOT TESTED/);
+  assert.ok(kept.startsWith('## UI test report\n### Tested\n- PR 3 login: NOT TESTED'), 'what the tester wrote in the file comes first');
+  assert.match(kept, /The tester's final reply:[\s\S]*the form submits twice/, 'and the finding only its reply has is not lost');
   const results = fx.repo.listComments(id).comments.filter((c) => c.kind === 'result');
   assert.equal(results.length, 1);
   assert.equal(results[0].text.trim(), kept.trim(), 'one text in both places');
+});
+
+test('uiTestReport: the file is the report; a headed reply adds only what the file lacks, and without a file the reply is it', () => {
+  const file = '## UI test report\n### Tested\n- PR 3 login: FAILED\n### Findings\n- PR 3: the form submits twice. Steps: open /login, press Enter twice.';
+  // A short summary under the same heading never replaces the detailed report: it comes after it.
+  const summary = '## UI test report\nOne path failed, see the file.';
+  const both = uiTestReport(file, `${summary}\n\nWORK DONE`);
+  assert.ok(both.startsWith(file), 'the detailed report is kept, first');
+  assert.match(both, /press Enter twice[\s\S]*The tester's final reply:[\s\S]*One path failed/);
+  // A reply that repeats the file, whatever its spacing, adds nothing; nor does one that is no report.
+  assert.equal(uiTestReport(file, file.replace(/\n/g, '\n\n')), file);
+  assert.equal(uiTestReport(file, 'Done. The UI test report is in the file named above.'), file);
+  assert.equal(uiTestReport(file, ''), file);
+  assert.equal(uiTestReport(undefined, ' Nothing to test. \n'), 'Nothing to test.');
+  assert.equal(uiTestReport(undefined, ''), '');
+});
+
+test('uiTest: a file over the limit, a folder or a link at the report’s path is replaced unread by the reply, and a Retry clears a folder there', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([TESTER('Nothing changes the UI.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  await until('the tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 1);
+  writeFileSync(file, 'x'.repeat(5_000_000));
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  assert.equal(readFileSync(file, 'utf8').trim(), 'Nothing changes the UI.', 'the large file is gone, the reply is the report');
+  assert.deepEqual(fx.repo.listComments(id).comments.filter((c) => c.kind === 'result').map((c) => c.text), ['Nothing changes the UI.']);
+  assert.ok(prompts(fx, /Review these pull requests/)[0].prompt!.includes(`The tester's report is in ${file}.`));
+
+  // The same three wrong things, through the helpers the run uses: none is a report, and the reset leaves nothing of any.
+  const secret = path.join(path.dirname(file), 'secret.txt');
+  writeFileSync(secret, 'secret');
+  for (const wrong of [() => mkdirSync(path.join(file, 'inner'), { recursive: true }), () => symlinkSync(secret, file), () => symlinkSync(path.dirname(file), file)]) {
+    rmSync(file, { recursive: true, force: true });
+    wrong();
+    assert.equal(hasUiTestReport(fx.ctx.filesDir, id), false, 'no prompt names it');
+    assert.equal(readUiTestReport(fx.ctx.filesDir, id), undefined);
+    dropUiTestReport(fx.ctx.filesDir, id);
+    assert.ok(!existsSync(file) && !lstatExists(file), 'the reset removes it');
+    assert.equal(syncUiTestReport(fx.ctx.filesDir, id, 'next'), file, 'and the next report can be written');
+  }
+  assert.equal(readFileSync(secret, 'utf8'), 'secret', 'a link is removed, never followed');
+});
+
+test('readUiTestReport: what is read is the file that was checked, even when the path becomes a link meanwhile', (t) => {
+  const root = mkdtempSync(path.join(tmpdir(), 'ui-report-'));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const file = uiTestReportPath(root, 7);
+  mkdirSync(path.dirname(file), { recursive: true });
+  const secret = path.join(root, 'secret.txt');
+  writeFileSync(secret, 'secret');
+  writeFileSync(file, 'the report');
+  let swapped = false;
+  const got = readUiTestReport(root, 7, () => {
+    rmSync(file);
+    symlinkSync(secret, file);
+    swapped = true;
+  });
+  assert.ok(swapped);
+  assert.equal(got, 'the report', 'the open file, not what the path points at now');
+  assert.equal(readUiTestReport(root, 7), undefined, 'and the link itself is never opened');
+  // A file that grows past the limit after it was checked is no report either.
+  rmSync(file);
+  writeFileSync(file, 'x'.repeat(200_000));
+  assert.equal(readUiTestReport(root, 7, () => writeFileSync(file, 'y'.repeat(300_000))), undefined);
 });
 
 test('readUiTestReport: only a regular file with text, up to 200 kB; a link, an empty or a large file is no report', (t) => {

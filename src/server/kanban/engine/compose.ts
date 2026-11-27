@@ -2,7 +2,7 @@
 // project, see resolveKanbanPrompt) filled in from the task, its project and its workspace, with the
 // fixed contract block for the phase after them.
 
-import { existsSync, mkdirSync } from 'node:fs';
+import { mkdirSync } from 'node:fs';
 import path from 'node:path';
 import type { FloorDef } from '../../building.js';
 import type { Floor } from '../../floor.js';
@@ -32,7 +32,7 @@ import { workerIssueKey } from './worker-issue.js';
 import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, type UiBlockKind } from './uitesting.js';
 import { instructionsBlock, prReviewInstructionsPart } from './instructions-block.js';
 import { historyBlock, planBlock } from './taskfiles-block.js';
-import { syncPlanFile, uiTestReportPath } from '../taskfiles.js';
+import { hasUiTestReport, syncPlanFile, uiTestReportPath } from '../taskfiles.js';
 import { unbuiltWorkspaces, worktreeDir } from '../../worktree-home.js';
 
 type Vars = Record<string, string | number>;
@@ -511,7 +511,7 @@ export class Composer {
     if (!x.uiTest) return text;
     const dir = uiImagesDir(this.ctx.filesDir, task.id), file = uiTestReportPath(this.ctx.filesDir, task.id);
     const images = listUiImages(dir, projectRepos(def).map((r) => r.id));
-    const has = existsSync(file);
+    const has = hasUiTestReport(this.ctx.filesDir, task.id);
     if (!has && !images.length) return text;
     const report = has ? `The tester's report is in ${file}.` : 'The tester left no report.';
     const id = 'kanban.pr.uiTest.review';

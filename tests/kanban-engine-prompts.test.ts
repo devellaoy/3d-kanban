@@ -1046,6 +1046,11 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   assert.ok(listed.includes(`- login: before ${path.join(images, 'login-before.png')}, after ${path.join(images, 'login-after.png')}`));
   assert.match(listed, /A wrong UI in the pictures is a finding\. Pictures that are missing are not/);
   assert.ok(listed.includes('The tester left no report.'));
+  // A folder at the report's path is no report to name.
+  mkdirSync(report);
+  const folder = compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true });
+  assert.ok(folder.includes('The tester left no report.') && !folder.includes("The tester's report is in"));
+  rmSync(report, { recursive: true });
   assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, base), TESTED, 'only a review that had the UI tested');
   // The review's own section: the main reviewer and the combine, not an additional reviewer.
   assert.ok(listed.includes(SECTION), 'the main reviewer');
