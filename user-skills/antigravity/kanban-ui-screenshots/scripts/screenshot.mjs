@@ -154,15 +154,15 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { validateTestSteps, runActions, runAssertions, classifyFailure } from './ui-test.mjs'
 import {
   DEFAULT_DELAY_MS, assignStatePaths, boolFlag, buildJobs, expandFlowArgs, findNameCollisions, parseArgs,
-  labelName, nonNegNum, LEGACY_SESSION_NOTE, hasLegacySessionStorage, posNum, runPool, safeOrigin, scrubUrls, settlePlan, shotFileName, slug, subjectSlug, usableState, writeFileAtomic, suiteLine, summaryLine,
+  labelName, nonNegNum, LEGACY_SESSION_NOTE, hasLegacySessionStorage, displayUrl, posNum, runPool, safeOrigin, scrubUrls, settlePlan, shotFileName, slug, subjectSlug, usableState, writeFileAtomic, suiteLine, summaryLine,
 } from './flow-suite.mjs'
 
 /** Kaikki ei-polkutuloste menee stderriin, jotta stdout pysyy pelkkinä kuvapolkuina. */
-function note(msg) {
-  // URLs on stderr are reduced to their origin unless a flow asked for includeValues.
-  process.stderr.write((showFullUrls ? msg : scrubUrls(msg)) + '\n')
+function note(msg, full = false) {
+  // URLs on stderr are reduced to their origin; only a line printed by a job whose own flow
+  // has includeValues: true (full = true) may show them in full.
+  process.stderr.write((full ? msg : scrubUrls(msg)) + '\n')
 }
-let showFullUrls = false
 
 /**
  * Käyttäjän/kutsujan virhe (väärä lippu, puuttuva elementti, virheellinen flow).
@@ -738,7 +738,7 @@ async function runFlow(job, ctx) {
 async function runFlowInner(job, ctx, result) {
   const flow = job.flow
   const { browser, session, deviceRegistry, outDir, shotDir, timeout, delay } = ctx
-  const log = (msg) => note(job.multi ? `[${job.label}] ${msg}` : msg)
+  const log = (msg) => note(job.multi ? `[${job.label}] ${msg}` : msg, flow?.includeValues === true)
   if (job.loadError) throw new UserError(job.loadError)
   const flowName = slug(flow.name || job.name || 'flow')
   const statePath = job.statePath ?? null
@@ -885,7 +885,7 @@ async function runFlowInner(job, ctx, result) {
 
       if (typeof step.goto === 'string') {
         const url = joinUrl(baseUrl, step.goto)
-        log(`${label}: goto ${url}`)
+        log(`${label}: goto ${displayUrl(url, flow.includeValues === true)}`)
         await legacyStep('goto', page, null, () => navigate(page, url, timeout))
         idleMs = await settle(page, planFor(step))
       }
@@ -1272,7 +1272,6 @@ async function main() {
     flowDir: process.cwd(),
   }
   const concurrency = Math.floor(posNum(args.concurrency, 4))
-  showFullUrls = jobs.some((j) => j.flow?.includeValues === true)
 
   note(`JOBS ${jobs.length}: ${jobs.map((j) => j.label).join(', ')}`)
 

@@ -23,7 +23,8 @@ Errors caused by bad input (unknown device, missing element, malformed flow) pri
 clear line and exit with code `2`. In single-URL mode a failing `--wait-selector`, `--click` or
 `--clip-selector` prints the kind of failure without the selector, e.g.
 `Virhe: --click 1: not-found, matches=0`. Addresses on stderr are shown as their origin only
-(no path or query), unless a flow sets `includeValues: true`.
+(no path or query); a flow with `includeValues: true` shows full addresses in its own lines only,
+never in another flow's or in the shared lines.
 
 ## Viewport, mobile and devices
 

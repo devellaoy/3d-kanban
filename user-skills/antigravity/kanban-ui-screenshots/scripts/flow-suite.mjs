@@ -291,16 +291,31 @@ export function safeOrigin(url) {
   }
 }
 
-/** Replaces every URL in a text with its origin (paths, queries and fragments can hold tokens). */
+/**
+ * Last-resort net for text the code does not compose itself (Playwright errors): every URL-like
+ * token (up to whitespace or a quote, so ")" and "]" inside the URL are part of it) becomes its
+ * origin; one that cannot be parsed becomes [redacted-url].
+ */
 export function scrubUrls(text) {
-  return String(text).replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>)\]]+/gi, (m) => {
+  return String(text).replace(/\b[a-z][a-z0-9+.-]*:\/\/[^\s"'<>`]+/gi, (m) => {
     try {
       const origin = new URL(m).origin
-      return origin === 'null' ? '[redacted]' : origin
+      return origin === 'null' ? '[redacted-url]' : origin
     } catch {
-      return '[redacted]'
+      return '[redacted-url]'
     }
   })
+}
+
+/** Address for a log line: the origin by default, the full URL only for an includeValues flow. */
+export function displayUrl(url, full = false) {
+  if (full) return url
+  try {
+    const origin = new URL(url).origin
+    return origin === 'null' ? '[redacted-url]' : origin
+  } catch {
+    return '[redacted-url]'
+  }
 }
 
 /** Writes a file atomically with mode 0600: random temp name beside it ('wx'), then rename. */

@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   parseArgs, settlePlan, expandFlowArgs, buildJobs, subjectSlug, shotFileName, findNameCollisions,
-  runPool, summaryLine, suiteLine, assignStatePaths, sidedStatePath, stateMissingOrigin, nonNegNum, labelName, usableState, hasLegacySessionStorage, safeOrigin, writeFileAtomic,
+  runPool, summaryLine, suiteLine, assignStatePaths, sidedStatePath, stateMissingOrigin, nonNegNum, labelName, usableState, hasLegacySessionStorage, scrubUrls, displayUrl, safeOrigin, writeFileAtomic,
 } from './flow-suite.mjs';
 
 const UI_IMAGE_RE = /^[a-z0-9][a-z0-9._-]{0,80}-(before|after)\.png$/;
@@ -225,4 +225,16 @@ test('stateMissingOrigin uses the saved sessionStorage origin; legacy files bind
   assert.equal(hasLegacySessionStorage(saved), false);
   assert.equal(hasLegacySessionStorage({ sessionStorage: {} }), false);
   assert.equal(stateMissingOrigin({ cookies: [], origins: [], sessionStorage: {} }, 'http://a:1/'), true);
+});
+
+test('URL scrubbing and goto address handle parentheses and IPv6', () => {
+  const url = 'http://[::1]:8080/a(1)/b?token=T';
+  assert.equal(displayUrl(url), 'http://[::1]:8080');
+  assert.equal(displayUrl('https://example.test/items(42)/detail?token=TEST'), 'https://example.test');
+  assert.equal(displayUrl(url, true), url);
+  assert.equal(displayUrl('not a url'), '[redacted-url]');
+  assert.equal(scrubUrls(`goto ${url} failed`), 'goto http://[::1]:8080 failed');
+  assert.equal(scrubUrls('see https://example.test/items(42)/detail?token=TEST now'), 'see https://example.test now');
+  assert.equal(scrubUrls('"https://h.test/x]y?t=1"'), '"https://h.test"');
+  assert.equal(scrubUrls('http://:bad/x?t=1 end'), '[redacted-url] end');
 });

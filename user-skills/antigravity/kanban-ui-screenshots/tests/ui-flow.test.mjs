@@ -336,3 +336,30 @@ test('real browser: cookies stay on their host across a viewport change, URLs ar
     assert.equal(single.stdout, '');
   }
 });
+
+test('real browser: includeValues shows full URLs only for the flow that opted in', { timeout: 60000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'kanban-ui-optin-test-'));
+  const artifacts = new Set();
+  const server = createServer((req, res) => { res.writeHead(200, { 'Content-Type': 'text/html' }); res.end('<!doctype html><title>x</title><main>ok</main>'); });
+  await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+  const baseUrl = `http://127.0.0.1:${server.address().port}`;
+  t.after(async () => {
+    server.closeAllConnections(); await new Promise(resolve => server.close(resolve));
+    for (const file of artifacts) await rm(file, { force: true });
+    await rm(directory, { recursive: true, force: true });
+  });
+  const flows = [];
+  for (const [name, includeValues, marker] of [['quiet', false, 'HIDDENQ'], ['loud', true, 'SHOWNQ']]) {
+    const path = join(directory, name + '.json');
+    await writeFile(path, JSON.stringify({ name, baseUrl, includeValues, steps: [{ goto: `/p(1)/x?t=${marker}`, waitSelector: 'main', shot: name }] }));
+    flows.push(path);
+  }
+  const result = await execute(['--flow', flows[0], '--flow', flows[1], '--timeout', '3000', '--delay', '1']);
+  assert.equal(result.code, 0, result.stderr);
+  const texts = [result.stdout, result.stderr];
+  for (const m of result.stderr.matchAll(/(?:REPORT|SUITE-REPORT) (.+)$/gm)) { artifacts.add(m[1]); texts.push(await readFile(m[1], 'utf8')); }
+  for (const path of result.stdout.trim().split('\n')) artifacts.add(path);
+  for (const text of texts) assert.ok(!text.includes('HIDDENQ'), 'the quiet flow leaks no URL');
+  assert.match(result.stderr, new RegExp(`\\[loud\\] askel 1/1: goto ${baseUrl.replace(/[.]/g, '\\.')}/p\\(1\\)/x\\?t=SHOWNQ`));
+  assert.match(result.stderr, new RegExp(`\\[quiet\\] askel 1/1: goto ${baseUrl.replace(/[.]/g, '\\.')}$`, 'm'));
+});

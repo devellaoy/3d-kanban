@@ -120,7 +120,7 @@ headers or cookies are collected in the JSON report. Diagnostics alone do not fa
 unless `failOnPageError: true` is set; expected HTTP failures may be part of a recovery test.
 Top-level `includeValues: true` opts into textual assertion values and raw console/error text
 (bounded); use only with nonsensitive test data. Progress lines on stderr show addresses as
-their origin only unless `includeValues` is set. Legacy `eval`/`measure` output can still expose
+their origin only; a flow that sets `includeValues` shows full addresses in its own lines only. Legacy `eval`/`measure` output can still expose
 page text and is not a secure logging channel.
 
 Top-level `trace: true` captures Playwright traces (one per browser context) for detailed
