@@ -14,6 +14,9 @@ export interface ActionIssue {
   sourceId?: string;
 }
 
+/** The name the issue's comment box keeps across redraws (its data-focus): the issue's own, so the box of another issue the task is linked to next is another box (the large editor follows a field by this name, ui/textexpand.ts). */
+export const commentFocus = (issue: Pick<ActionIssue, 'key' | 'sourceId'>) => `issue-comment:${issue.sourceId ?? ''}:${issue.key}`;
+
 /** A link from a source, only when it's http(s): nothing else goes into an href. */
 export function safeUrl(url: string | undefined): string {
   return url && /^https?:\/\//i.test(url) ? url : '';

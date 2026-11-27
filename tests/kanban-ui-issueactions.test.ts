@@ -1,7 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { toGhIssue } from '../src/shared/kanban/issuecard.js';
-import { LIST_BODY, issueGetMsg, listedBody, actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
+import { commentFocus, LIST_BODY, issueGetMsg, listedBody, actionIssue, actionsTarget, closesOrReopens, keyedComment, safeUrl, shownStatus, groupTransitions, isGithubKey, jiraSite, pinnedMe, transitionLabel } from '../src/client/kanban/issueactionsmodel.js';
 
 test('only a card with a key on a floor with a project gets the issue actions', () => {
   assert.equal(actionsTarget({}, 'demo'), undefined, 'upstream’s key-less issue keeps its own window as it was');
@@ -102,4 +102,10 @@ test('a later read of a task’s issue names the source the issue shown came thr
   assert.deepEqual(issueGetMsg('app', 'UYT-12'), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' }, 'the first read: the source is not known yet');
   assert.deepEqual(issueGetMsg('app', 'UYT-12', { source: 'jira-b', fresh: true }), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12', source: 'jira-b', fresh: true });
   assert.deepEqual(issueGetMsg('app', 'UYT-12', { source: undefined, fresh: false }), { t: 'kanban.issue.get', project: 'app', issueKey: 'UYT-12' });
+});
+
+test('the comment box is named by its issue: another issue or another source is another box', () => {
+  assert.notEqual(commentFocus({ key: 'UYT-1' }), commentFocus({ key: 'UYT-2' }));
+  assert.notEqual(commentFocus({ key: 'UYT-1', sourceId: 'a' }), commentFocus({ key: 'UYT-1', sourceId: 'b' }));
+  assert.equal(commentFocus({ key: 'UYT-1', sourceId: 'a' }), commentFocus({ key: 'UYT-1', sourceId: 'a' }));
 });

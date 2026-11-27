@@ -12,7 +12,7 @@ import type { KanbanApi } from './api';
 import { renderMarkdown } from './md';
 import { onSendKey, sendHint } from './sendkey';
 import { run, textArea, textInput } from './ui';
-import { groupTransitions, isGithubKey, jiraSite, pinnedMe, setPinnedMe, shownStatus, transitionLabel, closesOrReopens, type ActionIssue } from './issueactionsmodel';
+import { commentFocus, groupTransitions, isGithubKey, jiraSite, pinnedMe, setPinnedMe, shownStatus, transitionLabel, closesOrReopens, type ActionIssue } from './issueactionsmodel';
 
 type Transitions = Extract<KanbanServerMsg, { t: 'kanban.issueTransitions' }>;
 type Comments = Extract<KanbanServerMsg, { t: 'kanban.issueComments' }>;
@@ -200,7 +200,7 @@ export function issueActions(api: KanbanApi, project: string, first: ActionIssue
   // ---- Comments ----
   if (sections.includes('comments')) {
     const list = h('ol.kb-ia-comments', { 'aria-label': 'Comments' });
-    const ta = textArea('', { rows: 3, placeholder: `Comment on ${issue.key} · ${sendHint()}`, 'aria-label': `Comment on ${issue.key}`, 'data-focus': 'issue-comment' });
+    const ta = textArea('', { rows: 3, placeholder: `Comment on ${issue.key} · ${sendHint()}`, 'aria-label': `Comment on ${issue.key}`, 'data-focus': commentFocus(issue) });
     const send = h('button.btn.small', { type: 'button', title: 'Post the comment on the issue at its source', 'data-focus': 'issue-comment-send' }, 'Comment') as HTMLButtonElement;
     const composer = h('div.kb-ia-composer', {}, ta, h('div.kb-ia-row', {}, h('small.kb-ia-quiet.grow', {}, sendHint()), send));
     let gen = 0;
