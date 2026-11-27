@@ -1044,7 +1044,7 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   assert.ok(!foreign.includes("The tester's report is in") && foreign.includes("The tester's report could not be kept as a file. It is:\n## UI test report\nPASSED"));
   // A new UI test starts: the earlier report is not its.
   rmSync(report);
-  resetUiTestReport(repo, task.id);
+  resetUiTestReport(repo, ctx.filesDir, task.id);
   assert.doesNotMatch(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }), TESTED);
   // Pictures without a report.
   mkdirSync(images, { recursive: true });
@@ -1075,35 +1075,64 @@ test('kanban.pr.uiTest: the UI tester’s prompt names each head, the images fol
   assert.ok(compose.build('pr.review', floorDef, task, 'claude', dir, { ...base, uiTest: true }).includes(`The tester's report is in ${report}.`));
 });
 
-test('kanban.pr.uiTest.review: when the report file can be neither replaced nor removed, the file left there is not named and the reviewers get the report as text', (t) => {
+test('kanban.pr.uiTest.review: when the report file can be neither replaced nor removed, the file left there is not named: the whole report is kept beside it, and with no file at all its text is given, marked as cut when it is', (t) => {
   const { def: floorDef, dir, repo, compose, ctx } = setup(t);
   const task = repo.createTask({ project: 'proj', title: 'PR review', description: 'x', type: 'investigate', tool: 'claude', usePlan: false, planApproval: 'auto', useReview: false, createdBy: 'Ada' });
   const report = path.join(ctx.filesDir, 'grants', `task-${task.id}`, 'ui-test-report.md');
-  mkdirSync(path.dirname(report), { recursive: true });
+  const folder = path.dirname(report);
+  mkdirSync(folder, { recursive: true });
   // What the tester left, over the limit and so refused as a report: an ordinary file.
   writeFileSync(report, 'x'.repeat(5_000_000));
-  const refuse = (name: 'renameSync' | 'rmSync', at: number) => {
-    const real = fs[name] as (...a: unknown[]) => unknown;
-    t.mock.method(fs, name, ((...a: unknown[]) => {
-      if (a[at] === report) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
-      return real(...a);
-    }) as never);
-  };
-  refuse('renameSync', 1);
-  refuse('rmSync', 0);
-  syncBuiltinESMExports();
-  try {
-    keepUiTestReport(repo, ctx.filesDir, task.id, '## UI test report\n### Findings\n- PR 3: the form submits twice');
-  } finally {
-    t.mock.restoreAll();
+  // The only finding is far past what a prompt could carry as text.
+  const long = `## UI test report\n### Tested\n${'- PR 3 a path: PASSED\n'.repeat(2000)}### Findings\n- PR 3: the form submits twice`;
+  assert.ok(long.indexOf('the form submits twice') > 30_000);
+  const refusing = (every: boolean, run: () => void) => {
+    const refuse = (name: 'renameSync' | 'rmSync', at: number) => {
+      const real = fs[name] as (...a: unknown[]) => unknown;
+      t.mock.method(fs, name, ((...a: unknown[]) => {
+        if (a[at] === report || (every && name === 'renameSync' && path.dirname(String(a[at])) === folder)) throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+        return real(...a);
+      }) as never);
+    };
+    refuse('renameSync', 1);
+    refuse('rmSync', 0);
     syncBuiltinESMExports();
-  }
+    try {
+      run();
+    } finally {
+      t.mock.restoreAll();
+      syncBuiltinESMExports();
+    }
+  };
+  const build = () => compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
+
+  // Its own path refused: the whole report is kept under another name, and that file is what the reviewers are pointed to.
+  refusing(false, () => keepUiTestReport(repo, ctx.filesDir, task.id, long));
   assert.equal(statSync(report).size, 5_000_000, 'the refused file is still there');
-  assert.deepEqual(readdirSync(path.dirname(report)), ['ui-test-report.md'], 'and no temporary file is left');
-  const text = compose.build('pr.review', floorDef, task, 'claude', dir, { phase: 'pr-review', prs: '- acme/proj#3 https://github.com/acme/proj/pull/3', uiTest: true });
-  assert.ok(!text.includes("The tester's report is in") && !text.includes(report), 'the file is not named');
-  assert.ok(text.includes("The tester's report could not be kept as a file. It is:\n## UI test report\n### Findings\n- PR 3: the form submits twice"));
-  assert.ok(text.includes('Your reply must have a section "UI testing"'));
+  const spare = readdirSync(folder).filter((n) => n !== 'ui-test-report.md');
+  assert.equal(spare.length, 1, 'one more file, and no temporary one');
+  assert.match(spare[0], /^ui-test-report\.[0-9a-f]{16}\.md$/);
+  assert.match(readFileSync(path.join(folder, spare[0]), 'utf8'), /the form submits twice/, 'the whole report, the finding at its end too');
+  const kept = build();
+  assert.ok(kept.includes(`The tester's report is in ${path.join(folder, spare[0])}.`) && !kept.includes(`${report}.`), 'the refused file is not named');
+  assert.ok(kept.includes('Your reply must have a section "UI testing"'));
+  // A new UI test clears the spare file too.
+  resetUiTestReport(repo, ctx.filesDir, task.id);
+  assert.deepEqual(readdirSync(folder), []);
+
+  // No file can be written at all: the text is given, and said to be cut where it is.
+  writeFileSync(report, 'x'.repeat(5_000_000));
+  refusing(true, () => keepUiTestReport(repo, ctx.filesDir, task.id, long));
+  assert.deepEqual(readdirSync(folder), ['ui-test-report.md'], 'no temporary file is left');
+  const cut = build();
+  assert.ok(!cut.includes("The tester's report is in") && !cut.includes(report), 'the file is not named');
+  assert.ok(cut.includes("The tester's report could not be kept as a file. It is:\n## UI test report\n### Tested"));
+  assert.match(cut, new RegExp(`\\[The report is cut here: this is its first 30000 of ${long.length} characters\\. The rest, which may hold findings, could not be given to you`));
+  assert.ok(!cut.includes('the form submits twice'));
+  // A short one is given whole, with no such note.
+  refusing(true, () => keepUiTestReport(repo, ctx.filesDir, task.id, '## UI test report\n### Findings\n- PR 3: the form submits twice'));
+  const whole = build();
+  assert.ok(whole.includes("It is:\n## UI test report\n### Findings\n- PR 3: the form submits twice") && !whole.includes('The report is cut here'));
 });
 
 test('the project’s pull-request review instructions go to the UI tester of a pull-request review only', (t) => {

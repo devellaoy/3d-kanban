@@ -29,7 +29,7 @@ import { languageRules } from '../../language.js';
 import { jiraReadAdvertised } from '../integrations/issues/agent-read-scope.js';
 import { skillHint } from '../integrations/skills/index.js';
 import { workerIssueKey } from './worker-issue.js';
-import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, uiTestReportFor, type UiBlockKind } from './uitesting.js';
+import { ensureUiImagesDir, imageListText, listUiImages, uiBlockId, uiImagesDir, uiTestReportLine, type UiBlockKind } from './uitesting.js';
 import { instructionsBlock, prReviewInstructionsPart } from './instructions-block.js';
 import { historyBlock, planBlock } from './taskfiles-block.js';
 import { syncPlanFile, uiTestReportPath } from '../taskfiles.js';
@@ -509,10 +509,10 @@ export class Composer {
    */
   private prUiTested(text: string, task: KanbanTask, def: FloorDef, x: ComposeExtra): string {
     if (!x.uiTest) return text;
-    const dir = uiImagesDir(this.ctx.filesDir, task.id), kept = uiTestReportFor(this.ctx.repo, this.ctx.filesDir, task.id);
+    const dir = uiImagesDir(this.ctx.filesDir, task.id), line = uiTestReportLine(this.ctx.repo, this.ctx.filesDir, task.id);
     const images = listUiImages(dir, projectRepos(def).map((r) => r.id));
-    if (!kept.file && !kept.text && !images.length) return text;
-    const report = kept.file ? `The tester's report is in ${kept.file}.` : kept.text ? `The tester's report could not be kept as a file. It is:\n${kept.text}` : 'The tester left no report.';
+    if (!line && !images.length) return text;
+    const report = line ?? 'The tester left no report.';
     const id = 'kanban.pr.uiTest.review';
     let block = this.text(id, task.project, { imagesDir: dir, imageList: imageListText(dir, images), report });
     if (block && !placeholders(kanbanPromptText(id, this.layers(task.project))).includes('report')) block = `${block}\n${report}`;

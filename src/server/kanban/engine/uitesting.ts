@@ -9,7 +9,7 @@ import { UI_IMAGES_DIR, UI_IMAGES_MAX, UI_IMAGE_MAX_BYTES, UI_IMAGE_FOLDER_RE, U
 import { grantDir } from '../uploads.js';
 import { createHash } from 'node:crypto';
 import type { KanbanRepository } from '../db/repository.js';
-import { readUiTestReport, storeUiTestReport, uiTestReportPath } from '../taskfiles.js';
+import { dropUiTestReport, readUiTestReport, storeUiTestReport, uiTestReportPath } from '../taskfiles.js';
 
 /** An image of a task with the file it is in. */
 export type UiImageFile = KanbanTaskImage & { file: string };
@@ -118,37 +118,62 @@ export function uiBlockId(kind: UiBlockKind, on: boolean, images: boolean): Kanb
   }
 }
 
-/** The task event that says what the office kept of a UI test's report (see keepUiTestReport); an empty one marks a new UI test. */
+/** The task event that says what the office kept of a UI test's report (see keepUiTestReport); one without a text marks a new UI test. */
 export const UI_REPORT_EVENT = 'pr.uitest.report';
-/** The most of a report an event keeps, for a prompt to carry when the file cannot be named. */
+/** The most of a report an event keeps, for a prompt to carry when no file of it can be named. */
 export const UI_REPORT_TEXT_MAX = 30_000;
 
 const reportHash = (text: string) => createHash('sha256').update(text.trim()).digest('hex');
 type ReportRepo = Pick<KanbanRepository, 'appendEvent' | 'listEvents'>;
+type ReportEvent = { sha?: unknown; name?: unknown; text?: unknown; length?: unknown; stale?: unknown };
+const lastReportEvent = (repo: ReportRepo, taskId: number) => [...repo.listEvents(taskId)].reverse().find((e) => e.kind === UI_REPORT_EVENT)?.data as ReportEvent | undefined;
 
-/** A new UI test starts: what an earlier one left is not its report. */
-export function resetUiTestReport(repo: ReportRepo, taskId: number): void {
-  repo.appendEvent(taskId, UI_REPORT_EVENT, {});
+/**
+ * A new UI test starts: what an earlier one left is not its report. Its files are removed (dropUiTestReport); when the file at the
+ * report's path could not be, its hash is kept, so that file is not taken for the new test's report (ownUiTestReport).
+ */
+export function resetUiTestReport(repo: ReportRepo, filesDir: string, taskId: number): void {
+  const left = dropUiTestReport(filesDir, taskId) ? undefined : readUiTestReport(filesDir, taskId);
+  repo.appendEvent(taskId, UI_REPORT_EVENT, left === undefined ? {} : { stale: reportHash(left) });
+}
+
+/** What the tester of the UI test that just ended wrote in the report file: never the file an earlier test left there (resetUiTestReport). */
+export function ownUiTestReport(repo: ReportRepo, filesDir: string, taskId: number): string | undefined {
+  const own = readUiTestReport(filesDir, taskId);
+  return own !== undefined && lastReportEvent(repo, taskId)?.stale === reportHash(own) ? undefined : own;
 }
 
 /**
- * Keeps a UI test's report: in its file (storeUiTestReport), and in a task event that holds the hash of what the file was given,
- * or none when the file could not be written, with the text itself (its first UI_REPORT_TEXT_MAX characters) as the fallback.
+ * Keeps a UI test's report: whole in a file (storeUiTestReport: the report's own, or one beside it when that path cannot be written),
+ * and in a task event that holds that file's name and the hash of what it was given, or neither when no file could be written, with
+ * the text's first UI_REPORT_TEXT_MAX characters and its whole length as the last fallback.
  */
 export function keepUiTestReport(repo: ReportRepo, filesDir: string, taskId: number, report: string): void {
   const text = report.trim();
-  const file = text ? storeUiTestReport(filesDir, taskId, text) : (storeUiTestReport(filesDir, taskId, undefined), undefined);
-  repo.appendEvent(taskId, UI_REPORT_EVENT, text ? { ...(file ? { sha: reportHash(text) } : {}), text: text.slice(0, UI_REPORT_TEXT_MAX) } : {});
+  const file = storeUiTestReport(filesDir, taskId, text || undefined);
+  repo.appendEvent(taskId, UI_REPORT_EVENT, text ? { ...(file ? { sha: reportHash(text), name: path.basename(file) } : {}), text: text.slice(0, UI_REPORT_TEXT_MAX), length: text.length } : {});
 }
 
 /**
  * What a prompt may say of the task's UI test report: its file, only when it is the very text the office stored there (a regular
  * file within the limit whose hash is the one kept: a file the store could not replace or remove, or one changed since, is never
- * named); else the kept text; nothing when the last UI test left no report.
+ * named); else the kept text, with `cut` (the report's whole length) when that is only its beginning; nothing when the last UI
+ * test left no report.
  */
-export function uiTestReportFor(repo: ReportRepo, filesDir: string, taskId: number): { file?: string; text?: string } {
-  const last = [...repo.listEvents(taskId)].reverse().find((e) => e.kind === UI_REPORT_EVENT)?.data as { sha?: unknown; text?: unknown } | undefined;
+export function uiTestReportFor(repo: ReportRepo, filesDir: string, taskId: number): { file?: string; text?: string; cut?: number } {
+  const last = lastReportEvent(repo, taskId);
   if (!last || typeof last.text !== 'string' || !last.text) return {};
-  const read = typeof last.sha === 'string' ? readUiTestReport(filesDir, taskId) : undefined;
-  return read !== undefined && reportHash(read) === last.sha ? { file: uiTestReportPath(filesDir, taskId) } : { text: last.text };
+  const name = typeof last.name === 'string' ? last.name : undefined;
+  const read = typeof last.sha === 'string' ? readUiTestReport(filesDir, taskId, {}, name === path.basename(uiTestReportPath(filesDir, taskId)) ? undefined : name) : undefined;
+  if (read !== undefined && reportHash(read) === last.sha) return { file: name ? path.join(path.dirname(uiTestReportPath(filesDir, taskId)), name) : uiTestReportPath(filesDir, taskId) };
+  return { text: last.text, ...(typeof last.length === 'number' && last.length > last.text.length ? { cut: last.length } : {}) };
+}
+
+/** The line of a review's prompt about the tester's report (see uiTestReportFor); undefined when there is none. */
+export function uiTestReportLine(repo: ReportRepo, filesDir: string, taskId: number): string | undefined {
+  const kept = uiTestReportFor(repo, filesDir, taskId);
+  if (kept.file) return `The tester's report is in ${kept.file}.`;
+  if (!kept.text) return undefined;
+  const cut = kept.cut ? `\n[The report is cut here: this is its first ${kept.text.length} of ${kept.cut} characters. The rest, which may hold findings, could not be given to you: say in your review that the UI test's report was read only in part.]` : '';
+  return `The tester's report could not be kept as a file. It is:\n${kept.text}${cut}`;
 }

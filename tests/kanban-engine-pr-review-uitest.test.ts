@@ -199,6 +199,41 @@ test('uiTest: a tester whose agent exits fails the task like any run, and Retry 
   assert.equal(fx.workers.list().length, 0);
 });
 
+test('uiTest: an old report that cannot be removed for a Retry is not the new test’s report: the result comment and the reviewers get the new reply', async (t) => {
+  const fx = await setup(t);
+  fx.setRules([TESTER('unused', { exit: true }), MAIN(APPROVED)]);
+  const { id } = await uiReview(fx);
+  await fx.waitTask(id, (x) => x.status === 'waiting' && x.waitingReason === 'interrupted', 'the interruption', 30_000);
+  // What the first, failed tester left in the file; removing it fails from here on.
+  const file = uiTestReportPath(fx.ctx.filesDir, id);
+  mkdirSync(path.dirname(file), { recursive: true });
+  writeFileSync(file, '## UI test report\n### Tested\n- PR 3 login: PASSED (OLD)');
+  const realRm = fs.rmSync;
+  let refused = 0;
+  t.mock.method(fs, 'rmSync', ((p: fs.PathLike, o?: fs.RmOptions) => {
+    if (p === file) {
+      refused++;
+      throw Object.assign(new Error('EPERM: operation not permitted'), { code: 'EPERM' });
+    }
+    return realRm(p, o);
+  }) as never);
+  syncBuiltinESMExports();
+  t.after(() => (t.mock.restoreAll(), syncBuiltinESMExports()));
+  fx.setRules([TESTER('The app does not start: nothing was tested.', { delayMs: 1500 }), MAIN(APPROVED)]);
+  assert.equal(await fx.engine.retry(id, ADA), undefined);
+  await until('the second tester to start', () => prompts(fx, /Test the UI and the functionality of these pull requests/).length === 2);
+  assert.ok(refused > 0, 'the removal was tried and refused');
+  assert.match(readFileSync(file, 'utf8'), /OLD/, 'the old file is still there while the new tester works');
+  await fx.waitTask(id, inReview, 'the review column', 40_000);
+  const results = fx.repo.listComments(id).comments.filter((c) => c.kind === 'result').map((c) => c.text);
+  assert.deepEqual(results, ['The app does not start: nothing was tested.'], 'the new reply, not the old file');
+  const review = prompts(fx, /Review these pull requests/)[0].prompt!;
+  const named = /The tester's report is in (\S+\.md)\./.exec(review)?.[1];
+  assert.ok(named, review);
+  assert.equal(readFileSync(named!, 'utf8').trim(), 'The app does not start: nothing was tested.', 'the reviewers are given the new report');
+  assert.ok(!review.includes('OLD'));
+});
+
 test('uiTest: Stop during the UI test stops the task, no review starts, and Retry starts from the UI test again', async (t) => {
   const fx = await setup(t);
   fx.setRules([TESTER('Slow.', { delayMs: 8000 }), MAIN(APPROVED)]);
@@ -496,7 +531,7 @@ test('storeUiTestReport: what is at the path is never read, also when it cannot 
   assert.equal(refused, 0, 'a file is renamed over: it needs no removal that could fail');
   assert.equal(readFileSync(file, 'utf8'), 'the report\n');
 
-  // A folder there cannot be renamed over: with its removal refused nothing is stored, and still nothing is read.
+  // A folder there cannot be renamed over: with its removal refused the report is kept beside it, under a name of its own.
   rmSync(file);
   mkdirSync(path.join(file, 'inner'), { recursive: true });
   t.mock.method(fs, 'rmSync', ((p: fs.PathLike, o?: fs.RmOptions) => {
@@ -507,13 +542,19 @@ test('storeUiTestReport: what is at the path is never read, also when it cannot 
     return realRm(p, o);
   }) as never);
   syncBuiltinESMExports();
+  let spare: string | undefined;
   try {
-    assert.equal(storeUiTestReport(root, 7, 'the report'), undefined);
+    spare = storeUiTestReport(root, 7, 'the report');
   } finally {
     t.mock.restoreAll();
     syncBuiltinESMExports();
   }
   assert.ok(lstatSync(file).isDirectory(), 'the folder is left as it is');
+  assert.match(path.basename(spare ?? ''), /^ui-test-report\.[0-9a-f]{16}\.md$/);
+  assert.equal(readFileSync(spare!, 'utf8'), 'the report\n');
+  assert.equal(readUiTestReport(root, 7, {}, path.basename(spare!)), 'the report', 'read by its name');
+  assert.equal(readUiTestReport(root, 7, {}, '../../secret.txt'), undefined, 'no other name is ever read');
+  rmSync(spare!);
   assert.ok(refused > 0, 'the removal was tried and refused');
   rmSync(file, { recursive: true });
 
