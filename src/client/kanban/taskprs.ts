@@ -56,7 +56,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask, comments: PrComments): HTM
   return out;
 }
 
-/** The repository name's click: the office's pull request window (going to the project's floor first when the page is on another; its host when that cannot be). One at a time: the button waits. */
+/** The repository name's click: the office's pull request window (going to the project's floor first when the page is on another; a note saying why when that cannot be, the number's link being the way to its host). One at a time: the button waits. */
 async function openPr(c: TaskCtx, task: KanbanTask, p: KanbanTask['prs'][number], button: HTMLButtonElement): Promise<void> {
   button.disabled = true;
   try {

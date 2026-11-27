@@ -107,3 +107,18 @@ test('a trip that fails, a page that cannot travel and a read that fails each sa
   const failed = await resolvePull(dropped, 'f1', { page, fetch: async () => Promise.reject(new Error('no such PR')) });
   assert.deepEqual(failed, { why: 'the office could not read it (no such PR)' });
 });
+
+test('a page that left the floor while the card was being read gets nothing: the other floor\'s same number is not opened', async () => {
+  let floor = 'f1';
+  // The task was closed and another project picked while the office was reading the card.
+  const moved = await resolvePull(dropped, 'f1', { page: () => ({ items, floor, floors: twoFloors }), fetch: async () => ((floor = 'f2'), fetched) });
+  assert.deepEqual(moved, { stale: true });
+  // A read that fails after the page moved on is nobody's to hear about either.
+  floor = 'f1';
+  const failed = await resolvePull(dropped, 'f1', { page: () => ({ items, floor, floors: twoFloors }), fetch: async () => ((floor = 'f2'), Promise.reject(new Error('gone'))) });
+  assert.deepEqual(failed, { stale: true });
+  // After a trip the floor to stay on is the one arrived at.
+  floor = 'f1';
+  const tripped = await resolvePull(dropped, 'f2', { page: () => ({ items: [], floor, floors: twoFloors }), go: async (to) => ((floor = to), true), fetch: async () => ((floor = 'f1'), fetched) });
+  assert.deepEqual(tripped, { stale: true });
+});

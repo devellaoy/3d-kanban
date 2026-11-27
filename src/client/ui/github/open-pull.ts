@@ -7,7 +7,6 @@ import { hostLabel, hostOfUrl } from '../../../shared/hosting/remote.js';
 import type { Net } from '../../net';
 import { store } from '../../state';
 import { toast } from '../dom';
-import { openSafe } from '../url';
 import { getJson } from './api';
 import { goToFloor } from './floor-trip';
 import { ghUrl, repoOfItem } from './ghrepo';
@@ -21,27 +20,29 @@ let resolving = false;
 
 /**
  * The page's BoardActions, as it gives them to the boards; each page registers its own once. `go` changes the page's floor
- * (a plain floor.go) for a page that can; without it a PR of another floor opens on its host.
+ * (a plain floor.go) for a page that can; without it a PR of another floor is not opened here.
  */
 export function setPullActions(get: () => BoardActions, go?: (floor: string) => void): void {
   actions = get;
   goTo = go;
 }
 
-/** Open the PR on its host, and say why it is not in the window. */
-function onHost(pr: { url: string }, why: string): void {
-  openSafe(pr.url);
-  toast(`Opened on ${hostLabel(hostOfUrl(pr.url) ?? 'github')}: ${why}`);
+/**
+ * Say why the PR is not in the window, and where it does open: its number's link beside the name. Nothing is opened from
+ * here, since by now the click may be seconds old (a trip, a read) and the browser would block the new tab.
+ */
+function notHere(pr: { number: number; url: string }, why: string): void {
+  toast(`PR #${pr.number} not opened here: ${why}. Use its #${pr.number} link (${hostLabel(hostOfUrl(pr.url) ?? 'github')}).`, 'warn');
 }
 
 /**
  * Open `pr` in the pull request window, at the moment of asking (the board changes): from the floor's board, else the one card
  * read from the office (it dropped out of the list, or the list is not read yet), after going to its floor `prFloor` first
- * when that is another one. On its host (with a toast saying why) when the window cannot be had. Resolves when done;
+ * when that is another one. A toast says why, and points at its link to its host, when the window cannot be had. Resolves when done;
  * a second ask while one is resolving does nothing.
  */
 export async function openPullFrom(net: Net, pr: { number: number; url: string; repo?: string }, prFloor?: string): Promise<void> {
-  if (!actions) return onHost(pr, 'this page has no pull request window');
+  if (!actions) return notHere(pr, 'this page has no pull request window');
   if (resolving) return;
   resolving = true;
   try {
@@ -52,7 +53,7 @@ export async function openPullFrom(net: Net, pr: { number: number; url: string; 
       fetch: () => getJson<GhPull>(ghUrl(`/api/gh/pull/card?number=${pr.number}`, repoOfItem(pr) || undefined)),
     });
     if ('card' in got) openPull(got.card, net, actions());
-    else onHost(pr, got.why);
+    else if ('why' in got) notHere(pr, got.why);
   } finally {
     resolving = false;
   }

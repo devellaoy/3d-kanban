@@ -22,12 +22,12 @@ export type PullStep =
   | { step: 'fetch' }
   /** The window reads and acts on the floor the page is on: go to the PR's floor first, then decide again. */
   | { step: 'go'; floor: string }
-  /** The window cannot be had: the PR opens on its host, and `why` is told. */
+  /** The window cannot be had: `why` is told, and the PR's own link opens it on its host. */
   | { step: 'host'; why: string };
 
 /**
  * Which way a PR opens: the board's card when this floor has it; another floor's PR after going there (when that floor is
- * open and the page can travel, `canGo`); the one card read from the office when the board lacks it; else its host.
+ * open and the page can travel, `canGo`); the one card read from the office when the board lacks it; else not at all (`host`: its link to its host is what is left).
  * `prFloor` is the floor the PR belongs to when known (a task's project).
  */
 export function pullStep(items: readonly GhPull[], floor: string | null | undefined, floors: readonly { id: string; name?: string }[], pr: { number: number; url: string; repo?: string }, prFloor: string | undefined, canGo: boolean): PullStep {
@@ -53,9 +53,10 @@ export interface PullWays {
 
 /**
  * The card to open the pull request window with, by pullStep's steps: after going to the PR's floor when the page is on
- * another, from that floor's board or else read from the office. `why` instead when the window cannot be had.
+ * another, from that floor's board or else read from the office. `why` instead when the window cannot be had, and `stale`
+ * when the page left the floor while the card was read (nothing is to open or say then).
  */
-export async function resolvePull(pr: { number: number; url: string; repo?: string }, prFloor: string | undefined, ways: PullWays): Promise<{ card: GhPull } | { why: string }> {
+export async function resolvePull(pr: { number: number; url: string; repo?: string }, prFloor: string | undefined, ways: PullWays): Promise<{ card: GhPull } | { why: string } | { stale: true }> {
   const decide = (canGo: boolean) => {
     const { items, floor, floors } = ways.page();
     return pullStep(items, floor, floors, pr, prFloor, canGo);
@@ -68,9 +69,13 @@ export async function resolvePull(pr: { number: number; url: string; repo?: stri
   }
   if (step.step === 'board') return { card: step.card };
   if (step.step !== 'fetch') return { why: step.step === 'host' ? step.why : 'the page could not get to that project’s floor' };
+  // The card is read for the floor the page is on, and the window would read and act there: a page that moved on meanwhile
+  // (the task closed, another project picked) must not get it, or the floor's own same number would be taken for it.
+  const asked = ways.page().floor;
   try {
-    return { card: await ways.fetch() };
+    const card = await ways.fetch();
+    return ways.page().floor === asked ? { card } : { stale: true };
   } catch (err) {
-    return { why: `the office could not read it (${(err as Error).message})` };
+    return ways.page().floor === asked ? { why: `the office could not read it (${(err as Error).message})` } : { stale: true };
   }
 }
