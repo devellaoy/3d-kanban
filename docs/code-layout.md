@@ -70,7 +70,7 @@ The kit takes every colour, line, corner and height from tokens, upper-cases not
 
 **Tooltips** are `ui/tooltip.ts` (with `ui/tooltip.css`, over the pure `ui/tooltipmodel.ts`: which words, and where the bubble goes): one set of listeners per page, turned on by `installTooltips()` in each page's entry point (`main.ts`, `kanban/main.ts`, `lite.ts`) beside `initAppearance()`. A view only writes a `title` on its button (`button`, `a.btn` or `[role=button]`); the module shows it as the kit's bubble, above every window, and keeps the browser's own tooltip away meanwhile. A title says in one sentence what pressing the button does, or why it can't be pressed now; a bare **Cancel** needs none.
 
-**The large editor** is `ui/textexpand.ts` (with `ui/textexpand.css`, over the pure `ui/textexpandmodel.ts`): one set of listeners per page, turned on by `installTextExpand()` in each page's entry point beside `installTooltips()`; a view writes nothing for it; a textarea opts out with `data-no-expand`; the editor is a `modalShell` window, so the modal stack, Esc and the way back to mouse-look are the shared ones.
+**The large editor** is `ui/textexpand.ts` (with `ui/textexpand.css`, over the pure `ui/textexpandmodel.ts`): one set of listeners per page, turned on by `installTextExpand()` in each page's entry point beside `installTooltips()`; a view writes nothing for it; a textarea opts out with `data-no-expand`; a field its view draws anew is followed only by its `data-focus` inside the same `.kb-tv` view root (`replacement()` in the model); the editor is a `modalShell` window, so the modal stack, Esc and the way back to mouse-look are the shared ones.
 
 **The rules for a kanban window** (and any window that wants to look like one):
 
