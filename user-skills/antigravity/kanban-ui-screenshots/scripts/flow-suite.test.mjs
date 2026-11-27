@@ -1,11 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, mkdir, writeFile, rm } from 'node:fs/promises';
+import { mkdtemp, mkdir, writeFile, rm, stat, readdir, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   parseArgs, settlePlan, expandFlowArgs, buildJobs, subjectSlug, shotFileName, findNameCollisions,
-  runPool, summaryLine, suiteLine, assignStatePaths, sidedStatePath, stateMissingOrigin, nonNegNum, labelName,
+  runPool, summaryLine, suiteLine, assignStatePaths, sidedStatePath, stateMissingOrigin, nonNegNum, labelName, usableState, safeOrigin, writeFileAtomic,
 } from './flow-suite.mjs';
 
 const UI_IMAGE_RE = /^[a-z0-9][a-z0-9._-]{0,80}-(before|after)\.png$/;
@@ -49,9 +49,10 @@ test('expandFlowArgs: repeated flags, folders, json positionals, skipped non-flo
   await writeFile(join(dir, 'sub', 'a.json'), JSON.stringify({ steps: [{}] }));
   await writeFile(join(dir, 'sub', 'state.json'), JSON.stringify({ cookies: [] }));
   await writeFile(join(dir, 'sub', 'notes.txt'), 'x');
+  await writeFile(join(dir, 'sub', 'c-broken.json'), '{ "steps": [ oops');
   const one = join(dir, 'one.json');
   const folder = await expandFlowArgs({ flow: [join(dir, 'sub'), one], _: [one, 'ignored.txt', join(dir, 'two.json')] });
-  assert.deepEqual(folder.files, [join(dir, 'sub', 'a.json'), join(dir, 'sub', 'b.json'), one, join(dir, 'two.json')]);
+  assert.deepEqual(folder.files, [join(dir, 'sub', 'a.json'), join(dir, 'sub', 'b.json'), join(dir, 'sub', 'c-broken.json'), one, join(dir, 'two.json')]);
   assert.equal(folder.notes.length, 1);
   assert.match(folder.notes[0], /state\.json/);
   assert.deepEqual((await expandFlowArgs({ _: ['x.json'] })).files, []);
@@ -129,12 +130,12 @@ test('state paths: per-side files and read-only shared paths', () => {
   const present = new Set(['/t/s.before.json', '/t/s.after.json']);
   assert.deepEqual(assignStatePaths(jobs, '/t/s.json', p => present.has(p)), []);
   assert.deepEqual(jobs.map(j => [j.statePath, j.stateWritable]), [['/t/s.before.json', true], ['/t/s.after.json', true]]);
-  // Only the unsided file exists: both sides read it, read-only.
+  // Only the unsided file exists: it is NOT used (a session belongs to one address).
   const fb = [{ side: 'before', label: 'a@before', flow: {} }, { side: 'after', label: 'a@after', flow: {} }];
   const fbNotes = assignStatePaths(fb, '/t/s.json', p => p === '/t/s.json');
-  assert.deepEqual(fb.map(j => [j.statePath, j.stateWritable]), [['/t/s.json', false], ['/t/s.json', false]]);
+  assert.deepEqual(fb.map(j => [j.statePath, j.stateWritable]), [['/t/s.before.json', true], ['/t/s.after.json', true]]);
   assert.equal(fbNotes.length, 2);
-  assert.match(fbNotes[0], /no before variant/);
+  assert.match(fbNotes[0], /session starts empty.*not used because a session belongs to one address.*--before-url and --after-url/);
   // Neither exists in a sided run: one note per path, still writable.
   const none2 = [{ side: 'before', flow: {} }, { side: 'after', flow: {} }];
   const n2 = assignStatePaths(none2, '/t/s.json', () => false);
@@ -181,4 +182,35 @@ test('nonNegNum accepts an explicit 0', () => {
   assert.equal(nonNegNum(true, 800), 800);
   assert.equal(nonNegNum('-1', 800), 800);
   assert.equal(settlePlan({ delay: 0, delayExplicit: true }).delayMs, 0);
+});
+
+test('usableState drops sessionStorage that belongs to another origin', () => {
+  const state = { cookies: [], origins: [{ origin: 'http://a:1' }], sessionStorage: { token: 'x' } };
+  assert.deepEqual(usableState(state, 'http://b:2/'), { state: { ...state, sessionStorage: {} }, missingOrigin: true });
+  assert.equal(usableState(state, 'http://a:1/').state.sessionStorage.token, 'x');
+  assert.deepEqual(usableState(null, 'http://a:1/'), { state: null, missingOrigin: false });
+});
+
+test('safeOrigin keeps only the origin', () => {
+  assert.equal(safeOrigin('http://h:1/path?token=1'), 'http://h:1');
+  assert.equal(safeOrigin('not a url'), '[redacted]');
+  assert.equal(safeOrigin(null), null);
+});
+
+test('writeFileAtomic writes mode 0600 and leaves no temp file', async t => {
+  const dir = await mkdtemp(join(tmpdir(), 'flow-suite-state-'));
+  t.after(() => rm(dir, { recursive: true, force: true }));
+  const file = join(dir, 's.json');
+  await writeFile(file, 'old', { mode: 0o644 });
+  await writeFileAtomic(file, '{"a":1}');
+  assert.equal(await readFile(file, 'utf8'), '{"a":1}');
+  assert.equal((await stat(file)).mode & 0o777, 0o600);
+  assert.deepEqual(await readdir(dir), ['s.json']);
+  await assert.rejects(writeFileAtomic(join(dir, 'missing', 's.json'), 'x'));
+});
+
+test('summaryLine shows the drag destination', () => {
+  assert.match(summaryLine({ name: 'a', status: 'failed', shots: [], failedStep: 2,
+    failure: { kind: 'action', index: 1, type: 'drag', target: 'to', reason: 'not-found', matches: 0 } }),
+  /failed-step=2 action 1 drag \(to\): not-found, matches=0$/);
 });

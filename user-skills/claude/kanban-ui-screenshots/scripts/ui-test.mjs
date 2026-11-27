@@ -161,7 +161,17 @@ export async function runActions(page, actions, { timeout = 5000, flowDir = proc
     } catch (error) {
       // Playwright error messages can include filled values, file paths and selectors,
       // so only the classified reason and the match count are recorded.
-      throw failure('action', index, action.type, records, await classifyFailure(locator, error));
+      let why = await classifyFailure(locator, error);
+      if (action.type === 'drag') {
+        // Source fine but the destination is the problem: classify by the destination.
+        let target = 'locator';
+        if (why.matches === 1 && ['timeout', 'error'].includes(why.reason)) {
+          const dest = await classifyFailure(locate(page, action.to), error);
+          if (['not-found', 'multiple-matches', 'not-visible'].includes(dest.reason)) { why = dest; target = 'to'; }
+        }
+        why = { ...why, target };
+      }
+      throw failure('action', index, action.type, records, why);
     }
   }
   return records;

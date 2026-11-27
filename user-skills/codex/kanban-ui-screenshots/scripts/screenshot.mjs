@@ -154,7 +154,7 @@ import { dirname, isAbsolute, join, resolve } from 'node:path'
 import { validateTestSteps, runActions, runAssertions, classifyFailure } from './ui-test.mjs'
 import {
   DEFAULT_DELAY_MS, assignStatePaths, boolFlag, buildJobs, expandFlowArgs, findNameCollisions, parseArgs,
-  labelName, nonNegNum, posNum, runPool, settlePlan, shotFileName, slug, stateMissingOrigin, subjectSlug, suiteLine, summaryLine,
+  labelName, nonNegNum, posNum, runPool, safeOrigin, settlePlan, shotFileName, slug, subjectSlug, usableState, writeFileAtomic, suiteLine, summaryLine,
 } from './flow-suite.mjs'
 
 /** Kaikki ei-polkutuloste menee stderriin, jotta stdout pysyy pelkkinä kuvapolkuina. */
@@ -392,15 +392,7 @@ async function saveStateFile(context, page, path) {
     const base = await context.storageState()
     const sessionStorage = await readSessionStorage(page)
     await mkdir(dirname(path), { recursive: true })
-    // Atomic: write a tmp file in the same folder, then rename over the state file.
-    const tmp = `${path}.${process.pid}.${Date.now()}.tmp`
-    try {
-      await writeFile(tmp, JSON.stringify({ ...base, sessionStorage }, null, 2), 'utf-8')
-      await rename(tmp, path)
-    } catch (err) {
-      await rm(tmp, { force: true }).catch(() => {})
-      throw err
-    }
+    await writeFileAtomic(path, JSON.stringify({ ...base, sessionStorage }, null, 2))
     note(`Istunto tallennettu: ${path}`)
   } catch (err) {
     note(`Varoitus: istunnon tallennus epäonnistui (${path}): ${err?.message ?? err}`)
@@ -685,6 +677,7 @@ function summarizeFailure(f) {
   return {
     kind: f.kind ?? 'step',
     index: f.kind && f.index != null ? f.index + 1 : null,
+    target: f.target ?? null,
     type: f.type ?? null,
     reason: f.reason ?? null,
     matches: f.matches ?? null,
@@ -758,9 +751,13 @@ async function runFlowInner(job, ctx, result) {
       }
     }
   }
-  if (stateMissingOrigin(persisted, firstUrl)) {
-    result.stateMissingOrigin = true
-    log('Warning: the state file has no cookie or origin entry for this address; the session may not be logged in here (state=missing-origin)')
+  if (persisted) {
+    const usable = usableState(persisted, firstUrl)
+    persisted = usable.state
+    if (usable.missingOrigin) {
+      result.stateMissingOrigin = true
+      log('Warning: the state file has no cookie or origin entry for this address, so the session is not logged in here and its sessionStorage values are not restored (state=missing-origin)')
+    }
   }
 
   const planFor = (step) => settlePlan({
@@ -986,9 +983,13 @@ async function runSingle(args, ctx, job) {
   )
 
   const statePath = job.statePath ?? null
-  const persisted = statePath ? await loadStateFile(statePath) : null
-  if (stateMissingOrigin(persisted, url0)) {
-    note('Warning: the state file has no cookie or origin entry for this address; the session may not be logged in here (state=missing-origin)')
+  let persisted = statePath ? await loadStateFile(statePath) : null
+  if (persisted) {
+    const usable = usableState(persisted, url0)
+    persisted = usable.state
+    if (usable.missingOrigin) {
+      note('Warning: the state file has no cookie or origin entry for this address, so the session is not logged in here and its sessionStorage values are not restored (state=missing-origin)')
+    }
   }
 
   const waitSelector = typeof args['wait-selector'] === 'string' ? args['wait-selector'] : null
@@ -1202,7 +1203,8 @@ async function main() {
     note(`OUT-DIR ${shotDir}`)
   }
 
-  const settleCli = boolFlag(args['no-settle']) ? false : args.settle !== undefined && boolFlag(args.settle) ? true : undefined
+  // --settle=false means the same as --no-settle and as a flow's "settle": false.
+  const settleCli = boolFlag(args['no-settle']) ? false : args.settle !== undefined ? boolFlag(args.settle) : undefined
   const ctx = {
     session,
     deviceRegistry,
@@ -1229,13 +1231,8 @@ async function main() {
     } else {
       const settled = await runPool(jobs, concurrency, async (job) => {
         const jobCtx = { ...ctx, flowDir: job.flowDir }
-        let result
-        try {
-          result = await runFlow(job, jobCtx)
-        } catch (err) {
-          if (!job.multi) throw err
-          result = { name: job.name, side: job.side, status: 'failed', shots: [], error: String(err?.message ?? err) }
-        }
+        // runFlow returns failures as results; it only rethrows a crash of a single-job run.
+        const result = await runFlow(job, jobCtx)
         const prefix = job.multi ? `[${job.label}] ` : ''
         if (result.status === 'failed' && result.error) note(`${prefix}Virhe: ${result.error}`)
         note(summaryLine(result))
@@ -1254,7 +1251,7 @@ async function main() {
     note(suiteLine(results, Date.now() - startedAt))
     const suitePath = join(outDir, `suite-${Date.now()}-${process.pid}.json`)
     const suite = results.map((r, i) => ({
-      name: r.name, side: r.side ?? null, baseUrl: r.baseUrl ?? null, status: r.status,
+      name: r.name, side: r.side ?? null, baseUrl: safeOrigin(r.baseUrl), status: r.status,
       failedStep: r.failedStep ?? null, failure: r.failure ?? null, shots: r.shots ?? [], reportPath: r.reportPath ?? null,
       ...(jobs[i]?.loadError || r.error ? { error: r.error ?? null } : {}),
     }))

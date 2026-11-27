@@ -2,8 +2,9 @@
 // expansion, output file names, the concurrency pool and the summary lines.
 // No browser and no side effects at import, so everything here is unit-testable.
 
+import { randomBytes } from 'node:crypto'
 import { existsSync } from 'node:fs'
-import { readdir, readFile, stat } from 'node:fs/promises'
+import { readdir, readFile, rename, rm, stat, writeFile } from 'node:fs/promises'
 import { basename, join, resolve } from 'node:path'
 
 // ---------------------------------------------------------------------------------
@@ -153,7 +154,7 @@ export async function expandFlowArgs(args) {
         try {
           parsed = JSON.parse(await readFile(value, 'utf-8'))
         } catch {
-          parsed = undefined
+          parsed = undefined // broken file: kept, its job fails
         }
         if (parsed !== undefined && !Array.isArray(parsed?.steps)) {
           notes.push(`Skipped ${value}: no "steps" array, not a flow`)
@@ -170,7 +171,8 @@ export async function expandFlowArgs(args) {
       try {
         parsed = JSON.parse(await readFile(path, 'utf-8'))
       } catch {
-        notes.push(`Skipped ${path}: not a readable JSON file`)
+        // Unreadable or invalid JSON: it becomes a job that fails on its own (safe message).
+        add(path)
         continue
       }
       if (!Array.isArray(parsed?.steps)) {
@@ -239,32 +241,58 @@ export function assignStatePaths(jobs, cliState, exists = existsSync) {
   const bothSides = jobs.some((j) => j.side === 'before') && jobs.some((j) => j.side === 'after')
   const notes = []
   const uses = new Map()
-  const missing = new Set()
+  const missing = new Map()
   for (const job of jobs) {
     const raw = typeof job.flow?.state === 'string' && job.flow.state ? job.flow.state : cliState
     let path = raw ? resolve(raw) : null
-    job.stateFallback = false
-    if (path && bothSides && job.side) {
-      const base = path
-      path = sidedStatePath(base, job.side)
-      if (!exists(path) && exists(base)) {
-        path = base
-        job.stateFallback = true
-        notes.push(`State file ${path} has no ${job.side} variant; using it read-only for ${job.label ?? job.name} (not saved).`)
-      }
-    }
+    const unsided = path
+    if (path && bothSides && job.side) path = sidedStatePath(path, job.side)
     job.statePath = path
-    if (path && !job.stateFallback) uses.set(path, (uses.get(path) ?? 0) + 1)
-    if (path && (jobs.length > 1 || job.side) && !exists(path)) missing.add(path)
+    if (path) uses.set(path, (uses.get(path) ?? 0) + 1)
+    if (path && (jobs.length > 1 || job.side) && !exists(path)) missing.set(path, path !== unsided && exists(unsided) ? unsided : null)
   }
-  for (const job of jobs) {
-    job.stateWritable = !!job.statePath && !job.stateFallback && uses.get(job.statePath) === 1
-  }
+  for (const job of jobs) job.stateWritable = !!job.statePath && uses.get(job.statePath) === 1
   for (const [path, count] of uses) {
     if (count > 1) notes.push(`State file ${path} is used by ${count} jobs; it is read-only in this run (not saved).`)
   }
-  for (const path of missing) notes.push(`State file ${path} does not exist; the session starts empty.`)
+  // No fallback to the unsided file: a session belongs to one address.
+  for (const [path, unsided] of missing) {
+    notes.push(`State file ${path} does not exist; the session starts empty.` +
+      (unsided ? ` The unsided ${unsided} is not used because a session belongs to one address; run the login flow with both --before-url and --after-url.` : ''))
+  }
   return notes
+}
+
+/**
+ * Loaded state as it may be used for a job's address. When the state has nothing for that
+ * origin, its sessionStorage (which is stored without an origin) is dropped, since the values
+ * belong to another address. Returns { state, missingOrigin }.
+ */
+export function usableState(state, url) {
+  const missingOrigin = stateMissingOrigin(state, url)
+  return { state: missingOrigin ? { ...state, sessionStorage: {} } : state, missingOrigin }
+}
+
+/** Origin of a URL for reports; '[redacted]' if it cannot be parsed. */
+export function safeOrigin(url) {
+  if (url == null) return null
+  try {
+    return new URL(url).origin
+  } catch {
+    return '[redacted]'
+  }
+}
+
+/** Writes a file atomically with mode 0600: random temp name beside it ('wx'), then rename. */
+export async function writeFileAtomic(path, text) {
+  const tmp = `${path}.${randomBytes(8).toString('hex')}.tmp`
+  try {
+    await writeFile(tmp, text, { encoding: 'utf-8', mode: 0o600, flag: 'wx' })
+    await rename(tmp, path)
+  } catch (err) {
+    await rm(tmp, { force: true }).catch(() => {})
+    throw err
+  }
 }
 
 /**
@@ -389,7 +417,7 @@ export function summaryLine(result) {
       if (f.kind) part += ` ${f.kind}`
       else if (f.type) part += ' step'
       if (f.index != null) part += ` ${f.index}`
-      if (f.type) part += ` ${f.type}`
+      if (f.type) part += ` ${f.type}${f.target === 'to' ? ' (to)' : ''}`
       if (f.reason) part += `: ${f.reason}`
       if (f.matches != null) part += `${f.reason ? ',' : ':'} matches=${f.matches}`
       line += part

@@ -108,7 +108,7 @@ After a navigation the script also settles the page:
   with a permanent connection (SSE, polling) never goes idle.
 - When the idle wait is skipped, the script still waits for the `load` state, up to 2 s, so
   images and styles are in.
-- `--no-settle` / top-level `"settle": false` skips both. `--settle` / top-level or step
+- `--no-settle` (or `--settle=false`) / top-level `"settle": false` skips both. `--settle` / top-level or step
   `"settle": true` forces the idle wait. `--settle-timeout <ms>` / top-level `"settleTimeout"`
   sets the cap.
 
@@ -160,14 +160,15 @@ node "<skill-base>/scripts/screenshot.mjs" http://localhost:$PORT/cart \
 `--state s.json` to every later run, including a suite run (see below), so no flow has to log in
 again. A state file that more than one job of a run uses is read-only: it is not written back, so
 parallel jobs cannot overwrite each other's session. A job whose origin has nothing in the file
-prints a warning and its `FLOW` line says `state=missing-origin`; the page is then probably a
-login page.
+prints a warning and its `FLOW` line says `state=missing-origin`; the file's sessionStorage values are then not restored either (they
+belong to another origin), and the page is probably a login page. A saved state file is
+readable by its owner only (mode 0600).
 
 With two addresses (`--before-url` and `--after-url`, below) `--state s.json` means
 `s.before.json` and `s.after.json`, because localStorage belongs to one origin and a login
 against one address does not hold on the other. Run the login flow once with both addresses and
-both files are made. If a side's file is missing but `s.json` exists, that job uses `s.json`
-read-only and says so on stderr.
+both files are made. There is no fallback to the unsided `s.json`: a side whose file is missing
+starts with an empty session, and a note on stderr says so.
 
 ## Multi-step flows — `--flow`
 
@@ -181,7 +182,7 @@ node "<skill-base>/scripts/screenshot.mjs" --flow /tmp/flow.json
 ```json
 {
   "name": "cart-mobile",
-  "baseUrl": "http://localhost:9036",
+  "baseUrl": "http://localhost:<port>",
   "viewport": { "device": "iPhone 14" },
   "state": "/tmp/session.json",
   "steps": [
@@ -228,7 +229,8 @@ node "<skill-base>/scripts/screenshot.mjs" --flow flows/ --concurrency 2 --state
 ```
 
 - `--flow` may be repeated, may be followed by several `.json` files (a shell glob), or may name a
-  folder: its `*.json` files, sorted, not recursive. A file without a `steps` array is skipped.
+  folder: its `*.json` files, sorted, not recursive. A valid JSON file without a `steps` array is skipped; a file
+  that cannot be read or is not valid JSON is a failed job of its own.
 - Jobs run in parallel in separate contexts of one browser. `--concurrency <n>` sets how many at
   once (default 4; `1` runs them one after another).
 - One failing flow does not stop the others. The exit code is `2` if any failed.
@@ -237,7 +239,7 @@ node "<skill-base>/scripts/screenshot.mjs" --flow flows/ --concurrency 2 --state
   `FLOW <name>[@before|@after] <passed|failed|capture-only> shots=<n> report=<path>`, and for a
   failed job `failed-step=<i> <action|assertion|step> <j> <type>: <reason>, matches=<k>`;
   a multi-job run ends with `SUITE <passed>/<total> passed, <f> failed, <c> capture-only, <ms> ms`
-  and `SUITE-REPORT <path>` (a JSON file listing every job).
+  and `SUITE-REPORT <path>` (a JSON file listing every job; addresses in it are origins only).
 - Flows that write to the same database should not run in parallel against it; see
   [ui-testing.md](ui-testing.md).
 

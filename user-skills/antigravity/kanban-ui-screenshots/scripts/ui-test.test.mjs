@@ -150,3 +150,19 @@ test('url assertions resolve a leading slash against the base URL', async () => 
   await assert.rejects(runAssertions(page, [{ type: 'url', expected: '/list', timeout: 20 }], { baseUrl: 'http://127.0.0.1:5002' }));
   assert.equal((await runAssertions(page, [{ type: 'url', expected: '/list' }]))[0].status, 'passed');
 });
+
+test('drag failures name the destination when only it is the problem', async () => {
+  const timeout = Object.assign(new Error('Timeout'), { name: 'TimeoutError' });
+  const loc = count => ({ count: async () => count, isVisible: async () => true, first() { return this; }, dragTo: async () => { throw timeout; } });
+  const page = { locator: sel => sel === '#from' ? loc(1) : loc(0) };
+  await assert.rejects(runActions(page, [{ type: 'drag', locator: '#from', to: '#secret-to', timeout: 50 }]), error => {
+    assert.deepEqual([error.failure.reason, error.failure.matches, error.failure.target], ['not-found', 0, 'to']);
+    assert.equal(JSON.stringify(error).includes('secret'), false);
+    return true;
+  });
+  const missingSource = { locator: () => loc(0) };
+  await assert.rejects(runActions(missingSource, [{ type: 'drag', locator: '#x', to: '#y', timeout: 50 }]), error => {
+    assert.deepEqual([error.failure.reason, error.failure.target], ['not-found', 'locator']);
+    return true;
+  });
+});

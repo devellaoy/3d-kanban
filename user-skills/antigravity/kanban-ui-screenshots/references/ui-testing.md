@@ -108,7 +108,8 @@ printed on stderr as `REPORT <path>`; stdout remains image paths only. The repor
   action, assertion or step also records `reason` (`not-found`, `multiple-matches`,
   `not-visible`, `timeout`, `mismatch`, `error`) and `matches` (how many elements the locator
   matched), so `not-found` with `matches=0` and `multiple-matches` with `matches=3` are told
-  apart without the selector being revealed.
+  apart without the selector being revealed. A failed `drag` also records `target`: `to` when
+  the destination locator is the problem, else `locator`.
 - Failure screenshot path when capture succeeds, plus requested screenshots.
 - Bounded console warning/error, JavaScript error, HTTP 4xx/5xx and failed-request metadata.
 - Optional trace paths and explicit simulated network-failure events.
