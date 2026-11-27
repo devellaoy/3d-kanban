@@ -3,7 +3,11 @@
 // (taskview.ts, prmarks.ts) and, under it, the review comments the implementer fetched (taskprcomments.ts). Creating and
 // pushing them is the footer's button. Which buttons show is taskactions.ts's.
 
-import { h, timeAgo } from '../ui/dom';
+import { h, timeAgo, toast } from '../ui/dom';
+import { openPullHere } from '../ui/github/open-pull';
+import { openSafe } from '../ui/url';
+import { store } from '../state';
+import { hostLabel, hostOfUrl } from '../../shared/hosting/remote.js';
 import { icon } from '../ui/icons';
 import { btn, prPill } from '../ui/kit';
 import type { KanbanTask } from '../../shared/kanban/types.js';
@@ -38,7 +42,7 @@ export function prsPane(c: TaskCtx, task: KanbanTask, comments: PrComments): HTM
             h(
               'tr',
               {},
-              h('td', {}, repoName(p)),
+              h('td', {}, h('button.kb-pr-open', { type: 'button', title: 'Open the pull request in the office’s pull request window (on its host when it is not on this floor’s pull request board)', onclick: () => openPr(c, task, p) }, repoName(p))),
               h('td', {}, h('a.kb-pr-link', { href: p.url, target: '_blank', rel: 'noopener noreferrer' }, `#${p.number}`, icon('external-link', { size: 12 }))),
               h('td', {}, prPill(p.state)),
               h('td.kb-pr-review', {}, ...prMarkPills(p)),
@@ -53,6 +57,15 @@ export function prsPane(c: TaskCtx, task: KanbanTask, comments: PrComments): HTM
   const list = comments.section(task, repoName);
   if (list) out.push(list);
   return out;
+}
+
+/** The repository name's click: the office's pull request window when the PR is on this floor's board (checked now, the board changes), else its host. */
+function openPr(c: TaskCtx, task: KanbanTask, p: KanbanTask['prs'][number]): void {
+  // The floor's board has not been read yet: not the same as the PR not being on it.
+  if (store.floor === task.project && store.pulls.loading && !store.pulls.fetchedAt) return void toast('The pull requests are still loading: try again in a moment', 'warn');
+  if (openPullHere(c.o.net, p, task.project)) return;
+  openSafe(p.url);
+  toast(`That pull request is not on this floor’s pull request board, so it opened on ${hostLabel(hostOfUrl(p.url) ?? 'github')}`);
 }
 
 /** One reviewer takes every open pull request of the task at once. */
