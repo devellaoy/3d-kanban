@@ -104,3 +104,25 @@ export function clipToField(text: string, max: number): string {
 export function closesSettingsToo(how: { byButton: boolean; inOffice: boolean }): boolean {
   return how.inOffice && !how.byButton;
 }
+
+/**
+ * The texts of a project's instruction boxes as they stood, unsaved, when the review window took the Settings
+ * with it (closesSettingsToo). Kept in memory only, and given back once, to the boxes of the same project the
+ * next time its settings are drawn: nothing is saved by this, the person still presses Save.
+ */
+export class KeptTexts {
+  private kept = new Map<string, Record<string, string>>();
+
+  keep(project: string, texts: Record<string, string>): void {
+    this.kept.set(project, { ...texts });
+  }
+
+  /** The kept texts that differ from what the boxes hold now (`now`), by box; they are forgotten with this. */
+  take(project: string, now: Record<string, string>): Record<string, string> {
+    const was = this.kept.get(project);
+    this.kept.delete(project);
+    const back: Record<string, string> = {};
+    for (const [name, text] of Object.entries(was ?? {})) if (name in now && now[name] !== text) back[name] = text;
+    return back;
+  }
+}

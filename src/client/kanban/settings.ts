@@ -357,7 +357,7 @@ export function projectPane(api: Pick<KanbanApi, 'request'>, projectId: string, 
   const testing = textArea(ps.testingInstructions, { rows: 4, maxlength: KANBAN_LIMITS.promptText });
   const prReview = textArea(ps.prReviewInstructions ?? '', { rows: 4, maxlength: KANBAN_LIMITS.promptText, placeholder: 'e.g. how to start the environments, and how to make a copy of the database that the test may add data to' });
   // "Write with AI" beside the Expand button of the two (instructionsdraft.ts).
-  attachInstructionsDraft(api, projectId, { testing, prReview }, cleanups);
+  attachInstructionsDraft(api, projectId, { testing, prReview }, cleanups, { branch, general });
   const fields = thisProjectFields(ps, s);
   const save = saveButton();
   save.addEventListener('click', () => {

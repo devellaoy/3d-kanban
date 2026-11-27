@@ -15,14 +15,14 @@ import { btn } from '../ui/kit';
 import { modalShell, openShell } from '../ui/shell';
 import type { KanbanApi } from './api';
 import {
-  ACTION_LABEL, ACTION_TITLE, BUSY_TEXT, DraftRuns, INSTRUCTIONS_ANSWER_MS, RUNNING_TEXT, cancelRequest, clipToField, closesSettingsToo, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle,
+  ACTION_LABEL, ACTION_TITLE, BUSY_TEXT, DraftRuns, INSTRUCTIONS_ANSWER_MS, KeptTexts, RUNNING_TEXT, cancelRequest, clipToField, closesSettingsToo, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle,
 } from './instructionsdraftmodel';
 import type { Cleanups } from './settingsflow';
 
 type Draft = Extract<KanbanServerMsg, { t: 'kanban.instructionsDraft' }>;
 
 /** The window the proposal is checked in before it goes anywhere. */
-function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, text: string) {
+function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, text: string, keep: () => void) {
   const box = h('textarea.kb-insd-box', { 'aria-label': 'The proposed text', spellcheck: 'false' }) as HTMLTextAreaElement;
   if (field.maxLength >= 0) box.maxLength = field.maxLength;
   box.value = clipToField(text, field.maxLength);
@@ -42,7 +42,12 @@ function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, t
   const modal = openShell(shell, {
     backdropCloses: false,
     // The 3D office (the page with the scene): its ✕ and Esc leave every window, so the mouse is the game's again at once.
-    onClose: () => closesSettingsToo({ byButton, inOffice: !!document.getElementById('scene') }) && closeAllModals(),
+    // What stands unsaved in the instruction boxes is kept for when the settings are opened again.
+    onClose: () => {
+      if (!closesSettingsToo({ byButton, inOffice: !!document.getElementById('scene') })) return;
+      keep();
+      closeAllModals();
+    },
   });
 
   const mode = () => reviewMode({ connected: field.isConnected, locked: field.matches(':disabled') || field.readOnly });
@@ -82,13 +87,24 @@ function openReview(which: InstructionsDraftField, field: HTMLTextAreaElement, t
   discard.addEventListener('click', back);
 }
 
+/** What the instruction boxes held, unsaved, when a review window closed the Settings over them. */
+const kept = new KeptTexts();
+
 /**
- * Gives the project's two instruction boxes their "Write with AI" button. `cleanups` are the pane's: when
+ * Gives the project's two instruction boxes their "Write with AI" button. `others` are the pane's other
+ * instruction boxes: with the two they are what is kept, unsaved, when the review window closes the Settings.
+ * `cleanups` are the pane's: when
  * it is drawn anew (another project, a change of rights) the buttons go, a running draft is cancelled at
  * the office and its answer no longer counts.
  */
-export function attachInstructionsDraft(api: Pick<KanbanApi, 'request'>, projectId: string, fields: Record<InstructionsDraftField, HTMLTextAreaElement>, cleanups: Cleanups): void {
+export function attachInstructionsDraft(api: Pick<KanbanApi, 'request'>, projectId: string, fields: Record<InstructionsDraftField, HTMLTextAreaElement>, cleanups: Cleanups, others: Record<string, HTMLTextAreaElement> = {}): void {
   const runs = new DraftRuns();
+  const boxes: Record<string, HTMLTextAreaElement> = { ...others, ...fields };
+  const texts = () => Object.fromEntries(Object.entries(boxes).map(([name, el]) => [name, el.value]));
+  // Texts a review window's ✕ or Esc took the Settings from, back in their boxes: still unsaved.
+  const back = kept.take(projectId, texts());
+  for (const [name, text] of Object.entries(back)) boxes[name].value = text;
+  if (Object.keys(back).length) toast('Your unsaved instruction texts are back in their boxes: press Save to keep them');
   const status = h('div.kb-insd-status', { role: 'status' });
 
   /** Ends the running draft, here and at the office. */
@@ -118,7 +134,7 @@ export function attachInstructionsDraft(api: Pick<KanbanApi, 'request'>, project
       (answer) => {
         if (!over()) return;
         if (!answer.text?.trim()) return void toast(draftFailure('the answer was empty') ?? '', 'error');
-        openReview(which, field, answer.text);
+        openReview(which, field, answer.text, () => field.isConnected && kept.keep(projectId, texts()));
       },
       (err) => {
         const why = over() ? draftFailure(err) : null;

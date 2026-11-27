@@ -4,7 +4,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
-  DraftRuns, INSTRUCTIONS_ANSWER_MS, cancelRequest, clipToField, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle, closesSettingsToo } from '../src/client/kanban/instructionsdraftmodel.js';
+  DraftRuns, INSTRUCTIONS_ANSWER_MS, cancelRequest, clipToField, draftFailure, draftRequest, reviewLead, reviewMode, reviewTitle, closesSettingsToo, KeptTexts } from '../src/client/kanban/instructionsdraftmodel.js';
 import { KanbanError } from '../src/client/kanban/api.js';
 import { parseKanbanClientMsg } from '../src/shared/kanban/protocol.js';
 
@@ -86,4 +86,13 @@ test('in the 3D office the review window\'s ✕ and Esc leave the settings too; 
   assert.equal(closesSettingsToo({ byButton: false, inOffice: true }), true);
   assert.equal(closesSettingsToo({ byButton: true, inOffice: true }), false);
   assert.equal(closesSettingsToo({ byButton: false, inOffice: false }), false);
+});
+
+test('unsaved instruction texts are kept over that close, given back once to the same project, and only where they differ', () => {
+  const k = new KeptTexts();
+  k.keep('app', { general: 'my rules', testing: 'half written', prReview: '' });
+  assert.deepEqual(k.take('other', { general: '', testing: '', prReview: '' }), {});
+  // The settings drawn anew hold the saved texts: what differs comes back, what is the same or has no box does not.
+  assert.deepEqual(k.take('app', { general: 'my rules', testing: 'saved text' }), { testing: 'half written' });
+  assert.deepEqual(k.take('app', { general: '', testing: '' }), {}, 'given back once');
 });
