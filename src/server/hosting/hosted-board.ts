@@ -8,7 +8,7 @@ import { readFile } from 'node:fs/promises';
 import type { GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../../shared/protocol.js';
 import { hostLabel, orgOf } from '../../shared/hosting/remote.js';
 import { hostCredentials } from './index.js';
-import { hostedComment, hostedDiff, hostedPullDetail, hostedPulls, notOnHost, type HostedRepo } from './board.js';
+import { hostedCard, hostedComment, hostedDiff, hostedPullDetail, hostedPulls, notOnHost, type HostedRepo } from './board.js';
 import type { HostAs } from './provider.js';
 
 const REFRESH_MS = 90_000;
@@ -57,6 +57,10 @@ export class HostedBoard {
 
   pullDetail(n: number, _me?: string, host?: HostAs): Promise<GhPullDetail> {
     return hostedPullDetail(this.hosted, n, host);
+  }
+
+  pullCard(n: number, host?: HostAs): Promise<GhPull> {
+    return hostedCard(this.hosted, n, host);
   }
 
   pullDiff(n: number): Promise<string> {
