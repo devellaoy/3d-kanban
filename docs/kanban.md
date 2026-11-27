@@ -445,7 +445,8 @@ over it, and the task's own over both.
 ## Comments
 
 The Conversation tab holds your comments, the agents' results, plans, questions, review findings and
-the office's status lines. Each agent's comment is tinted by who wrote it, with a matching edge and an
+the office's status lines. The comment box on top grows with what you write, and scrolls inside only
+once it fills the pane. Each agent's comment is tinted by who wrote it, with a matching edge and an
 *implementer* or *reviewer* chip (the role of the run that wrote it), so the two agents and your own
 comments (blue) read apart at a glance. URLs are links (a URL written as `code` too), and for admins
 so are file paths (`src/app.ts`, `src/app.ts:42`, `docs/x.md#L7`, an absolute path, or a lone

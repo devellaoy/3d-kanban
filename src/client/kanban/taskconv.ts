@@ -7,6 +7,7 @@ import { store } from '../state';
 import type { KanbanServerMsg } from '../../shared/kanban/protocol.js';
 import type { KanbanTask } from '../../shared/kanban/types.js';
 import { attachBox, type AttachBox } from './attachbox';
+import { autoGrow } from './autogrow';
 import { commentItem } from './commentview';
 import { commentNote, sendTitle } from './holdwords';
 import { kstore } from './store';
@@ -27,6 +28,7 @@ export class Conversation {
     const send = btn('Send', { icon: 'send', size: 'sm', attrs: { 'data-focus': 'act-comment', title: sendTitle(task) } });
     const hint = h('span.composite-note', {}, `${sendHint()} · ${commentNote(task.status)}`);
     const wrap = h('div.kb-composer.composite');
+    const fit = autoGrow(ta, wrap);
     const attach = attachBox({ target: ta, dropZone: wrap, insertLinks: true });
     const go = async () => {
       const text = ta.value.trim();
@@ -37,6 +39,8 @@ export class Conversation {
       if (ok) {
         ta.value = '';
         attach.clear();
+        // Emptied from code, which fires no input event: back to its three rows.
+        fit();
       }
     };
     send.addEventListener('click', () => void go());
