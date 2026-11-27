@@ -18,6 +18,9 @@
    `padding` for its text box (.modal .composite > textarea, .kb-browse-window .kb-br-jql textarea)
    wherever this sheet lands among the others. */
 textarea.ta-expandable.ta-expandable.ta-expandable { padding-right: 32px; }
+/* A box with an action of its own (ui/fieldaction.ts) has two buttons there: the same again plus the gap
+   between them (BTN_SIZE + BTN_GAP in ui/textexpandmodel.ts). One class more, so it wins over the rule above. */
+textarea.ta-expandable.ta-has-action.ta-has-action.ta-has-action { padding-right: 58px; }
 
 /* The window: as large as the screen lets it be, and all of it the text. */
 .modal.text-expand { width: min(1100px, 100%); height: calc(100vh - 32px); height: calc(100dvh - 32px); }
