@@ -22,6 +22,7 @@ import { prReviewDirs, prReviewRepoIds } from './launchdirs.js';
 import { fetchPrHeads, prLine, readingNote, trusted, type GitRunner, type HeadPr } from './prheads.js';
 import { reviewVerdict } from './markers.js';
 import { launchUi, uiEnded } from './prreview-ui.js';
+import { listUiImages, uiImagesDir, type UiImageFile } from './uitesting.js';
 
 export type { GitRunner };
 
@@ -159,7 +160,7 @@ export class PrReviews {
     let mixed: string | undefined;
     // A review that is tested first is always a task of its own: the pictures are kept with it, and a task whose pull requests the office opened would have them added to those pull requests (see checkScreenshots).
     if (req.uiTest && named !== undefined) {
-      mixed = `This review was asked for on task #${named} and is tested too. Its pictures are not added to any pull request, so it is a review task of its own and task #${named} is left alone.`;
+      mixed = `This review was asked for on task #${named} and is tested too. Its pictures are kept with the review, not put in a pull request's description, so it is a review task of its own and task #${named} is left alone.`;
       named = undefined;
     }
     if (named !== undefined) {
@@ -435,6 +436,16 @@ export class PrReviews {
     this.published(task, whole ?? summary, verdict, !whole && summary.length > SUMMARY_MAX);
   }
 
+  /** The task's UI pictures, for the pictures a posted review names; none when they can't be listed. */
+  private uiImages(task: Pick<KanbanTask, 'id' | 'project'>, req: KanbanPrReviewRequest): UiImageFile[] {
+    try {
+      const def = this.d.ctx.project(task.project);
+      return def ? listUiImages(uiImagesDir(this.d.ctx.filesDir, task.id), prReviewRepoIds(def, req.prs)) : [];
+    } catch {
+      return [];
+    }
+  }
+
   /**
    * Posts the review on each pull request (KanbanPullsApi.postReview) and says in the task's conversation how each went. A failure to post
    * is never the task's: it keeps its state and column.
@@ -442,12 +453,12 @@ export class PrReviews {
   private async post(task: Pick<KanbanTask, 'id' | 'project' | 'createdByAccount'>, req: KanbanPrReviewRequest, text: string, verdict: KanbanRun['verdict'], cut: boolean) {
     const prs = req.prs as ReviewedPr[];
     const api = this.d.ctx.pulls.postReview;
-    let results: { repo: string; number: number; url?: string; error?: string }[];
+    let results: { repo: string; number: number; url?: string; error?: string; note?: string }[];
     try {
-      results = api ? await api(task.project, prs, text, this.lastEvent(task.id)?.account ?? this.d.hireOwner(task), { verdict, cut }) : prs.map((p) => ({ repo: p.repo, number: p.number, error: "this office can't post reviews" }));
+      results = api ? await api(task.project, prs, text, this.lastEvent(task.id)?.account ?? this.d.hireOwner(task), { verdict, cut, ...(req.uiTest ? { images: this.uiImages(task, req) } : {}) }) : prs.map((p) => ({ repo: p.repo, number: p.number, error: "this office can't post reviews" }));
     } catch (err) {
       results = prs.map((p) => ({ repo: p.repo, number: p.number, error: (err as Error).message }));
     }
-    for (const r of results) this.d.note(task, r.error ? `Could not post the review on ${r.repo}#${r.number}: ${clip(r.error, 300)}` : `Posted the review on ${r.repo}#${r.number}${r.url ? `: ${r.url}` : ''}`);
+    for (const r of results) this.d.note(task, `${r.error ? `Could not post the review on ${r.repo}#${r.number}: ${clip(r.error, 300)}` : `Posted the review on ${r.repo}#${r.number}${r.url ? `: ${r.url}` : ''}`}${r.note ? ` (${clip(r.note, 300)})` : ''}`);
   }
 }

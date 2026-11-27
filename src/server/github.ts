@@ -1,4 +1,5 @@
 import { execFile } from 'node:child_process';
+import { commentWithPictures } from './ghattach.js';
 import type { GhCheck, GhCloseReason, GhComment, GhIssue, GhIssueDetail, GhLabel, GhMergeMethod, GhPull, GhPullDetail, GhRepoInfo, GhReviewComment, GhState } from '../shared/protocol.js';
 import { openedFromOfficeBy } from '../shared/officepr.js';
 import type { GhAs } from './signins.js';
@@ -312,7 +313,12 @@ export class GitHub {
    * Posts a review on a pull request that only comments (the meeting room's review panel), its body
    * read from a file. Resolves to the review's URL.
    */
-  async review(n: number, file: string, as?: GhAs): Promise<string> {
+  async review(n: number, file: string, as?: GhAs, _owner?: string, attach?: string[]): Promise<string> {
+    if (attach?.length) {
+      // Pictures: a conversation comment (a review has no attachments), see ghattach.ts.
+      const url = await commentWithPictures(this.gh, this.target ?? (await this.repoInfo()).nameWithOwner, n, file, attach, this.dir, as?.env).finally(() => void this.refreshPulls());
+      return url;
+    }
     // -F reads @file's contents as the value.
     const url = (await this.gh(['api', '--method', 'POST', repoApi(this.target, `pulls/${n}/reviews`), '-F', `body=@${file}`, '-f', 'event=COMMENT', '--jq', '.html_url'], this.dir, 60_000, as?.env)).trim();
     void this.refreshPulls();
@@ -564,7 +570,7 @@ export type Board = Omit<GitHub, 'pullDetail' | 'pullCard' | 'comment' | 'review
   pullDetail(n: number, me?: string, host?: HostAs): Promise<GhPullDetail>;
   pullCard(n: number, host?: HostAs): Promise<GhPull>;
   comment(kind: 'issue' | 'pull', n: number, body: string, as?: GhAs, host?: HostAs): Promise<{ comment?: GhComment; error?: string }>;
-  review(n: number, file: string, as?: GhAs, owner?: string): Promise<string>;
+  review(n: number, file: string, as?: GhAs, owner?: string, attach?: string[]): Promise<string>;
 };
 
 /**
