@@ -202,3 +202,71 @@ test('real browser: flow suite with a failing job, and before/after runs into an
   assert.equal(refused.code, 2);
   assert.equal(refused.stdout, '');
 });
+
+test('real browser: sessionStorage state is bound to its origin (iframes, other addresses)', { timeout: 120000 }, async t => {
+  const directory = await mkdtemp(join(tmpdir(), 'kanban-ui-origin-test-'));
+  const artifacts = new Set();
+  const reports = [];
+  const page = (frame) => `<!doctype html><title>x</title><main><p id="tok">pending</p>${frame ? `<iframe src="${frame}/frame"></iframe>` : ''}</main>
+<script>document.getElementById('tok').textContent = sessionStorage.getItem('token') || 'none'</script>`;
+  const listen = async (frameOf) => {
+    let own = '';
+    const server = createServer((req, res) => {
+      if (req.url.startsWith('/report')) { reports.push(decodeURIComponent(req.url.split('t=')[1])); res.writeHead(200); res.end('ok'); return; }
+      res.writeHead(200, { 'Content-Type': 'text/html' });
+      if (req.url === '/frame') res.end(`<!doctype html><script>fetch('/report?t='+encodeURIComponent(sessionStorage.getItem('token')))</script>`);
+      else res.end(page(frameOf() ? own : ''));
+    });
+    await new Promise((resolve, reject) => { server.once('error', reject); server.listen(0, '127.0.0.1', resolve); });
+    const url = `http://127.0.0.1:${server.address().port}`;
+    return { server, url, setFrame: value => { own = value; } };
+  };
+  let embed = true;
+  const a = await listen(() => embed);
+  const b = await listen(() => false);
+  a.setFrame(b.url);
+  t.after(async () => {
+    for (const { server } of [a, b]) { server.closeAllConnections(); await new Promise(resolve => server.close(resolve)); }
+    for (const file of artifacts) await rm(file, { force: true });
+    await rm(directory, { recursive: true, force: true });
+  });
+  const run = async (name, baseUrl, steps, state) => {
+    const path = join(directory, name + '.json');
+    await writeFile(path, JSON.stringify({ name, baseUrl, steps }));
+    const result = await execute(['--flow', path, '--state', state, '--timeout', '3000', '--delay', '1']);
+    for (const m of result.stderr.matchAll(/REPORT (.+)$/gm)) artifacts.add(m[1]);
+    return result;
+  };
+  const state = join(directory, 'state.json');
+  const read = (selector, expected) => ({ type: 'text', locator: selector, expected });
+
+  // Run 1: a login that lives only in sessionStorage is saved with its origin.
+  const first = await run('save', a.url, [{ goto: '/', waitSelector: '#tok', eval: "sessionStorage.setItem('token', 'T1')" }], state);
+  assert.equal(first.code, 0, first.stderr);
+  const saved = JSON.parse(await readFile(state, 'utf8'));
+  assert.deepEqual(saved.cookies, []);
+  assert.equal(saved.sessionStorage.token, 'T1');
+  assert.equal(saved.sessionStorageOrigin, a.url);
+  assert.equal((await stat(state)).mode & 0o777, 0o600);
+
+  // Run 2: same address sees the token; the cross-origin iframe on the page does not.
+  reports.length = 0;
+  const second = await run('restore', a.url, [{ goto: '/', waitSelector: '#tok', wait: 400, assertions: [read('#tok', 'T1')] }], state);
+  assert.equal(second.code, 0, second.stderr);
+  assert.ok(!second.stderr.includes('state=missing-origin'), second.stderr);
+  assert.ok(reports.length > 0, 'the iframe reported its storage');
+  assert.ok(reports.every(value => value === 'null'), `iframe got ${JSON.stringify(reports)}`);
+
+  // Run 3: another address never gets it.
+  const third = await run('other', b.url, [{ goto: '/', waitSelector: '#tok', assertions: [read('#tok', 'none')] }], state);
+  assert.equal(third.code, 0, third.stderr);
+  assert.match(third.stderr, /state=missing-origin/);
+
+  // Legacy file (sessionStorage, no saved origin) is bound to the target address.
+  await writeFile(state, JSON.stringify({ cookies: [], origins: [], sessionStorage: { token: 'T2' } }));
+  reports.length = 0;
+  const legacy = await run('legacy', a.url, [{ goto: '/', waitSelector: '#tok', wait: 400, assertions: [read('#tok', 'T2')] }], state);
+  assert.equal(legacy.code, 0, legacy.stderr);
+  assert.ok(!legacy.stderr.includes('state=missing-origin'));
+  assert.ok(reports.every(value => value === 'null'), `iframe got ${JSON.stringify(reports)}`);
+});

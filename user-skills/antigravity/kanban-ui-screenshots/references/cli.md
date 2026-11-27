@@ -164,6 +164,13 @@ prints a warning and its `FLOW` line says `state=missing-origin`; the file's ses
 belong to another origin), and the page is probably a login page. A saved state file is
 readable by its owner only (mode 0600).
 
+The state file records the origin its sessionStorage was read from (`sessionStorageOrigin`), and
+those values are restored only in documents of that origin: never in an iframe or a later page of
+another origin. A login kept only in sessionStorage is therefore recognised at the address where
+it was saved, and an older state file without the field is bound to the address of the run that
+loads it. Values given with `--session-storage`, `--local-storage` and `--storage-file` likewise
+apply only to the origin of the target address; cookies stay bound to their domain.
+
 With two addresses (`--before-url` and `--after-url`, below) `--state s.json` means
 `s.before.json` and `s.after.json`, because localStorage belongs to one origin and a login
 against one address does not hold on the other. Run the login flow once with both addresses and

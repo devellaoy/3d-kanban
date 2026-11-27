@@ -360,6 +360,8 @@ async function loadStateFile(path) {
       cookies: Array.isArray(raw?.cookies) ? raw.cookies : [],
       origins: Array.isArray(raw?.origins) ? raw.origins : [],
       sessionStorage: raw?.sessionStorage && typeof raw.sessionStorage === 'object' ? raw.sessionStorage : {},
+      // Exact origin the sessionStorage was read from (absent in legacy files).
+      sessionStorageOrigin: typeof raw?.sessionStorageOrigin === 'string' ? raw.sessionStorageOrigin : null,
     }
   } catch (err) {
     if (err?.code !== 'ENOENT') {
@@ -369,9 +371,13 @@ async function loadStateFile(path) {
   }
 }
 
-/** Lukee sivun sessionStoragen (Playwrightin storageState ei sisällä sitä). */
+/**
+ * Lukee sivun sessionStoragen (Playwrightin storageState ei sisällä sitä) yhdessä sen
+ * origin-arvon kanssa: { sessionStorage, sessionStorageOrigin }. Origin on null, jos sivulla
+ * ei ole oikeaa originia (about:blank).
+ */
 async function readSessionStorage(page) {
-  if (!page) return {}
+  if (!page) return { sessionStorage: {}, sessionStorageOrigin: null }
   try {
     return await page.evaluate(() => {
       const out = {}
@@ -379,10 +385,11 @@ async function readSessionStorage(page) {
         const k = sessionStorage.key(i)
         if (k != null) out[k] = sessionStorage.getItem(k)
       }
-      return out
+      const origin = location.origin && location.origin !== 'null' ? location.origin : null
+      return { sessionStorage: out, sessionStorageOrigin: origin }
     })
   } catch {
-    return {}
+    return { sessionStorage: {}, sessionStorageOrigin: null }
   }
 }
 
@@ -390,9 +397,9 @@ async function readSessionStorage(page) {
 async function saveStateFile(context, page, path) {
   try {
     const base = await context.storageState()
-    const sessionStorage = await readSessionStorage(page)
+    const { sessionStorage, sessionStorageOrigin } = await readSessionStorage(page)
     await mkdir(dirname(path), { recursive: true })
-    await writeFileAtomic(path, JSON.stringify({ ...base, sessionStorage }, null, 2))
+    await writeFileAtomic(path, JSON.stringify({ ...base, sessionStorage, ...(sessionStorageOrigin ? { sessionStorageOrigin } : {}) }, null, 2))
     note(`Istunto tallennettu: ${path}`)
   } catch (err) {
     note(`Varoitus: istunnon tallennus epäonnistui (${path}): ${err?.message ?? err}`)
@@ -408,7 +415,7 @@ async function saveStateFile(context, page, path) {
  * @param persisted Playwrightin storageState-muotoinen objekti tai null.
  * @param session   CLI-lipuista kerätyt cookie/localStorage/sessionStorage-arvot.
  */
-async function createContext(browser, vp, session, persisted, targetUrl) {
+async function createContext(browser, vp, session, persisted, targetUrl, cliUrl = targetUrl) {
   const context = await browser.newContext({
     viewport: vp.viewport,
     deviceScaleFactor: vp.deviceScaleFactor,
@@ -432,14 +439,34 @@ async function createContext(browser, vp, session, persisted, targetUrl) {
   // local/sessionStorage: init-skripti ajetaan ennen sivun omia skriptejä, joten
   // arvot ovat olemassa heti kun sovellus käynnistyy (esim. auth-token).
   // Mukaan myös istuntotiedostosta palautettu sessionStorage.
-  const sessionStorage = { ...(persisted?.sessionStorage ?? {}), ...session.sessionStorage }
-  if (Object.keys(session.localStorage).length || Object.keys(sessionStorage).length) {
+  // Arvot palautetaan vain dokumentteihin, joiden origin täsmää (iframe tai myöhempi
+  // navigointi toiseen originiin ei saa tokeneita): tiedoston sessionStorage sen tallennus-
+  // originiin (vanha tiedosto ilman originia: kohdeosoitteen originiin), CLI:n arvot
+  // kohdeosoitteen originiin.
+  const persistedValues = persisted?.sessionStorage ?? {}
+  const persistedOrigin = Object.keys(persistedValues).length
+    ? persisted?.sessionStorageOrigin ?? new URL(targetUrl).origin
+    : null
+  const cliOrigin = new URL(cliUrl).origin
+  if (Object.keys(session.localStorage).length || Object.keys(session.sessionStorage).length || persistedOrigin) {
     await context.addInitScript(
       (data) => {
-        for (const [k, v] of Object.entries(data.localStorage)) window.localStorage.setItem(k, v)
-        for (const [k, v] of Object.entries(data.sessionStorage)) window.sessionStorage.setItem(k, v)
+        const here = window.location.origin
+        if (here === data.persistedOrigin) {
+          for (const [k, v] of Object.entries(data.persisted)) window.sessionStorage.setItem(k, v)
+        }
+        if (here === data.cliOrigin) {
+          for (const [k, v] of Object.entries(data.localStorage)) window.localStorage.setItem(k, v)
+          for (const [k, v] of Object.entries(data.sessionStorage)) window.sessionStorage.setItem(k, v)
+        }
       },
-      { localStorage: session.localStorage, sessionStorage },
+      {
+        localStorage: session.localStorage,
+        sessionStorage: session.sessionStorage,
+        persisted: persistedValues,
+        persistedOrigin,
+        cliOrigin,
+      },
     )
   }
   return context
@@ -830,12 +857,12 @@ async function runFlowInner(job, ctx, result) {
     // jottei esim. ostoskori tyhjene mobiili→työpöytä-vaihdossa.
     const carried = {
       ...(await context.storageState()),
-      sessionStorage: await readSessionStorage(page),
+      ...(await readSessionStorage(page)),
     }
     const currentUrl = page.url()
     await stopTrace()
     await context.close()
-    context = await createContext(browser, nextVp, session, carried, currentUrl || firstUrl)
+    context = await createContext(browser, nextVp, session, carried, currentUrl || firstUrl, firstUrl)
     page = await context.newPage()
     await setupContext()
     if (currentUrl && !/^about:/.test(currentUrl)) {

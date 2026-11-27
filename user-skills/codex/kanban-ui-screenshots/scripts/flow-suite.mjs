@@ -322,6 +322,10 @@ export function stateMissingOrigin(state, url) {
   for (const o of state.origins ?? []) {
     if (o?.origin === origin.origin) return false
   }
+  // A login that lives only in sessionStorage has no origins entry: use the saved origin.
+  // A legacy file (sessionStorage, no saved origin) counts as bound to the target address.
+  const hasSession = Object.keys(state.sessionStorage ?? {}).length > 0
+  if (state.sessionStorageOrigin ? state.sessionStorageOrigin === origin.origin : hasSession) return false
   return true
 }
 

@@ -185,7 +185,7 @@ test('nonNegNum accepts an explicit 0', () => {
 });
 
 test('usableState drops sessionStorage that belongs to another origin', () => {
-  const state = { cookies: [], origins: [{ origin: 'http://a:1' }], sessionStorage: { token: 'x' } };
+  const state = { cookies: [], origins: [{ origin: 'http://a:1' }], sessionStorage: { token: 'x' }, sessionStorageOrigin: 'http://a:1' };
   assert.deepEqual(usableState(state, 'http://b:2/'), { state: { ...state, sessionStorage: {} }, missingOrigin: true });
   assert.equal(usableState(state, 'http://a:1/').state.sessionStorage.token, 'x');
   assert.deepEqual(usableState(null, 'http://a:1/'), { state: null, missingOrigin: false });
@@ -213,4 +213,13 @@ test('summaryLine shows the drag destination', () => {
   assert.match(summaryLine({ name: 'a', status: 'failed', shots: [], failedStep: 2,
     failure: { kind: 'action', index: 1, type: 'drag', target: 'to', reason: 'not-found', matches: 0 } }),
   /failed-step=2 action 1 drag \(to\): not-found, matches=0$/);
+});
+
+test('stateMissingOrigin uses the saved sessionStorage origin; legacy files bind to the target', () => {
+  const saved = { cookies: [], origins: [], sessionStorage: { token: 'x' }, sessionStorageOrigin: 'http://a:1' };
+  assert.equal(stateMissingOrigin(saved, 'http://a:1/x'), false);
+  assert.equal(stateMissingOrigin(saved, 'http://b:2/x'), true);
+  const legacy = { cookies: [], origins: [], sessionStorage: { token: 'x' } };
+  assert.equal(stateMissingOrigin(legacy, 'http://b:2/x'), false);
+  assert.equal(stateMissingOrigin({ cookies: [], origins: [], sessionStorage: {} }, 'http://a:1/'), true);
 });
