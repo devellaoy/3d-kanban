@@ -87,3 +87,12 @@ test('any file shape with a path works', () => {
   const file = rows.find((r) => r.kind === 'file');
   assert.equal(file?.kind === 'file' ? file.file.additions : -1, 3);
 });
+
+test('a path ending in a slash (a nested repository) is an entry of its parent folder, under its own path', () => {
+  const files = [{ path: 'vendor/lib/' }, { path: 'vendor/a.ts' }];
+  const root = buildTree(files);
+  assert.deepEqual(root.dirs.map((d) => d.path), ['vendor']);
+  assert.deepEqual(root.dirs[0].dirs, []);
+  assert.deepEqual(root.dirs[0].files.map((f) => f.path), ['vendor/a.ts', 'vendor/lib/']);
+  assert.deepEqual(dirsAbove(root, 'vendor/lib/'), ['vendor']);
+});

@@ -12,7 +12,8 @@ export interface TreeDir<T> {
 export function buildTree<T extends { path: string }>(files: readonly T[]): TreeDir<T> {
   const root: TreeDir<T> = { name: '', path: '', dirs: [], files: [] };
   for (const f of files) {
-    const parts = f.path.split('/');
+    // A nested repository is listed as "vendor/lib/": it is the entry lib in vendor, not a nameless one in vendor/lib.
+    const parts = f.path.replace(/\/+$/, '').split('/');
     let d = root;
     for (const part of parts.slice(0, -1)) {
       const p = d.path ? `${d.path}/${part}` : part;

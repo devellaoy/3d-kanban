@@ -529,7 +529,7 @@ export class ChangesView {
       void this.fetchShown();
     }
     const l = this.listing();
-    if (l.kind !== 'rows' || !l.rows.some((r) => r.path === this.selected)) this.selected = l.kind === 'rows' ? (this.files.order(l.rows)[0]?.path ?? null) : null;
+    if (l.kind !== 'rows' || !l.rows.some((r) => r.path === this.selected)) this.selected = l.kind === 'rows' ? this.files.first(l.rows, this.repoId) : null;
     this.paintBar(modes, n);
     this.paintCommits();
     this.files.paint({ rows: l.kind === 'rows' ? l.rows : [], more: l.kind === 'rows' ? l.more : 0, selected: this.selected, perCommit: this.mode === 'commits', scope: this.repoId });
