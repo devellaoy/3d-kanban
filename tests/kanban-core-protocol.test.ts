@@ -185,7 +185,7 @@ test('good messages come through rebuilt, without anything the validator did not
     refused({ t: 'kanban.task.create', task, once }, /once must be a request key/);
     refused({ t: 'kanban.issues.createTask', project: 'web', issueKey: 'gh:o/w#1', once }, /once must be a request key/);
   }
-  assert.equal(KANBAN_CLIENT_TYPES.size, 64);
+  assert.equal(KANBAN_CLIENT_TYPES.size, 66);
 });
 
 test("the primary repository's id is its floor's, up to 40 characters, and repoIds take it", () => {
