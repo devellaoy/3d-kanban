@@ -144,7 +144,7 @@ Every multi-line text box has an **Expand** button in its top right corner while
 - **How**: type **Implement** or **Investigate** (read-only: writes a report instead of changing code;
   no plan, review or PRs), **Plan first** and **Plan approval** (implement straight away, or wait for
   your approval), **Review rounds** on/off, **Choose the reviewer** (agent, model, effort, 1–10
-  rounds, review the last fix too; the additional reviewers are not in the form, they come from the settings), **UI testing** (before and after screenshots when the task changes
+  rounds, review the last fix too; the additional reviewers are not in the form, they come from the settings), **UI testing** (the implementer tests the change in a real browser and saves before and after screenshots when the task changes
   the UI, see [UI testing](#ui-testing); ticked or not by the project's default until you touch it, and
   not there for an investigation) and **Acceptance criteria** (the agents check the work against
   them).
@@ -379,16 +379,21 @@ questions / is ready for review in <project>".
 
 With **UI testing** on (the default; set for the office, a project or one task, see *Settings*), the
 implementer of a task that changes what a user sees takes a screenshot of the view **before** it changes
-any code and one of the same view **after**, and saves them with the task. A task that doesn't touch the
-UI gets none, and an agent that can't take one (the app doesn't start, it needs a login it doesn't have)
-carries on and says so in its summary. With it off, the agent takes them only when the task's description
-or a comment asks for UI testing or screenshots. Investigations take none.
+any code and one of the same view **after**, and saves them with the task. It also tests the change in a
+real browser with real user actions (click, type, submit, keyboard), checks the outcome, and says in its
+summary what it tested and the result; pictures alone are not enough. A task that doesn't touch the
+UI gets none, and an agent that can't test or take a picture (the app doesn't start, it needs a login it
+doesn't have) carries on and says in its summary what it could not test or capture and why. With it off, the
+agent takes pictures only when the task's description or a comment asks for UI testing or screenshots.
+Investigations take none. The on-request case (UI testing off), the reviewer's block and the fix rounds are
+still about the pictures only.
 
 - The images are files named `<subject>-before.png` and `<subject>-after.png` (png, jpg, jpeg or webp;
   lower-case letters, digits, `.`, `_` and `-`; at most 20 MB each and 40 a task) in the task's own
-  folder, `<data>/kanban/grants/task-<id>/ui/`. A file with another name is not listed. The agents use the
-  `kanban-ui-screenshots` skill for them when they have it, else whatever the project has for looking at
-  its UI.
+  folder, `<data>/kanban/grants/task-<id>/ui/`. A file with another name is not listed. The implementer uses the
+  `kanban-ui-screenshots` skill for the testing too, with its flow runner and assertions, not only its
+  screenshots, when it has it, else whatever the project has for driving its UI (a dev server and a
+  headless browser, end-to-end tests, a storybook).
 - A task in **several repositories** gets a folder per repository inside it, `ui/<repo id>/`, named in the
   prompt, and the agents save each picture in the folder of the repository whose UI it shows. The office then
   puts it only into that repository's pull request (see [Pull requests](#pull-requests)). A picture saved
@@ -404,9 +409,12 @@ or a comment asks for UI testing or screenshots. Investigations take none.
 - Once the task has a **pull request**, the office puts the images into its description (see
   [Pull requests](#pull-requests)).
 - The blocks the agents are given are the four **UI testing** prompts (*Prompts*), editable like the rest (a tested pull-request review has three of its own, *PR testing*; its *PR testing · findings in the review* has the test's findings go among the review's others);
-  one left empty adds nothing.
+  one left empty adds nothing. An office or project that rewrote the *UI testing* prompt keeps its own text, and so
+  still asks only for the pictures until it updates or resets it.
 
-The images may end up in a pull request, so the agents are told to use test data and test accounts.
+The images may end up in a pull request, so the agents are told to use test data and test accounts. The
+implementer is also told to test only an instance it started itself and to send nothing that writes to a
+shared or production backend.
 Look at the Images tab before pressing **Create PRs** if that matters.
 
 The PR window's **Review** can test the change too (the *Also test the change* tick, see [Reviewing pull requests](#pull-requests)): one implementer first starts what the pull requests change and tests it as the project's pull-request review instructions say (a UI in a real browser, an API by calling its endpoints, anything else through its entry point), in a task of its own. The before and after pictures of a UI are evidence and stay with the task: none goes into a pull request's description. When the review is posted on the pull requests, only the pictures in which a finding is visible are attached to its comment. Its test report goes to the reviewers. The tick keeps its stored name `uiTest`, and the prompts keep their `kanban.pr.uiTest*` ids, but they read *PR testing* in the prompt list. An office or project that rewrote them keeps its own text, and so still tests only the UI until it updates or resets them.
@@ -427,7 +435,7 @@ over it, and the task's own over both.
 | Plan first | Kanban → New tasks | on | New tasks start with a plan. |
 | Plan approval | Kanban → New tasks; Projects; per task | implement straight away | *implement straight away* (`auto`) or *wait for approval* (`manual`). Set on a task when it's made. |
 | Review rounds | Kanban → New tasks | on | New tasks get reviewed. |
-| UI testing | Kanban → New tasks; Projects → Project; per task | on | Implementers save before and after screenshots of the UI they change (see [UI testing](#ui-testing)). A project chooses *Default*, *On* or *Off*; a task's own choice (the create form's tick box) goes over both, and a task without one follows its project. |
+| UI testing | Kanban → New tasks; Projects → Project; per task | on | Implementers test the UI they change in a real browser and save before and after screenshots of it (see [UI testing](#ui-testing)). A project chooses *Default*, *On* or *Off*; a task's own choice (the create form's tick box) goes over both, and a task without one follows its project. |
 | Plan phase runs | Kanban → New tasks; Projects | plan mode | How the plan phase runs. *Plan mode* (the default): Claude's own plan mode, which cannot change files. *Auto mode*: Claude runs in auto mode with its file editing tools (and the plan-mode tools) off, and the office blocks the end of a plan turn that left uncommitted changes in the worktree. Codex plans in a read-only sandbox either way. Antigravity plans in `--mode plan` either way, which is advisory, not read-only. |
 | Implementation runs | Kanban → New tasks; Projects | auto mode | How implement, fix, resume and PR phases run. *Auto mode*: Claude's auto mode, where a classifier reviews risky actions (Codex has no auto mode and runs without permission prompts, as *without permission prompts* does; neither has Antigravity, which always runs with `--dangerously-skip-permissions`). *Without permission prompts*: Claude's bypass mode; Codex with no approvals and no sandbox; Antigravity with all permissions. *In Codex's workspace sandbox* (`-s workspace-write -a never`) changes Codex; Claude then runs in bypass mode and Antigravity with all permissions. Reviews are not affected: they always run in bypass mode with the editing tools off. |
 | Reviewer: agent, model, effort, focus | Kanban → Reviews; Projects; per task (not the focus) | Claude, no focus | Who reviews (the main reviewer). **Focus** is an optional viewpoint for its own review (suggestions: Correctness, Simplicity, Security; any text up to 40 characters); empty is an ordinary review. A project's own review settings with an empty Focus mean no focus, even if the office has one; a task has no focus of its own and inherits it. |
